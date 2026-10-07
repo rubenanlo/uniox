@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { SilkBackground } from './SilkBackground';
 
 const PHRASES = [
@@ -13,19 +14,6 @@ const WORD_STAGGER = 0.07;
 const WORD_DUR = 0.65;
 const HOLD = 1.0;
 const OUT_DUR = 0.65;
-
-function usePrefersReducedMotion(): boolean {
-  const [reduce, setReduce] = useState(
-    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const on = () => setReduce(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return reduce;
-}
 
 function SplitLine({ text, exiting }: { text: string; exiting: boolean }) {
   const words = text.split(' ');
@@ -97,7 +85,7 @@ export function Intro({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] overflow-hidden bg-[#0e0e12] select-none">
-      <SilkBackground />
+      <SilkBackground still={reduce} />
       {/* Dark scrim keeps the type legible over the brightest silk streaks. */}
       <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_50%_50%,transparent_35%,rgba(8,8,12,0.72))]" />
 

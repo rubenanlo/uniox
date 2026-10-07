@@ -13,6 +13,7 @@ import type {
   ThreadSummary,
 } from '@app/shared';
 import { api } from '../lib/api';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 
 type DeltaListener = (e: DeltaEvent) => void;
 const listeners = new Set<DeltaListener>();
@@ -70,6 +71,8 @@ export function useFolders(): Folder[] {
 }
 
 const PAGE = 200;
+const SEARCH_DEBOUNCE_MS = 150;
+const DELTA_COALESCE_MS = 100;
 
 export function useThreads(opts: {
   view: ThreadQuery['view'];
@@ -78,12 +81,14 @@ export function useThreads(opts: {
 }): { threads: ThreadSummary[]; refresh: () => void } {
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const gen = useRef(0);
+  // Typing runs a full-text query per keystroke otherwise; clearing is instant.
+  const search = useDebouncedValue(opts.search, opts.search.trim() ? SEARCH_DEBOUNCE_MS : 0);
   const refresh = useCallback(() => {
     const g = ++gen.current;
-    const p = opts.search.trim()
+    const p = search.trim()
       ? // Search honours the sidebar's account focus, same as the list below.
         api.query('search:threads', {
-          query: opts.search,
+          query: search,
           accountId: opts.accountId,
           limit: 100,
         })
@@ -96,10 +101,28 @@ export function useThreads(opts: {
     void p.then((t) => {
       if (gen.current === g) setThreads(t);
     });
-  }, [opts.view, opts.accountId, opts.search]);
+  }, [opts.view, opts.accountId, search]);
   useEffect(refresh, [refresh]);
+  // Sync emits threads-changed per task and per batch; coalesce a burst into
+  // one 200-row refetch instead of one per event.
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRefresh = useRef(refresh);
+  useEffect(() => {
+    latestRefresh.current = refresh;
+  }, [refresh]);
+  useEffect(
+    () => () => {
+      if (pending.current) clearTimeout(pending.current);
+    },
+    [],
+  );
   useDelta((e) => {
-    if (e.kind === 'threads-changed' || e.kind === 'accounts-changed') refresh();
+    if (e.kind !== 'threads-changed' && e.kind !== 'accounts-changed') return;
+    if (pending.current) return;
+    pending.current = setTimeout(() => {
+      pending.current = null;
+      latestRefresh.current();
+    }, DELTA_COALESCE_MS);
   });
   return { threads, refresh };
 }

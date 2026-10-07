@@ -1,4 +1,5 @@
 import type { Address, MessageMeta, ThreadSummary } from '@app/shared';
+import { textToHtml } from '@app/email-render';
 import { AlarmClock, Bell, Forward, Layers, Reply, ReplyAll } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -60,7 +61,7 @@ function DraftItem({ message }: { message: MessageMeta }) {
         cc: message.cc,
         bcc: [],
         subject: message.subject || '(no subject)',
-        html: body.html ?? `<pre>${(body.text ?? '').replace(/</g, '&lt;')}</pre>`,
+        html: body.html ?? textToHtml(body.text ?? ''),
         text: body.text ?? '',
         deleteDraftMessageId: message.id,
         attachments: [],

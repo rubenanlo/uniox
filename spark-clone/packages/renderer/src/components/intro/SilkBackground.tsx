@@ -104,7 +104,12 @@ function SilkPlane() {
   );
 }
 
-export function SilkBackground() {
+/**
+ * `still`: reduced motion — render on demand instead of a 60fps full-screen
+ * shader loop. DPR capped at 1.5: the soft silk gains nothing from 2x and the
+ * fragment shader cost scales with pixel count.
+ */
+export function SilkBackground({ still = false }: { still?: boolean }) {
   return (
     <CanvasBoundary>
       {/* R3F forces the Canvas wrapper to position:relative, so keep it inside
@@ -112,7 +117,8 @@ export function SilkBackground() {
           sits in normal flow and pushes sibling content off-screen. */}
       <div className="absolute inset-0">
         <Canvas
-          dpr={[1, 2]}
+          dpr={[1, 1.5]}
+          frameloop={still ? 'demand' : 'always'}
           gl={{ antialias: true }}
           camera={{ position: [0, 0, 1] }}
         >

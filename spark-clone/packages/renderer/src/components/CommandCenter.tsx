@@ -4,13 +4,20 @@ import { ACTIONS, comboLabel } from '../actions/registry';
 import { keyboardTargetId, useUi } from '../state/store';
 import { senderLabel } from '../lib/utils';
 import { Keycaps } from './ui/Keycap';
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * ⌘K — every action, searchable, acting on the highlighted (hovered) email
  * (Spark's Command Center semantics).
  */
 export function CommandCenter() {
-  const { commandOpen, setCommandOpen, visibleThreads } = useUi();
+  const { commandOpen, setCommandOpen, visibleThreads } = useUi(
+    useShallow((s) => ({
+      commandOpen: s.commandOpen,
+      setCommandOpen: s.setCommandOpen,
+      visibleThreads: s.visibleThreads,
+    })),
+  );
   const targetId = keyboardTargetId();
   const targetThread = visibleThreads.find((t) => t.id === targetId);
 

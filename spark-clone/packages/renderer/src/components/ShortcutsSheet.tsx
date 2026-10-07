@@ -3,9 +3,12 @@ import { ACTIONS, comboLabel } from '../actions/registry';
 import { useEscapeClose } from '../hooks/useEscapeClose';
 import { useUi } from '../state/store';
 import { Keycaps } from './ui/Keycap';
+import { useShallow } from 'zustand/react/shallow';
 
 export function ShortcutsSheet() {
-  const { shortcutsOpen, setShortcutsOpen } = useUi();
+  const { shortcutsOpen, setShortcutsOpen } = useUi(
+    useShallow((s) => ({ shortcutsOpen: s.shortcutsOpen, setShortcutsOpen: s.setShortcutsOpen })),
+  );
   useEscapeClose(shortcutsOpen, () => setShortcutsOpen(false));
   if (!shortcutsOpen) return null;
   const sections = [...new Set(ACTIONS.map((a) => a.section))];

@@ -29,6 +29,7 @@ import { wireKanban } from './state/kanban';
 import { usePersistedUiPrefs } from './state/persist';
 import { useAccounts, useDelta, useSelectedThread, useThreads } from './state/queries';
 import { useUi } from './state/store';
+import { useShallow } from 'zustand/react/shallow';
 
 function useTheme() {
   const theme = useUi((s) => s.theme);
@@ -145,7 +146,16 @@ function ListPane({ threads }: { threads: ThreadSummary[] }) {
 }
 
 function MailView() {
-  const { view, accountFilter, searchQuery, split, selectedThreadId, selectThread } = useUi();
+  const { view, accountFilter, searchQuery, split, selectedThreadId, selectThread } = useUi(
+    useShallow((s) => ({
+      view: s.view,
+      accountFilter: s.accountFilter,
+      searchQuery: s.searchQuery,
+      split: s.split,
+      selectedThreadId: s.selectedThreadId,
+      selectThread: s.selectThread,
+    })),
+  );
   const { threads } = useThreads({ view, accountId: accountFilter, search: searchQuery });
   const inList = useMemo(
     () => threads.find((t) => t.id === selectedThreadId) ?? null,
@@ -213,7 +223,7 @@ function MailView() {
           <ArrowLeft size={13} /> Back to list
         </button>
         <div className="min-h-0 flex-1">
-          <ThreadView thread={selected} />
+          <ThreadView key={selected.id} thread={selected} />
         </div>
       </div>
     ) : (
@@ -229,14 +239,16 @@ function MailView() {
         <ListPane threads={threads} />
       </div>
       <div className="h-full min-w-0 flex-1">
-        {selected ? <ThreadView thread={selected} /> : <EmptyReadingPane />}
+        {selected ? <ThreadView key={selected.id} thread={selected} /> : <EmptyReadingPane />}
       </div>
     </div>
   );
 }
 
 function ThreadSchedulePicker() {
-  const { picker, closePicker } = useUi();
+  const { picker, closePicker } = useUi(
+    useShallow((s) => ({ picker: s.picker, closePicker: s.closePicker })),
+  );
   if (!picker) return null;
   const { kind, thread } = picker;
   return (
@@ -300,7 +312,7 @@ export default function App() {
     }
   });
   const { accounts, loaded, refresh } = useAccounts();
-  const { composer, view } = useUi();
+  const { composer, view } = useUi(useShallow((s) => ({ composer: s.composer, view: s.view })));
   const searching = useUi((s) => !!s.searchQuery.trim());
   const addingAccount = useUi((s) => s.addingAccount);
   const setAddingAccount = useUi((s) => s.setAddingAccount);

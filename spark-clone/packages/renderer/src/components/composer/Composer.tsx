@@ -163,7 +163,7 @@ function replySubject(mode: ComposerState['mode'], subject: string): string {
 }
 
 export function Composer({ state }: { state: ComposerState }) {
-  const { closeComposer } = useUi();
+  const closeComposer = useUi((s) => s.closeComposer);
   const { accounts, loaded: accountsLoaded } = useAccounts();
   const [accountId, setAccountId] = useState(state.accountId);
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0];

@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import * as THREE from 'three';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { cn } from '../../lib/utils';
 
 export interface SpecterOrbProps {
@@ -592,16 +593,8 @@ const SpecterOrb = ({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const swing = useRef<SwingState>({ x: 0, y: 0, toX: 0, toY: 0 });
   const [awake, setAwake] = useState(false);
-  const [calm, setCalm] = useState(false);
+  const calm = usePrefersReducedMotion();
   const screenDpr = useSyncExternalStore(subscribeToScreen, readScreenDpr, () => 1);
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setCalm(query.matches);
-    sync();
-    query.addEventListener('change', sync);
-    return () => query.removeEventListener('change', sync);
-  }, []);
 
   useEffect(() => {
     const node = rootRef.current;

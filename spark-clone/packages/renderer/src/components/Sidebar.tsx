@@ -25,6 +25,7 @@ import { useAccounts, useSyncStatuses, useThreads } from '../state/queries';
 import { useUi } from '../state/store';
 import { AccountIcon } from './ui/AccountIcon';
 import { Keycaps } from './ui/Keycap';
+import { useShallow } from 'zustand/react/shallow';
 
 const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: string[] }[] = [
   { view: 'home', label: 'Home', icon: Home },
@@ -42,8 +43,16 @@ const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: string[] 
 ];
 
 export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
-  const { view, setView, sidebarExpanded, toggleSidebar, accountFilter, setAccountFilter } =
-    useUi();
+  const { view, setView, sidebarExpanded, toggleSidebar, accountFilter, setAccountFilter } = useUi(
+    useShallow((s) => ({
+      view: s.view,
+      setView: s.setView,
+      sidebarExpanded: s.sidebarExpanded,
+      toggleSidebar: s.toggleSidebar,
+      accountFilter: s.accountFilter,
+      setAccountFilter: s.setAccountFilter,
+    })),
+  );
   const accountAvatars = useUi((s) => s.accountAvatars);
   const accountColors = useUi((s) => s.accountColors);
   const { accounts } = useAccounts();

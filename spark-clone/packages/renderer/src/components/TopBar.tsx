@@ -18,6 +18,7 @@ import { NO_RECENT, nextRecentIndex } from '../lib/searchNav';
 import { cn } from '../lib/utils';
 import { useUi, type ListDensity, type ListLayout } from '../state/store';
 import { Tip } from './ui/Tip';
+import { useShallow } from 'zustand/react/shallow';
 
 const VIEW_TITLES: Record<string, string> = {
   inbox: 'Inbox',
@@ -156,7 +157,23 @@ export function TopBar() {
     smartInbox,
     toggleSmartInbox,
     setSettingsOpen,
-  } = useUi();
+  } = useUi(
+    useShallow((s) => ({
+      view: s.view,
+      searchQuery: s.searchQuery,
+      setSearchQuery: s.setSearchQuery,
+      searchFocusTick: s.searchFocusTick,
+      listLayout: s.listLayout,
+      setListLayout: s.setListLayout,
+      density: s.density,
+      setDensity: s.setDensity,
+      toggleSplit: s.toggleSplit,
+      split: s.split,
+      smartInbox: s.smartInbox,
+      toggleSmartInbox: s.toggleSmartInbox,
+      setSettingsOpen: s.setSettingsOpen,
+    })),
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   // Open on focus, gone the moment there is something to search for.

@@ -2,12 +2,12 @@ import { ArrowDown, ArrowUp, Settings2, SquarePen, Square, X } from 'lucide-reac
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
 } from 'react';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { runAssistantAction, type AssistantAction } from '../../lib/assistantContext';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
@@ -17,18 +17,6 @@ import { useUi } from '../../state/store';
 // reveal at a steady, readable pace instead of snapping in chunks.
 const CATCH_UP_MS = 180;
 const FLOOR_CPS = 45;
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => setReduced(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, []);
-  return reduced;
-}
 
 function lastWordBoundary(source: string, cut: number): number {
   if (cut >= source.length) return source.length;
@@ -105,8 +93,12 @@ function StreamingMessage({
   return <StreamingWords text={shown} reduced={reduced} />;
 }
 
-/** Soft top/bottom fades that appear only when the transcript overflows. */
-function useScrollFade(ref: RefObject<HTMLDivElement | null>) {
+/**
+ * Soft top/bottom fades that appear only when the transcript overflows.
+ * `active`: the modal stays mounted but renders nothing while closed, so the
+ * observers must attach when it opens, not on first mount (ref is null then).
+ */
+function useScrollFade(ref: RefObject<HTMLDivElement | null>, active: boolean) {
   const [edges, setEdges] = useState({ start: false, end: false });
   const update = useCallback(() => {
     const el = ref.current;
@@ -125,12 +117,12 @@ function useScrollFade(ref: RefObject<HTMLDivElement | null>) {
     observer.observe(el);
     if (el.firstElementChild) observer.observe(el.firstElementChild);
     return () => observer.disconnect();
-  }, [ref, update]);
+  }, [ref, update, active]);
   return { edges, onScroll: update };
 }
 
 /** Keep the transcript pinned to the newest text unless the user scrolls up. */
-function useStickToBottom(ref: RefObject<HTMLDivElement | null>) {
+function useStickToBottom(ref: RefObject<HTMLDivElement | null>, active: boolean) {
   const stick = useRef(true);
   const [showJump, setShowJump] = useState(false);
   useEffect(() => {
@@ -164,7 +156,7 @@ function useStickToBottom(ref: RefObject<HTMLDivElement | null>) {
       el.removeEventListener('touchmove', onIntent);
       el.removeEventListener('scroll', sync);
     };
-  }, [ref]);
+  }, [ref, active]);
   const jumpToLatest = useCallback(() => {
     const el = ref.current;
     if (!el) return;
@@ -220,14 +212,11 @@ export function AssistantModal() {
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { edges, onScroll } = useScrollFade(scrollRef);
-  const { showJump, jumpToLatest } = useStickToBottom(scrollRef);
+  const transcriptShown = open && configured;
+  const { edges, onScroll } = useScrollFade(scrollRef, transcriptShown);
+  const { showJump, jumpToLatest } = useStickToBottom(scrollRef, transcriptShown);
 
   useEscapeClose(open, () => setOpen(false));
-
-  useLayoutEffect(() => {
-    if (streamingId && scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, streamingId]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();

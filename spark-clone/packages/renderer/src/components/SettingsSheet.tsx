@@ -33,6 +33,7 @@ import { useAccounts, useTemplates } from '../state/queries';
 import { useUi, type ThemePref } from '../state/store';
 import { AccountIcon } from './ui/AccountIcon';
 import { ColorPicker } from './ui/ColorPicker';
+import { useShallow } from 'zustand/react/shallow';
 
 type Tab =
   | 'appearance'
@@ -332,7 +333,7 @@ function NameRow() {
 }
 
 function AppearanceTab() {
-  const { theme, setTheme } = useUi();
+  const { theme, setTheme } = useUi(useShallow((s) => ({ theme: s.theme, setTheme: s.setTheme })));
   const accentColor = useUi((s) => s.accentColor);
   const setAccentColor = useUi((s) => s.setAccentColor);
   const options: { id: ThemePref; label: string }[] = [
@@ -1068,7 +1069,9 @@ function TemplatesTab() {
 }
 
 export function SettingsSheet() {
-  const { settingsOpen, setSettingsOpen } = useUi();
+  const { settingsOpen, setSettingsOpen } = useUi(
+    useShallow((s) => ({ settingsOpen: s.settingsOpen, setSettingsOpen: s.setSettingsOpen })),
+  );
   const [tab, setTab] = useState<Tab>('appearance');
   useEscapeClose(settingsOpen, () => setSettingsOpen(false));
   if (!settingsOpen) return null;
