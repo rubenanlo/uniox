@@ -29,7 +29,6 @@ import { useShallow } from 'zustand/react/shallow';
 
 export const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: string[] }[] = [
   { view: 'home', label: 'Home', icon: Home },
-  { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'inbox', label: 'Inbox', icon: Inbox },
   { view: 'pinned', label: 'Pinned', icon: Pin, keys: ['⌘', 'D'] },
   { view: 'snoozed', label: 'Snoozed', icon: AlarmClock, keys: ['⌘', 'S'] },
@@ -39,6 +38,7 @@ export const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: st
   { view: 'sent', label: 'Sent', icon: Send },
   { view: 'drafts', label: 'Drafts', icon: FileText },
   { view: 'spam', label: 'Spam', icon: ShieldAlert },
+  { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'trash', label: 'Trash', icon: Trash2 },
 ];
 
