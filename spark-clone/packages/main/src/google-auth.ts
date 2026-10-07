@@ -86,6 +86,9 @@ export function emailFromIdToken(idToken: string): string | null {
   }
 }
 
+/** A stalled token endpoint must not leave the sign-in spinner hanging. */
+const NETWORK_TIMEOUT_MS = 20_000;
+
 interface TokenResponse {
   access_token?: string;
   refresh_token?: string;
@@ -100,6 +103,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(body).toString(),
+    signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   return (await res.json()) as TokenResponse;
 }
@@ -137,15 +141,16 @@ export function authorizeGoogle(client: GoogleClient): Promise<GoogleTokens> {
            </body></html>`,
         );
       };
+      // Check state first: a request without our state (any local process or
+      // web page can hit the loopback port) must not cancel the real flow.
+      if (url.searchParams.get('state') !== state) {
+        res.writeHead(400).end();
+        return;
+      }
       const err = url.searchParams.get('error');
       if (err) {
         respond('Sign-in was cancelled.');
         finish(() => reject(new Error(`Google sign-in: ${err}`)));
-        return;
-      }
-      if (url.searchParams.get('state') !== state) {
-        respond('Sign-in failed (state mismatch).');
-        finish(() => reject(new Error('OAuth state mismatch')));
         return;
       }
       const code = url.searchParams.get('code');
@@ -184,6 +189,7 @@ export function authorizeGoogle(client: GoogleClient): Promise<GoogleTokens> {
       });
     });
 
+    server.on('error', (e) => finish(() => reject(e)));
     const timeout = setTimeout(
       () => finish(() => reject(new Error('Google sign-in timed out'))),
       5 * 60_000,
@@ -215,6 +221,7 @@ export async function revokeGoogleToken(token: string): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
     });
   } catch {
     /* offline or already revoked — nothing to clean up */

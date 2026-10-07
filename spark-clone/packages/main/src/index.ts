@@ -16,7 +16,7 @@ import {
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
-import { join, normalize } from 'node:path';
+import { basename, join, normalize, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   DEFAULT_NOTIFY_SOUND,
@@ -45,7 +45,10 @@ import { fetchBoard, fetchPageBlocks, setPageStatus, validateToken } from './not
 import { authorizeNotion } from './notion-auth';
 import { SyncBridge } from './sync-bridge';
 
-const isDev = !!process.env['ELECTRON_RENDERER_URL'];
+// Only an unpackaged build may load a dev-server URL: a packaged app must never
+// trust ELECTRON_RENDERER_URL from the environment (it would grant a remote page
+// the preload API and pass validSender).
+const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL'];
 
 // safeStorage derives its OS-keychain encryption key from the app name, so a
 // rebrand (the package.json `name` / productName) silently orphans every
@@ -64,6 +67,20 @@ if (process.env['SPARKCLONE_USER_DATA']) {
   app.setPath('userData', join(app.getPath('appData'), 'com.sparkclone.mail'));
 }
 
+// One instance per profile: a second one would fork its own sync process on the
+// same mail.db / credentials.json (SQLITE_BUSY, duplicate sends, lost writes).
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 ipcMain.on('app-meta', (event) => {
   event.returnValue = { isPackaged: app.isPackaged };
 });
@@ -79,13 +96,29 @@ let credentials: CredentialStore | null = null;
 let ai: AiService | null = null;
 let attachmentsRoot = '';
 
+/** Join `rel` under `root`, or null if it escapes it (incl. sibling dirs like `attachments-old`). */
+function containedPath(root: string, rel: string): string | null {
+  const base = normalize(root);
+  const full = normalize(join(base, rel));
+  return full.startsWith(base.endsWith(sep) ? base : base + sep) ? full : null;
+}
+
 /** Attachment paths from the renderer are relative; keep them under the root. */
 function resolveAttachmentPath(localPath: string): string | null {
   if (!attachmentsRoot || typeof localPath !== 'string') return null;
-  const full = normalize(join(attachmentsRoot, localPath));
-  if (!full.startsWith(normalize(attachmentsRoot)) || !existsSync(full)) return null;
-  return full;
+  const full = containedPath(attachmentsRoot, localPath);
+  return full && existsSync(full) ? full : null;
 }
+
+/** Strip path parts and characters Windows/macOS refuse in a filename. */
+function safeSaveName(name: string): string {
+  // eslint-disable-next-line no-control-regex
+  return basename(String(name ?? '')).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'attachment';
+}
+
+/** File types that "open" by executing; never hand these to the OS opener from a preview click. */
+const EXECUTABLE_EXT =
+  /\.(exe|bat|cmd|com|scr|msi|msp|ps1|vbs|vbe|js|jse|wsf|wsh|hta|cpl|lnk|reg|jar|desktop|sh|run|appimage|app|command)$/i;
 
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 
@@ -236,6 +269,9 @@ function osascriptNotify(title: string, body: string, sound: NotifySound): void 
   ]);
 }
 
+/** Hold shown notifications so they aren't garbage-collected before a click lands. */
+const liveNotifications = new Set<Notification>();
+
 const deltaCoalescer = new DeltaCoalescer((e) => mainWindow?.webContents.send('delta', e));
 
 function broadcastDelta(event: DeltaEvent): void {
@@ -255,7 +291,10 @@ function broadcastDelta(event: DeltaEvent): void {
       });
       const threadId = event.threadId;
       const isEventAlert = event.category === 'event';
+      liveNotifications.add(n);
+      n.on('close', () => liveNotifications.delete(n));
       n.on('click', () => {
+        liveNotifications.delete(n);
         mainWindow?.show();
         mainWindow?.focus();
         // Land on the email the notification was about, like any mail app;
@@ -263,7 +302,10 @@ function broadcastDelta(event: DeltaEvent): void {
         if (threadId) mainWindow?.webContents.send('delta', { kind: 'open-thread', threadId });
         else if (isEventAlert) mainWindow?.webContents.send('delta', { kind: 'open-calendar' });
       });
-      n.on('failed', () => osascriptNotify(event.title, event.body, sound));
+      n.on('failed', () => {
+        liveNotifications.delete(n);
+        osascriptNotify(event.title, event.body, sound);
+      });
       n.show();
     })();
   }
@@ -274,10 +316,8 @@ function registerAppProtocol(attachmentsDir: string): void {
     const url = new URL(request.url);
     if (url.hostname !== 'attachments') return new Response('not found', { status: 404 });
     const rel = decodeURI(url.pathname).replace(/^\//, '');
-    const full = normalize(join(attachmentsDir, rel));
-    if (!full.startsWith(normalize(attachmentsDir))) {
-      return new Response('forbidden', { status: 403 });
-    }
+    const full = containedPath(attachmentsDir, rel);
+    if (!full) return new Response('forbidden', { status: 403 });
     return net.fetch(pathToFileURL(full).toString());
   });
 }
@@ -318,7 +358,10 @@ function registerIpc(): void {
         return ai!.config(args as { key?: string; model?: string });
       case 'ai:chat': {
         const params = args as { id: string; messages: AiMessage[]; system?: string };
-        // Tokens stream back out-of-band on the `ai:chunk` push channel.
+        // Tokens stream back out-of-band on the `ai:chunk` push channel. If the
+        // window goes away mid-turn, abort instead of streaming (and billing)
+        // into the void.
+        event.sender.once('destroyed', () => ai?.stop(params.id));
         return ai!.chat(params, (chunk) => {
           if (!event.sender.isDestroyed()) event.sender.send('ai:chunk', chunk);
         });
@@ -404,6 +447,7 @@ function registerIpc(): void {
           await revokeGoogleToken(record.refreshToken);
         }
         credentials!.deleteRecord(accountId);
+        bridge!.forgetToken(accountId);
         const result = (await bridge!.query('account:remove', { accountId })) as {
           ok: boolean;
           error?: string;
@@ -513,6 +557,8 @@ function registerIpc(): void {
         if (!full) return { ok: false };
         const win = BrowserWindow.fromWebContents(event.sender);
         if (process.platform === 'darwin' && win) win.previewFile(full);
+        // Off macOS there is no Quick Look: openPath would *run* a mailed .exe/.bat/.js.
+        else if (EXECUTABLE_EXT.test(full)) shell.showItemInFolder(full);
         else await shell.openPath(full);
         return { ok: true };
       }
@@ -522,7 +568,7 @@ function registerIpc(): void {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (!full || !win) return { ok: false };
         const res = await dialog.showSaveDialog(win, {
-          defaultPath: join(app.getPath('downloads'), filename),
+          defaultPath: join(app.getPath('downloads'), safeSaveName(filename)),
         });
         if (res.canceled || !res.filePath) return { ok: false };
         await copyFile(full, res.filePath);
@@ -539,19 +585,25 @@ function registerIpc(): void {
         const dir = res.filePaths[0];
         if (res.canceled || !dir) return { ok: false };
         let saved = 0;
+        let failed = 0;
         for (const f of files) {
           const full = resolveAttachmentPath(f.localPath);
           if (!full) continue;
           // "report.pdf" → "report (1).pdf" until the name is free in the folder.
-          const dot = f.filename.lastIndexOf('.');
-          const stem = dot > 0 ? f.filename.slice(0, dot) : f.filename;
-          const ext = dot > 0 ? f.filename.slice(dot) : '';
-          let dest = join(dir, f.filename);
+          const name = safeSaveName(f.filename);
+          const dot = name.lastIndexOf('.');
+          const stem = dot > 0 ? name.slice(0, dot) : name;
+          const ext = dot > 0 ? name.slice(dot) : '';
+          let dest = join(dir, name);
           for (let n = 1; existsSync(dest); n++) dest = join(dir, `${stem} (${n})${ext}`);
-          await copyFile(full, dest);
-          saved++;
+          try {
+            await copyFile(full, dest);
+            saved++;
+          } catch {
+            failed++; // keep going: one bad file shouldn't drop the rest
+          }
         }
-        return { ok: saved > 0, path: dir, saved };
+        return { ok: saved > 0, path: dir, saved, failed };
       }
       case 'settings:set':
       case 'templates:save':
@@ -571,6 +623,7 @@ function registerIpc(): void {
 }
 
 void app.whenReady().then(() => {
+  if (!isPrimaryInstance) return;
   const userData = app.getPath('userData');
   const attachmentsDir = join(userData, 'attachments');
   attachmentsRoot = attachmentsDir;

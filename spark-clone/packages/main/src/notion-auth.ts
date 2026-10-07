@@ -57,15 +57,15 @@ export function authorizeNotion(client: NotionClient): Promise<NotionGrant> {
            </body></html>`,
         );
       };
+      // Check state first so a stray local request can't cancel the flow.
+      if (url.searchParams.get('state') !== state) {
+        res.writeHead(400).end();
+        return;
+      }
       const err = url.searchParams.get('error');
       if (err) {
         respond('Authorization was cancelled.');
         finish(() => reject(new Error(`Notion authorization: ${err}`)));
-        return;
-      }
-      if (url.searchParams.get('state') !== state) {
-        respond('Authorization failed (state mismatch).');
-        finish(() => reject(new Error('OAuth state mismatch')));
         return;
       }
       const code = url.searchParams.get('code');
@@ -83,6 +83,7 @@ export function authorizeNotion(client: NotionClient): Promise<NotionGrant> {
             );
             const res2 = await fetch(TOKEN_URL, {
               method: 'POST',
+              signal: AbortSignal.timeout(20_000),
               headers: {
                 Authorization: `Basic ${basic}`,
                 'Content-Type': 'application/json',

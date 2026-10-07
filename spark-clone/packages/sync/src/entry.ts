@@ -20,7 +20,10 @@ process.parentPort.on('message', (e) => {
         service.init(msg.dbPath, msg.attachmentsDir);
       } catch (err) {
         console.error('[sync] init failed', err);
-        throw err;
+        // Exit non-zero so the main-process supervisor restarts us; a throw here
+        // would be swallowed by the uncaughtException handler below, leaving a
+        // live process with no database.
+        process.exit(1);
       }
       break;
     case 'account-added':

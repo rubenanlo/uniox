@@ -38,6 +38,7 @@ type Json = Record<string, any>;
 
 async function notionFetch(token: string, path: string, init?: RequestInit): Promise<Json> {
   const res = await fetch(`${API}${path}`, {
+    signal: AbortSignal.timeout(20_000),
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,

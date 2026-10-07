@@ -5,6 +5,8 @@ import type { CredentialStore } from './credentials';
 import { refreshGoogleToken } from './google-auth';
 
 const QUERY_TIMEOUT_MS = 30_000;
+const RESTART_MIN_MS = 1_500;
+const RESTART_MAX_MS = 60_000;
 
 /**
  * Owns the sync utilityProcess: spawn, supervise (restart on crash),
@@ -19,6 +21,11 @@ export class SyncBridge {
   >();
   private stopped = false;
   private readonly tokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+  /** One in-flight refresh per account: launch + waitForAccount can ask several times at once. */
+  private readonly refreshing = new Map<string, Promise<{ accessToken: string; expiresAt: number }>>();
+  /** Crash-restart delay; doubles on each crash, resets once the process reports ready. */
+  private restartDelay = RESTART_MIN_MS;
+  private restartTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly opts: {
@@ -30,7 +37,7 @@ export class SyncBridge {
   ) {}
 
   start(): void {
-    this.stopped = false;
+    if (this.stopped) return;
     const entry = join(__dirname, 'sync.js');
     const proc = utilityProcess.fork(entry, [], { serviceName: 'mail-sync', stdio: 'inherit' });
     this.proc = proc;
@@ -44,7 +51,13 @@ export class SyncBridge {
       this.pending.clear();
       this.proc = null;
       if (!this.stopped) {
-        setTimeout(() => this.start(), 1_500);
+        // Back off so a process that dies on boot (e.g. native ABI mismatch)
+        // doesn't fork-loop every 1.5s forever.
+        this.restartTimer = setTimeout(() => {
+          this.restartTimer = null;
+          this.start();
+        }, this.restartDelay);
+        this.restartDelay = Math.min(this.restartDelay * 2, RESTART_MAX_MS);
       }
       if (code !== 0) console.error(`[main] sync process exited with code ${code}`);
     });
@@ -54,6 +67,8 @@ export class SyncBridge {
 
   stop(): void {
     this.stopped = true;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.restartTimer = null;
     this.proc?.kill();
     this.proc = null;
   }
@@ -65,6 +80,7 @@ export class SyncBridge {
   private handleMessage(msg: SyncToMain): void {
     switch (msg.kind) {
       case 'ready':
+        this.restartDelay = RESTART_MIN_MS;
         break;
       case 'need-credentials':
         void this.resolveCredentials(msg.accountId);
@@ -137,19 +153,37 @@ export class SyncBridge {
     try {
       let cached = this.tokenCache.get(accountId);
       if (!cached || cached.expiresAt < Date.now() + 2 * 60_000) {
-        cached = await refreshGoogleToken(
-          { clientId: record.clientId, clientSecret: record.clientSecret },
-          record.refreshToken,
-        );
+        let inflight = this.refreshing.get(accountId);
+        if (!inflight) {
+          inflight = refreshGoogleToken(
+            { clientId: record.clientId, clientSecret: record.clientSecret },
+            record.refreshToken,
+          ).finally(() => this.refreshing.delete(accountId));
+          this.refreshing.set(accountId, inflight);
+        }
+        cached = await inflight;
         this.tokenCache.set(accountId, cached);
       }
       this.send({ kind: 'credentials', accountId, password: cached.accessToken, authType: 'oauth' });
     } catch (err) {
       console.error(`[main] Google token refresh failed for ${accountId}:`, err);
+      // Surface it instead of letting the sync side time out silently.
+      this.opts.onDelta({
+        kind: 'sync-status',
+        status: {
+          accountId,
+          state: 'error',
+          detail: 'Google sign-in failed — reconnect this account in Settings.',
+        },
+      });
     }
   }
 
   primeToken(accountId: string, accessToken: string, expiresAt: number): void {
     this.tokenCache.set(accountId, { accessToken, expiresAt });
+  }
+
+  forgetToken(accountId: string): void {
+    this.tokenCache.delete(accountId);
   }
 }
