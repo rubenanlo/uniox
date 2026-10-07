@@ -1,0 +1,19 @@
+{
+  "name": "@app/sync",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@app/db": "workspace:*",
+    "@app/shared": "workspace:*",
+    "imapflow": "^1.4.7",
+    "mailparser": "^3.9.14",
+    "mimetext": "^3.0.28",
+    "nodemailer": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/nodemailer": "^8.0.1"
+  }
+}

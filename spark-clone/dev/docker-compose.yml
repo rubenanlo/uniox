@@ -1,0 +1,22 @@
+services:
+  imap:
+    image: dovecot/dovecot:latest
+    container_name: sparkclone-imap
+    environment:
+      # passdb static — any user logs in with this password (dev only)
+      USER_PASSWORD: pass
+    ports:
+      - '1143:31143'
+    volumes:
+      - mail-data:/srv/vmail
+      - ./dovecot-dev.conf:/etc/dovecot/conf.d/99-dev.conf:ro
+
+  smtp:
+    image: axllent/mailpit:latest
+    container_name: sparkclone-smtp
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  mail-data:

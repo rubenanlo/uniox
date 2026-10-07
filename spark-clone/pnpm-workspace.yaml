@@ -1,0 +1,13 @@
+packages:
+  - packages/*
+
+# pnpm 10+ reads settings here, not from package.json's "pnpm" field.
+onlyBuiltDependencies:
+  - electron
+  - better-sqlite3
+  - esbuild
+
+# Don't auto-run `pnpm install` before every script: on a pnpm major bump it
+# tries to purge node_modules (forcing an Electron/better-sqlite3 rebuild)
+# and aborts without a TTY. Run `pnpm install` explicitly when deps change.
+verifyDepsBeforeRun: false
