@@ -271,9 +271,11 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
   // A reload (or the first load) remounts the renderer; until it asks for
-  // `mailto:pending` again, links must be parked rather than sent.
-  mainWindow.webContents.on('did-start-loading', () => {
-    rendererListening = false;
+  // `mailto:pending` again, links must be parked rather than sent. Only a
+  // main-frame document navigation counts: did-start-loading also fires for
+  // every email body's srcdoc iframe, which would park links forever.
+  mainWindow.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) rendererListening = false;
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
