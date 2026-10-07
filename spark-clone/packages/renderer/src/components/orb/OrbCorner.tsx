@@ -1,5 +1,8 @@
 import {
+  Briefcase,
   CalendarDays,
+  Coffee,
+  Fingerprint,
   Inbox,
   KanbanSquare,
   Languages,
@@ -15,6 +18,7 @@ import { runAssistantAction, type AssistantAction } from '../../lib/assistantCon
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
 import { useUi } from '../../state/store';
+import { LanguagePicker } from './LanguagePicker';
 import SpecterOrb from './SpecterOrb';
 
 const IDLE_OPACITY = 0.45;
@@ -26,6 +30,8 @@ interface OrbAction {
   action?: AssistantAction;
   /** … or a plain handler (e.g. open the composer). */
   run?: () => void;
+  /** Ask for a target language first ("Translate into…"). */
+  pickLanguage?: boolean;
 }
 
 /**
@@ -61,7 +67,10 @@ const MAIL_ACTIONS: OrbAction[] = [
 
 const COMPOSER_ACTIONS: OrbAction[] = [
   { label: 'Rewrite the email to make it flow', icon: Wand2, action: 'rewrite-composer' },
-  { label: 'Translate the draft to English', icon: Languages, action: 'translate-composer' },
+  { label: 'Rewrite in my style', icon: Fingerprint, action: 'style-composer' },
+  { label: 'Turn this email formal', icon: Briefcase, action: 'formal-composer' },
+  { label: 'Turn this email informal', icon: Coffee, action: 'informal-composer' },
+  { label: 'Translate into…', icon: Languages, action: 'translate-composer', pickLanguage: true },
 ];
 
 /** Offered while an email is open in the reading pane. */
@@ -85,6 +94,8 @@ export function OrbCorner() {
   const selectedThreadId = useUi((s) => s.selectedThreadId);
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
+  /** The action waiting on a language pick, while the picker is showing. */
+  const [languageFor, setLanguageFor] = useState<AssistantAction | null>(null);
   const [opacity, setOpacity] = useState(IDLE_OPACITY);
 
   const readingThread =
@@ -99,6 +110,29 @@ export function OrbCorner() {
         ? readingActions()
         : MAIL_ACTIONS;
   const menuOpen = hovered || pinned;
+  // The picker belongs to the composer it was opened for: drop it (and the
+  // pin holding it open) when the composer opens or closes.
+  const [prevComposerOpen, setPrevComposerOpen] = useState(composerOpen);
+  if (composerOpen !== prevComposerOpen) {
+    setPrevComposerOpen(composerOpen);
+    setLanguageFor(null);
+    setPinned(false);
+  }
+  const closeMenu = () => {
+    setPinned(false);
+    setHovered(false);
+    setLanguageFor(null);
+  };
+  // A click anywhere else dismisses the (pinned) language picker.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!languageFor) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [languageFor]);
 
   // Hover brightens the shader opacity over a fixed 700ms (ease-out cubic),
   // resuming from wherever a half-finished fade left off.
@@ -161,6 +195,7 @@ export function OrbCorner() {
             : 'right-4',
         veiled && 'pointer-events-none opacity-0',
       )}
+      ref={rootRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -173,22 +208,42 @@ export function OrbCorner() {
           className="orb-menu-in absolute right-0 bottom-full w-72 pb-2"
         >
           <div className="border-hairline bg-surface rounded-2xl border p-1.5 shadow-2xl">
-          {actions.map(({ label, icon: Icon, action, run }) => (
-            <button
-              key={label}
-              role="menuitem"
-              onClick={() => {
+          {languageFor ? (
+            <LanguagePicker
+              onBack={() => {
                 setPinned(false);
-                setHovered(false);
-                if (action) void runAssistantAction(action);
-                else run?.();
+                setLanguageFor(null);
               }}
-              className="text-ink-muted hover:bg-accent-soft/40 hover:text-ink flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]"
-            >
-              <Icon size={14} className="text-accent shrink-0" />
-              {label}
-            </button>
-          ))}
+              onPick={(language) => {
+                const action = languageFor;
+                closeMenu();
+                void runAssistantAction(action, { language });
+              }}
+            />
+          ) : (
+            actions.map(({ label, icon: Icon, action, run, pickLanguage }) => (
+              <button
+                key={label}
+                role="menuitem"
+                onClick={() => {
+                  if (action && pickLanguage) {
+                    // Typing in the picker moves focus off the orb, so pin
+                    // the menu open until a language is picked.
+                    setPinned(true);
+                    setLanguageFor(action);
+                    return;
+                  }
+                  closeMenu();
+                  if (action) void runAssistantAction(action);
+                  else run?.();
+                }}
+                className="text-ink-muted hover:bg-accent-soft/40 hover:text-ink flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]"
+              >
+                <Icon size={14} className="text-accent shrink-0" />
+                {label}
+              </button>
+            ))
+          )}
           </div>
         </div>
       )}
