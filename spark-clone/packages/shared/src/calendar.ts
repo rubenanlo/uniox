@@ -57,3 +57,22 @@ export interface CalendarEventInput {
   meetingUrl?: string;
   transparency?: 'opaque' | 'transparent';
 }
+
+/**
+ * Whether a calendar's events make the user busy. Subscribed colleague
+ * calendars (Google ids that are someone else's address) and read-only
+ * public feeds (holidays, sports: `@group.v.calendar.google.com`) don't;
+ * the local calendar, each account's primary calendar, calendars the user
+ * created (`@group.calendar.google.com`) and another of the user's own
+ * accounts' calendars do.
+ */
+export function isOwnCalendar(
+  cal: { id: string; source: string; remoteId?: string | null },
+  ownEmails: readonly string[],
+): boolean {
+  if (cal.source === 'local' || cal.id.startsWith('acct:')) return true;
+  const remote = (cal.remoteId ?? '').toLowerCase();
+  if (!remote) return false;
+  if (remote.endsWith('@group.calendar.google.com')) return true;
+  return ownEmails.some((e) => e.toLowerCase() === remote);
+}

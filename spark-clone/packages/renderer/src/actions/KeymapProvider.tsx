@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { focusPanelLeft, focusPanelRight } from '../lib/panels';
 import { handleTriageUndo } from '../lib/undo';
 import { keyboardTargetId, useUi } from '../state/store';
-import { ACTIONS, matchCombo } from './registry';
+import { ACTIONS, matchCombo, refreshNow } from './registry';
 
 function inEditableTarget(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;
@@ -19,6 +19,10 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
       handleTriageUndo();
     });
   }, []);
+
+  // ⌘R arrives from the app menu (it replaces Electron's reload there); the
+  // registry binding below covers the key when it reaches the page instead.
+  useEffect(() => api.onAppRefresh(refreshNow), []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -61,7 +65,8 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
           editable &&
           action.id !== 'undo' &&
           ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'].includes(action.combo!.key) &&
-          action.combo!.meta
+          action.combo!.meta &&
+          !action.combo!.shift
         )
           return;
         e.preventDefault();

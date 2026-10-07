@@ -28,6 +28,13 @@ const api: RendererApi = {
       ipcRenderer.removeListener('triage:undo', listener);
     };
   },
+  onAppRefresh: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('app:refresh', listener);
+    return () => {
+      ipcRenderer.removeListener('app:refresh', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

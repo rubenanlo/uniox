@@ -8,6 +8,7 @@ import { Composer } from './components/composer/Composer';
 import { GatekeeperCard } from './components/GatekeeperCard';
 import { CalendarView } from './components/calendar/CalendarView';
 import { HomeView } from './components/HomeView';
+import { MultiSelectBar } from './components/list/MultiSelectBar';
 import { ThreadList } from './components/list/ThreadList';
 import { Onboarding } from './components/Onboarding';
 import { Intro } from './components/intro/Intro';
@@ -139,6 +140,7 @@ function ListPane({ threads }: { threads: ThreadSummary[] }) {
   return (
     <div className="flex h-full flex-col">
       {view === 'inbox' && <GatekeeperCard />}
+      <MultiSelectBar />
       <div className="min-h-0 flex-1">
         <ThreadList threads={threads} />
       </div>
@@ -164,6 +166,7 @@ function MailView() {
   );
   // Gatekeeper cards open mail from senders the list is still screening out.
   const selected = useSelectedThread(selectedThreadId, inList);
+  const multiPicking = useUi((s) => s.multiSelected.length > 1);
 
   // Esc steps back: reading a thread in single pane returns to the list, an
   // active search returns to the unfiltered list, a category drill-in (e.g.
@@ -188,6 +191,10 @@ function MailView() {
       if (useAssistant.getState().open) return; // the modal's own Esc closes it
       e.preventDefault();
       e.stopPropagation();
+      if (s.multiSelected.length > 1) {
+        s.clearMultiSelect(); // drop the multi-pick, keep the cursor row
+        return;
+      }
       if (s.selectedThreadId && !s.split) {
         s.selectThread(null); // back out of the open thread to the list
         return;
@@ -215,7 +222,8 @@ function MailView() {
   }
 
   if (!split) {
-    return selected ? (
+    // A multi-pick stays on the list so the picked rows remain visible.
+    return selected && !multiPicking ? (
       <div className="flex h-full min-w-0 flex-1 flex-col">
         <button
           onClick={() => selectThread(null)}

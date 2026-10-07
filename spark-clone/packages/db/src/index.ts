@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { MIGRATIONS, JS_BACKFILL_VERSION, THREAD_DENORM_VERSION } from './schema';
-import { sameOrgDomain } from '@app/shared';
+import { isOwnCalendar, sameOrgDomain } from '@app/shared';
 import type {
   Account,
   Address,
@@ -319,6 +319,27 @@ export class MailDb {
       if (name && name.toLowerCase() !== local && name.toLowerCase() !== lower) return name;
     }
     return null;
+  }
+
+  /**
+   * The account's most recent sent messages, newest first, with their cached
+   * bodies (`hasBody` false when not fetched yet) — raw material for the
+   * writing-style profile.
+   */
+  recentSentWithBodies(
+    accountId: string,
+    limit: number,
+  ): { messageId: string; html: string | null; text: string | null; hasBody: boolean }[] {
+    const rows = this.stmt(
+        `SELECT m.id, b.html, b.text, b.message_id IS NOT NULL AS has_body
+           FROM messages m
+           JOIN folders f ON f.id = m.folder_id
+           LEFT JOIN message_bodies b ON b.message_id = m.id
+         WHERE f.role = 'sent' AND m.account_id = ? AND m.draft = 0
+         ORDER BY m.date DESC LIMIT ?`,
+      )
+      .all(accountId, limit) as { id: string; html: string | null; text: string | null; has_body: number }[];
+    return rows.map((r) => ({ messageId: r.id, html: r.html, text: r.text, hasBody: !!r.has_body }));
   }
 
   /**
@@ -1213,6 +1234,29 @@ export class MailDb {
       ...rowToEvent(r),
       accountId: (r.cal_account_id as string) || undefined,
     }));
+  }
+
+  /** Events that make the user busy in a range; see the `calendar:busy` query. */
+  listBusyEvents(startMs: number, endMs: number): CalendarEvent[] {
+    const ownEmails = this.listAccounts().map((a) => a.email);
+    const rows = this.stmt(
+        `SELECT e.*, c.account_id AS cal_account_id, c.source AS cal_source,
+                c.remote_id AS cal_remote_id
+           FROM events e
+           JOIN calendars c ON c.id = e.calendar_id
+         WHERE (e.transparency IS NULL OR e.transparency != 'transparent')
+           AND ((e.start_ms < ? AND e.end_ms > ?) OR (e.rrule IS NOT NULL AND e.start_ms < ?))
+         ORDER BY e.start_ms`,
+      )
+      .all(endMs, startMs, endMs) as Row[];
+    return rows
+      .filter((r) =>
+        isOwnCalendar(
+          { id: r.calendar_id as string, source: r.cal_source as string, remoteId: r.cal_remote_id as string | null },
+          ownEmails,
+        ),
+      )
+      .map((r) => ({ ...rowToEvent(r), accountId: (r.cal_account_id as string) || undefined }));
   }
 
   /** Create (no id) or update a local event; returns the row id. */
