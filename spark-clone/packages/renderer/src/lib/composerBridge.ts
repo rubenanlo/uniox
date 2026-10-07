@@ -7,9 +7,19 @@ import type { Editor } from '@tiptap/react';
  * unmount; only one composer is ever open, so a single slot is enough.
  */
 let editor: Editor | null = null;
+/** The account the open composer sends from (tracks the From picker). */
+let accountId: string | null = null;
 
 export function registerComposerEditor(e: Editor | null): void {
   editor = e;
+}
+
+export function registerComposerAccount(id: string | null): void {
+  accountId = id;
+}
+
+export function getComposerAccountId(): string | null {
+  return accountId;
 }
 
 export function isComposerOpen(): boolean {

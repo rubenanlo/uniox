@@ -455,6 +455,18 @@ export class SyncService {
         }
         return body;
       }
+      case 'style:samples': {
+        const { accountId, limit } = args as { accountId: string; limit?: number };
+        const rows = this.db.recentSentWithBodies(accountId, Math.min(limit ?? 40, 100));
+        // Bodies are fetched lazily; queue the missing ones so a later rebuild
+        // has more to learn from.
+        for (const r of rows) {
+          if (!r.hasBody) this.enqueue({ type: 'fetch-body', accountId, messageId: r.messageId });
+        }
+        return rows
+          .filter((r) => r.hasBody)
+          .map(({ messageId, html, text }) => ({ messageId, html, text }));
+      }
       case 'search:threads': {
         const { query, limit, accountId } = args as {
           query: string;

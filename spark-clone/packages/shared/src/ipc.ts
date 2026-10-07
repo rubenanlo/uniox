@@ -26,6 +26,11 @@ export interface Queries {
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };
   'message:body': { args: { messageId: string }; result: MessageBodyPayload | null };
+  /** Recent sent bodies for the writing-style profile; queues fetches for the rest. */
+  'style:samples': {
+    args: { accountId: string; limit?: number };
+    result: { messageId: string; html: string | null; text: string | null }[];
+  };
   'search:threads': {
     args: { query: string; limit?: number; accountId?: string };
     result: ThreadSummary[];
