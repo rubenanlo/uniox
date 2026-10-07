@@ -15,6 +15,7 @@ import type {
 } from './models';
 import type { Calendar, CalendarEvent, CalendarEventInput } from './calendar';
 import type { KanbanBoard, NotionBlock } from './notion';
+import type { MailtoDraft } from './mailto';
 import type { Task } from './tasks';
 
 /** Typed invoke channels: renderer → main → (mostly) sync process. */
@@ -56,6 +57,11 @@ export interface Queries {
   'calendar:events': { args: { startMs: number; endMs: number }; result: CalendarEvent[] };
   /** All calendars (per-account local calendars are ensured on first call). */
   'calendar:list': { args: undefined; result: Calendar[] };
+  /** Main process: a mailto: link that arrived before the renderer was listening
+   *  (cold start). Returned once, then cleared. */
+  'mailto:pending': { args: undefined; result: MailtoDraft | null };
+  /** Main process: whether Uniox is the OS handler for mailto: links. */
+  'mailto:is-default': { args: undefined; result: boolean };
   /**
    * Busy events overlapping [startMs, endMs) across every account, hidden
    * calendars included; subscribed colleague calendars and 'transparent'
@@ -145,6 +151,8 @@ export interface Commands {
     args: { clientId?: string; clientSecret?: string };
     result: { ok: boolean; error?: string; workspace?: string };
   };
+  /** Register Uniox as the OS handler for mailto: links (macOS may confirm). */
+  'mailto:make-default': { args: undefined; result: { ok: boolean; error?: string } };
   /** Store the Claude API key and/or model (main process, safeStorage-backed). */
   'ai:config': {
     args: { key?: string; model?: string };
@@ -208,6 +216,8 @@ export type DeltaEvent =
   | { kind: 'open-thread'; threadId: string }
   /** A meeting-alert notification was clicked — the renderer shows the calendar. */
   | { kind: 'open-calendar' }
+  /** A mailto: link was opened (browser, another app, or a link in an email). */
+  | { kind: 'compose'; draft: MailtoDraft }
   /** Calendar events changed (local edit, or Google sync); renderer re-queries. */
   | { kind: 'calendar-changed' };
 

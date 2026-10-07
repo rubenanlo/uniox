@@ -16,17 +16,19 @@ import {
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
-import { basename, join, normalize, sep } from 'node:path';
+import { basename, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   DEFAULT_NOTIFY_SOUND,
   GMAIL_ENDPOINTS,
   KANBAN_STATUSES,
   NOTIFY_SOUNDS,
+  parseMailto,
   type Account,
   type AccountConfig,
   type AiMessage,
   type DeltaEvent,
+  type MailtoDraft,
   type NotifySound,
   type Task,
 } from '@app/shared';
@@ -73,12 +75,50 @@ const isPrimaryInstance = app.requestSingleInstanceLock();
 if (!isPrimaryInstance) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    // Windows/Linux hand a clicked mailto: link to a fresh process; it lands here.
+    const mailto = argv.find((a) => /^mailto:/i.test(a));
+    if (mailto) return openMailto(mailto);
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   });
+}
+
+// macOS delivers mailto: links (browser, Finder, other apps) as open-url —
+// including the one that cold-launched the app, which fires before ready, so
+// the listener must be registered at module load.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  openMailto(url);
+});
+
+/** A mailto: link that arrived before the renderer was listening for it. */
+let pendingMailto: MailtoDraft | null = null;
+/** True once the loaded renderer has asked for pendingMailto (it now hears deltas). */
+let rendererListening = false;
+
+/** Open a composer for a mailto: link, launching/focusing the window as needed. */
+function openMailto(url: string): void {
+  const draft = parseMailto(url);
+  if (!draft) return;
+  if (mainWindow && rendererListening) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('delta', { kind: 'compose', draft });
+    return;
+  }
+  // Cold start, or the window was closed (macOS keeps running in the dock):
+  // park it; the renderer collects it with `mailto:pending` once it mounts.
+  pendingMailto = draft;
+  if (app.isReady() && !mainWindow) createWindow();
+}
+
+/** Electron's default-protocol-client calls need the script path when unpackaged. */
+function protocolClientArgs(): [string?, string[]?] {
+  return app.isPackaged || !process.argv[1] ? [] : [process.execPath, [resolve(process.argv[1])]];
 }
 
 ipcMain.on('app-meta', (event) => {
@@ -125,6 +165,9 @@ const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
 function openExternalGated(rawUrl: string): void {
   try {
     const url = new URL(rawUrl);
+    // A mailto: link inside an email composes here rather than bouncing out to
+    // whichever app the OS has as its mail handler.
+    if (url.protocol === 'mailto:') return openMailto(rawUrl);
     if (EXTERNAL_PROTOCOLS.has(url.protocol)) void shell.openExternal(url.toString());
   } catch {
     /* invalid URL: drop */
@@ -246,8 +289,16 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
+  // A reload (or the first load) remounts the renderer; until it asks for
+  // `mailto:pending` again, links must be parked rather than sent. Only a
+  // main-frame document navigation counts: did-start-loading also fires for
+  // every email body's srcdoc iframe, which would park links forever.
+  mainWindow.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) rendererListening = false;
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    rendererListening = false;
   });
 }
 
@@ -369,6 +420,15 @@ function registerIpc(): void {
     if (channel === 'ai:status') {
       return ai!.status();
     }
+    if (channel === 'mailto:pending') {
+      rendererListening = true;
+      const draft = pendingMailto;
+      pendingMailto = null;
+      return draft;
+    }
+    if (channel === 'mailto:is-default') {
+      return app.isDefaultProtocolClient('mailto', ...protocolClientArgs());
+    }
     return bridge!.query(channel, args);
   });
 
@@ -378,6 +438,15 @@ function registerIpc(): void {
       notifySoundCache = null;
     }
     switch (channel) {
+      case 'mailto:make-default': {
+        // macOS: needs the CFBundleURLTypes entry electron-builder writes
+        // (`protocols` in electron-builder.yml); Launch Services may then ask
+        // the user to confirm the change.
+        const ok = app.setAsDefaultProtocolClient('mailto', ...protocolClientArgs());
+        return ok
+          ? { ok: true }
+          : { ok: false, error: 'The system did not accept Uniox as the mail app' };
+      }
       case 'ai:config':
         return ai!.config(args as { key?: string; model?: string });
       case 'ai:chat': {
@@ -674,6 +743,9 @@ void app.whenReady().then(() => {
   buildMenu();
   applyAppIcon();
   createWindow();
+  // Windows/Linux cold start: the link is on our own command line.
+  const launchMailto = process.argv.find((a) => /^mailto:/i.test(a));
+  if (launchMailto) openMailto(launchMailto);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
