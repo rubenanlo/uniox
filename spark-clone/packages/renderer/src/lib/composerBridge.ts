@@ -27,6 +27,11 @@ export function replaceDraftBody(text: string): void {
   editor?.commands.focus('end');
 }
 
+/** Insert plain text at the cursor (keeps the rest of the draft). */
+export function insertDraftText(text: string): void {
+  editor?.chain().focus().insertContent(textToHtml(text)).run();
+}
+
 /** Escape and wrap plain text into paragraph HTML for the rich-text editor. */
 export function textToHtml(text: string): string {
   const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

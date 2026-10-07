@@ -380,6 +380,28 @@ describe('calendar events', () => {
     expect(e.title).toBe('Renamed');
     expect(e.transparency).toBeUndefined(); // opaque (busy) is the default
   });
+
+  it('listBusyEvents spans hidden own calendars but skips colleagues and Free events', () => {
+    const db = makeDb();
+    db.insertAccount(account);
+    db.upsertGoogleCalendar({ ...gcal, visible: false });
+    db.upsertGoogleEvent(gevent);
+    db.upsertGoogleCalendar({ ...gcal, id: 'gcal:acc1:bob', remoteId: 'bob@partner.example' });
+    db.upsertGoogleEvent({ ...gevent, id: 'gev:bob', calendarId: 'gcal:acc1:bob' });
+    db.upsertGoogleCalendar({ ...gcal, id: 'gcal:acc1:hol', remoteId: 'es.spain#holiday@group.v.calendar.google.com' });
+    db.upsertGoogleEvent({ ...gevent, id: 'gev:hol', calendarId: 'gcal:acc1:hol' });
+    db.upsertGoogleCalendar({ ...gcal, id: 'gcal:acc1:me', remoteId: 'ALICE@dev.local' });
+    db.upsertGoogleEvent({ ...gevent, id: 'gev:me', calendarId: 'gcal:acc1:me' });
+    db.upsertGoogleEvent({ ...gevent, id: 'gev:free', remoteId: 'ev2', transparency: 'transparent' });
+    db.upsertEvent({ title: 'Local', startMs: 1500, endMs: 2500, allDay: false });
+    const ids = db.listBusyEvents(0, 10_000).map((e) => e.id);
+    expect(ids).toContain(gevent.id);
+    expect(ids).toContain('gev:me');
+    expect(ids).not.toContain('gev:bob');
+    expect(ids).not.toContain('gev:hol');
+    expect(ids).not.toContain('gev:free');
+    expect(db.listBusyEvents(0, 10_000).some((e) => e.title === 'Local')).toBe(true);
+  });
 });
 
 describe('lastSentDisplayName', () => {

@@ -631,6 +631,10 @@ export class SyncService {
         const { startMs, endMs } = args as { startMs: number; endMs: number };
         return this.db.listEvents(startMs, endMs);
       }
+      case 'calendar:busy': {
+        const { startMs, endMs } = args as { startMs: number; endMs: number };
+        return this.db.listBusyEvents(startMs, endMs);
+      }
       case 'calendar:list': {
         for (const a of this.db.listAccounts()) {
           this.db.ensureAccountCalendar(a.id, a.displayName || a.email);

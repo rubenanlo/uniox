@@ -51,6 +51,12 @@ export interface Queries {
   'calendar:events': { args: { startMs: number; endMs: number }; result: CalendarEvent[] };
   /** All calendars (per-account local calendars are ensured on first call). */
   'calendar:list': { args: undefined; result: Calendar[] };
+  /**
+   * Busy events overlapping [startMs, endMs) across every account, hidden
+   * calendars included; subscribed colleague calendars and 'transparent'
+   * (Free) events are left out. Local recurring series come back unexpanded.
+   */
+  'calendar:busy': { args: { startMs: number; endMs: number }; result: CalendarEvent[] };
 }
 
 export type QueryChannel = keyof Queries;
