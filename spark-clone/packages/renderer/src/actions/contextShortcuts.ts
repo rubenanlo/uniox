@@ -47,6 +47,14 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
+    section: 'Suggested times',
+    rows: [
+      { label: 'Reply with that time', keys: [['click'], ['↩']] },
+      { label: 'Pick several times', keys: [['⇧', 'click'], ['⇧', '↩']] },
+      { label: 'Reply with the picked times', keys: [['↩']] },
+    ],
+  },
+  {
     section: 'Composer',
     rows: [
       { label: 'Send', keys: [['⌘', '↩']] },
