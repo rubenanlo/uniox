@@ -207,13 +207,13 @@ export function Composer({ state }: { state: ComposerState }) {
     if (state.mode === 'reply-all') {
       return replyAllFields(new Set(accounts.map((a) => a.email.toLowerCase())));
     }
-    return { to: formatAddresses(state.to), cc: '' };
+    return { to: formatAddresses(state.to), cc: formatAddresses(state.cc) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [to, setTo] = useState(initialRecipients.to);
   const [cc, setCc] = useState(initialRecipients.cc);
-  const [showCcBcc, setShowCcBcc] = useState(!!initialRecipients.cc);
+  const [showCcBcc, setShowCcBcc] = useState(!!initialRecipients.cc || !!state.bcc?.length);
 
   // Accounts load async, so the memo above can run before they arrive and
   // leave the user's own address in To. Re-derive once they load — but only
@@ -228,7 +228,7 @@ export function Composer({ state }: { state: ComposerState }) {
     setCc((current) => (current === prev.cc ? corrected.cc : current));
     if (corrected.cc) setShowCcBcc(true);
   }, [accountsLoaded, accounts, state.mode, replyAllFields]);
-  const [bcc, setBcc] = useState('');
+  const [bcc, setBcc] = useState(state.mode === 'new' ? formatAddresses(state.bcc) : '');
   const [subject, setSubject] = useState(
     state.subject ? replySubject(state.mode, state.subject) : '',
   );

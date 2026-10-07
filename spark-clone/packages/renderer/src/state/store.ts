@@ -37,6 +37,9 @@ export interface ComposerState {
   quotedHtml?: string;
   subject?: string;
   to?: { name?: string; email: string }[];
+  /** New messages only (e.g. from a mailto: link). */
+  cc?: { name?: string; email: string }[];
+  bcc?: { name?: string; email: string }[];
   /** Plain-text body drafted by the assistant, seeded into the editor on open. */
   initialBody?: string;
 }

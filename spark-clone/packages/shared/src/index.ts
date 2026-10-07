@@ -5,3 +5,4 @@ export * from './notion';
 export * from './tasks';
 export * from './ipc';
 export * from './search';
+export * from './mailto';

@@ -147,6 +147,40 @@ function NotificationsRow() {
   );
 }
 
+/** Make Uniox the system's mail app, so clicked mailto: links open its composer. */
+function DefaultMailAppRow() {
+  const [isDefault, setIsDefault] = useState<boolean | null>(null);
+  const check = () => void api.query('mailto:is-default', undefined).then(setIsDefault);
+  useEffect(check, []);
+  const makeDefault = () => {
+    void api.command('mailto:make-default', undefined).then((res) => {
+      if (!res.ok) toast(res.error ?? 'Could not make Uniox the default mail app');
+      // macOS may ask for confirmation first; re-check once it has had a moment.
+      setTimeout(check, 1500);
+    });
+  };
+  return (
+    <Field
+      label="Default mail app"
+      hint="Email links in your browser and other apps open a new message in Uniox."
+    >
+      {isDefault ? (
+        <p className="text-ink-muted text-[12px]">Uniox is your default mail app.</p>
+      ) : (
+        <div>
+          <button
+            onClick={makeDefault}
+            disabled={isDefault === null}
+            className="bg-accent rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            Make Uniox the default mail app
+          </button>
+        </div>
+      )}
+    </Field>
+  );
+}
+
 /** The new-mail chime. Selecting a sound plays it, so choosing is auditioning. */
 function NotificationSoundField() {
   const [sound, setSound] = useState<NotifySound>(DEFAULT_NOTIFY_SOUND);
@@ -377,6 +411,7 @@ function AppearanceTab() {
           onReset={() => setAccentColor(null)}
         />
       </Field>
+      <DefaultMailAppRow />
       <NotificationsRow />
       <NotificationSoundField />
     </div>
