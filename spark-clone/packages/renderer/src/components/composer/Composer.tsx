@@ -26,6 +26,7 @@ import type { Address, OutgoingAttachment, OutgoingDraft, Template } from '@app/
 import { api } from '../../lib/api';
 import { registerComposerAccount, registerComposerEditor, textToHtml } from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
+import { inlineEmailStyles } from '../../lib/emailHtml';
 import { fmtWake } from '../../lib/schedule';
 import { cn, formatSize } from '../../lib/utils';
 import { useAccounts, useTemplates } from '../../state/queries';
@@ -394,7 +395,7 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${editor.getHTML()}</div>${quotedHtml}`,
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
       text: editor.getText(),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,
@@ -411,7 +412,7 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${editor.getHTML()}</div>${quotedHtml}`,
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
       text: editor.getText(),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,
