@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import type { ThreadSummary } from '@app/shared';
 import { api } from '../lib/api';
+import { shareAvailability } from '../state/availability';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
 import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
 import { focusGatekeeper, openSelectedThread, toggleSidebarReveal } from '../lib/panels';
@@ -363,6 +364,14 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Respond',
     perform: replyAction('forward'),
+  },
+  {
+    id: 'share-availability',
+    label: 'Share availability',
+    combo: { key: 'a', meta: true, shift: true },
+    context: 'global',
+    section: 'Respond',
+    perform: () => void shareAvailability(),
   },
   {
     id: 'compose',

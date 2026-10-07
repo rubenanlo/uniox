@@ -1,0 +1,205 @@
+import type { MessageMeta } from '@app/shared';
+import { CalendarClock, Info, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { keysFor } from '../../actions/registry';
+import { useEscapeClose } from '../../hooks/useEscapeClose';
+import { formatSlotChip, formatSlotLong, type AvailabilityAsk, type Slot } from '../../lib/availability';
+import { cn } from '../../lib/utils';
+import {
+  detectAvailabilityAsk,
+  replyWithSlots,
+  suggestSlots,
+  useAvailabilityForced,
+} from '../../state/availability';
+import { useAccounts, useDelta } from '../../state/queries';
+import { Keycaps } from '../ui/Keycap';
+
+/** What the strip explains behind its info icon. */
+function InfoCard({ anchor, onClose }: { anchor: DOMRect; onClose: () => void }) {
+  useEscapeClose(true, onClose);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!ref.current?.contains(t) && !t.closest?.('[data-info-toggle]')) onClose();
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [onClose]);
+  const width = 300;
+  return createPortal(
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="About suggested times"
+      style={{
+        position: 'fixed',
+        top: anchor.bottom + 6,
+        left: Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8)),
+        width,
+      }}
+      className="border-hairline bg-surface text-ink z-[60] rounded-xl border p-3 text-[12px] leading-relaxed shadow-lg"
+    >
+      <p className="mb-1.5 font-semibold">Suggested times</p>
+      <p className="text-ink-muted mb-2">
+        This email asks when you’re free, so Uniox picked open times on the next Tuesday, Wednesday and
+        Thursday, between 9:30 and 17:30. It checks every calendar on all your
+        accounts, but not colleagues’ calendars you subscribed to. Nothing is added to your calendar.
+      </p>
+      <ul className="text-ink-muted space-y-1">
+        <li>
+          <span className="text-ink font-medium">Click</span> a time to reply that you’re available then.
+        </li>
+        <li>
+          <span className="text-ink font-medium">Shift-click</span> to pick several, then press{' '}
+          <Keycaps keys={['↩']} /> or “Reply with these” to offer them all.
+        </li>
+        <li className="flex items-center gap-1">
+          <Keycaps keys={keysFor('share-availability')} /> shows times on any email, or adds them to a reply.
+        </li>
+      </ul>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * A quiet row under the latest message when it asks for the user's
+ * availability: a few open times as chips. Nothing shows until detection
+ * and the calendar lookup are done, and it can be dismissed.
+ */
+export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
+  const { accounts, loaded } = useAccounts();
+  const forceCount = useAvailabilityForced((s) => s.forced.get(message.id) ?? 0);
+  const forced = forceCount > 0;
+  const [ask, setAsk] = useState<AvailabilityAsk | null>(null);
+  const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Dismissing hides the row until the next ⌘⇧A on this message.
+  const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+  const [info, setInfo] = useState<DOMRect | null>(null);
+  const [replying, setReplying] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const fromMe =
+    !!message.from && accounts.some((a) => a.email.toLowerCase() === message.from!.email.toLowerCase());
+
+  // Detect once per message (cached), unless it's the user's own mail.
+  useEffect(() => {
+    if (!loaded || fromMe) return;
+    let live = true;
+    void detectAvailabilityAsk(message).then((a) => live && setAsk(a));
+    return () => {
+      live = false;
+    };
+  }, [loaded, fromMe, message]);
+
+  const active = forced || (!!ask?.asks && !fromMe);
+  const duration = ask?.asks ? ask.durationMinutes : undefined;
+
+  const load = useCallback(() => {
+    if (!active) return;
+    void suggestSlots(duration ?? 30).then(setSlots, () => setSlots([]));
+  }, [active, duration]);
+  useEffect(load, [load]);
+  // The calendar changed under us (sync, an edit): offer fresh times.
+  useDelta((e) => {
+    if (e.kind === 'calendar-changed') load();
+  });
+
+  // ⌘⇧A: bring the row into view and put focus on the first time.
+  useEffect(() => {
+    if (!forceCount || !slots) return;
+    rowRef.current?.scrollIntoView({ block: 'nearest' });
+    rowRef.current?.querySelector<HTMLButtonElement>('[data-slot]')?.focus();
+  }, [forceCount, slots]);
+
+  if (!active || dismissedAt === forceCount || !slots) return null;
+
+  const effectiveAsk: AvailabilityAsk = ask ?? { asks: true, durationMinutes: 30, senderTimeZone: null };
+  const reply = (picked: Slot[]) => {
+    if (replying || !picked.length) return;
+    setReplying(true);
+    void replyWithSlots(message, picked, effectiveAsk).finally(() => {
+      setReplying(false);
+      setSelected(new Set());
+    });
+  };
+  const toggle = (i: number) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const pickedSlots = () => slots.filter((_, i) => selected.has(i));
+
+  return (
+    <div
+      ref={rowRef}
+      role="group"
+      aria-label="Suggested times to reply with"
+      className="border-hairline mx-4 mt-1 mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-dashed px-3 py-2"
+    >
+      <CalendarClock size={14} className="text-ink-muted shrink-0" aria-hidden />
+      <span className="text-ink-muted mr-1 text-[12px] font-semibold">You’re free</span>
+      {slots.length === 0 && (
+        <span className="text-ink-faint text-[12px]">No open time Tuesday to Thursday in your working hours.</span>
+      )}
+      {slots.map((s, i) => (
+        <button
+          key={s.startMs}
+          data-slot
+          title={formatSlotLong(s, effectiveAsk.senderTimeZone)}
+          aria-pressed={selected.has(i)}
+          disabled={replying}
+          onClick={(e) => (e.shiftKey ? toggle(i) : reply([s]))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && selected.size > 0) {
+              e.preventDefault();
+              reply(pickedSlots());
+            } else if (e.key === 'Enter' && e.shiftKey) {
+              e.preventDefault();
+              toggle(i);
+            }
+          }}
+          className={cn(
+            'rounded-full border px-2.5 py-0.5 text-[12px] font-medium tabular-nums transition-colors disabled:opacity-60',
+            selected.has(i)
+              ? 'border-accent bg-accent-soft text-accent'
+              : 'border-hairline text-ink hover:border-accent hover:text-accent',
+          )}
+        >
+          {formatSlotChip(s)}
+        </button>
+      ))}
+      {selected.size > 0 && (
+        <button
+          onClick={() => reply(pickedSlots())}
+          disabled={replying}
+          className="bg-accent rounded-full px-2.5 py-0.5 text-[12px] font-semibold text-white disabled:opacity-60"
+        >
+          Reply with these ({selected.size})
+        </button>
+      )}
+      <span className="flex-1" />
+      <button
+        aria-label="About suggested times"
+        data-info-toggle
+        onClick={(e) => setInfo(info ? null : e.currentTarget.getBoundingClientRect())}
+        className="text-ink-faint hover:text-ink rounded-md p-1"
+      >
+        <Info size={13} />
+      </button>
+      <button
+        aria-label="Hide suggested times"
+        onClick={() => setDismissedAt(forceCount)}
+        className="text-ink-faint hover:text-ink rounded-md p-1"
+      >
+        <X size={13} />
+      </button>
+      {info && <InfoCard anchor={info} onClose={() => setInfo(null)} />}
+    </div>
+  );
+}

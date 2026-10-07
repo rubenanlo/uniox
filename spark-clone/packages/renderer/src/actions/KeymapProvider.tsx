@@ -65,7 +65,8 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
           editable &&
           action.id !== 'undo' &&
           ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'].includes(action.combo!.key) &&
-          action.combo!.meta
+          action.combo!.meta &&
+          !action.combo!.shift
         )
           return;
         e.preventDefault();

@@ -11,6 +11,7 @@ import { useThreadMessages } from '../../state/queries';
 import { useUi } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
 import { Tip } from '../ui/Tip';
+import { AvailabilitySuggestions } from './AvailabilitySuggestions';
 import { MessageBody } from './MessageBody';
 
 const UNDO_SEND_MS = 5000;
@@ -161,9 +162,12 @@ function AddressList({ addrs }: { addrs: Address[] }) {
 function MessageItem({
   message,
   expandedDefault,
+  latest,
 }: {
   message: MessageMeta;
   expandedDefault: boolean;
+  /** The thread's newest sent/received message (gets availability suggestions). */
+  latest: boolean;
 }) {
   const [override, setOverride] = useState<boolean | null>(null);
   const expanded = override ?? expandedDefault;
@@ -214,6 +218,7 @@ function MessageItem({
         </span>
       </button>
       {expanded && <MessageBody messageId={message.id} />}
+      {expanded && latest && <AvailabilitySuggestions message={message} />}
     </article>
   );
 }
@@ -240,6 +245,7 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
   }, [thread.id, auto, split]);
 
   const lastId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
+  const latestMailId = useMemo(() => [...messages].reverse().find((m) => !m.draft)?.id, [messages]);
 
   const respond = (id: string) => ACTIONS.find((a) => a.id === id)?.perform(thread.id);
 
@@ -339,7 +345,12 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
           m.draft ? (
             <DraftItem key={m.id} message={m} />
           ) : (
-            <MessageItem key={m.id} message={m} expandedDefault={m.id === lastId || !m.seen} />
+            <MessageItem
+              key={m.id}
+              message={m}
+              expandedDefault={m.id === lastId || m.id === latestMailId || !m.seen}
+              latest={m.id === latestMailId}
+            />
           ),
         )}
       </div>

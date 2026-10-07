@@ -45,7 +45,7 @@ const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: 
   },
 };
 
-function stripHtml(html: string): string {
+export function stripHtml(html: string): string {
   const el = document.createElement('div');
   el.innerHTML = html;
   return (el.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();

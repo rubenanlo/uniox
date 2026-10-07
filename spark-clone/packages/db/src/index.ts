@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { MIGRATIONS, JS_BACKFILL_VERSION, THREAD_DENORM_VERSION } from './schema';
-import { sameOrgDomain } from '@app/shared';
+import { isOwnCalendar, sameOrgDomain } from '@app/shared';
 import type {
   Account,
   Address,
@@ -1234,6 +1234,29 @@ export class MailDb {
       ...rowToEvent(r),
       accountId: (r.cal_account_id as string) || undefined,
     }));
+  }
+
+  /** Events that make the user busy in a range; see the `calendar:busy` query. */
+  listBusyEvents(startMs: number, endMs: number): CalendarEvent[] {
+    const ownEmails = this.listAccounts().map((a) => a.email);
+    const rows = this.stmt(
+        `SELECT e.*, c.account_id AS cal_account_id, c.source AS cal_source,
+                c.remote_id AS cal_remote_id
+           FROM events e
+           JOIN calendars c ON c.id = e.calendar_id
+         WHERE (e.transparency IS NULL OR e.transparency != 'transparent')
+           AND ((e.start_ms < ? AND e.end_ms > ?) OR (e.rrule IS NOT NULL AND e.start_ms < ?))
+         ORDER BY e.start_ms`,
+      )
+      .all(endMs, startMs, endMs) as Row[];
+    return rows
+      .filter((r) =>
+        isOwnCalendar(
+          { id: r.calendar_id as string, source: r.cal_source as string, remoteId: r.cal_remote_id as string | null },
+          ownEmails,
+        ),
+      )
+      .map((r) => ({ ...rowToEvent(r), accountId: (r.cal_account_id as string) || undefined }));
   }
 
   /** Create (no id) or update a local event; returns the row id. */
