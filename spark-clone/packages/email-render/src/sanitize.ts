@@ -48,7 +48,29 @@ const REMOTE_URL = /^\s*https?:/i;
 
 export function attachmentUrl(att: AttachmentMeta): string {
   // Served by the main process app:// protocol, path-validated there.
-  return `app://attachments/${encodeURI(att.localPath ?? '')}`;
+  // Per-segment encodeURIComponent: encodeURI leaves `#`/`?`, which cut
+  // a name like "logo#2.png" short.
+  const path = (att.localPath ?? '').split(/[\\/]/).map(encodeURIComponent).join('/');
+  return `app://attachments/${path}`;
+}
+
+const RICH_TEXT_TAGS = [
+  'a', 'b', 'strong', 'i', 'em', 'u', 's', 'br', 'p', 'div', 'span',
+  'ul', 'ol', 'li', 'blockquote', 'code', 'pre',
+];
+
+/**
+ * Strict profile for rich text rendered straight into the app window (calendar
+ * event descriptions). Unlike mail it gets no sandboxed iframe or CSP of its
+ * own, so allow only basic formatting and links: no <style>, inline styles,
+ * images, srcset or SVG that could overlay the UI or beacon out.
+ */
+export function sanitizeRichText(dirty: string): string {
+  return DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: RICH_TEXT_TAGS,
+    ALLOWED_ATTR: ['href'],
+    ALLOWED_URI_REGEXP: /^(?:https?|mailto):/i,
+  });
 }
 
 /**

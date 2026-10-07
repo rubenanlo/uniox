@@ -781,3 +781,47 @@ describe('priority outranks gatekeeper screening', () => {
     expect(ids).toEqual(['t-vip']);
   });
 });
+
+describe('review fixes', () => {
+  it('does not index the from_json keys as searchable words', () => {
+    const db = makeDb();
+    setup(db);
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1' }));
+    expect(db.searchThreads({ fts: '"email"*' })).toHaveLength(0);
+    expect(db.searchThreads({ fts: '"name"*' })).toHaveLength(0);
+    expect(db.searchThreads({ fts: 'from_text:"carol"*' })).toHaveLength(1);
+    expect(db.searchThreads({ fts: 'from_text:"partner"*' })).toHaveLength(1);
+  });
+
+  it('re-indexes a body that is replaced', () => {
+    const db = makeDb();
+    setup(db);
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1' }));
+    db.upsertBody('m1', null, 'first version');
+    db.upsertBody('m1', null, 'zanzibar second version');
+    expect(db.searchThreads({ fts: 'zanzibar' })).toHaveLength(1);
+  });
+
+  it('deletes more UIDs than SQLite allows bound parameters', () => {
+    const db = makeDb();
+    setup(db);
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1', uid: 7 }));
+    const uids = Array.from({ length: 40_000 }, (_, i) => i + 1);
+    expect(db.deleteMessagesByUids('f-inbox', uids)).toEqual(['t1']);
+  });
+
+  it('leaves a thread with a queued move alone when reconciling placement', () => {
+    const db = makeDb();
+    setup(db);
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1' }));
+    db.raw.prepare(`UPDATE threads SET placement = 'done' WHERE id = 't1'`).run();
+    db.enqueueTask({ type: 'move-thread', accountId: 'acc1', threadId: 't1', toRole: 'archive' });
+    expect(db.reconcilePlacements('acc1')).toBe(false);
+    db.raw.prepare(`UPDATE tasks SET status = 'done'`).run();
+    expect(db.reconcilePlacements('acc1')).toBe(true);
+  });
+});

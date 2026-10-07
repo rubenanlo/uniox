@@ -175,6 +175,11 @@ const VIEW_ROLE: Record<string, string> = {
   spam: 'spam',
 };
 
+/** Threads with a not-yet-executed server move; reconcilePlacements leaves them alone. */
+const PENDING_THREAD_MOVES = `SELECT json_extract(payload_json, '$.threadId') FROM tasks
+  WHERE status IN ('pending', 'running')
+    AND type IN ('move-thread', 'snooze-thread', 'unsnooze-thread', 'set-aside-thread')`;
+
 export class MailDb {
   readonly raw: Database.Database;
 
@@ -423,11 +428,20 @@ export class MailDb {
     return threadIds;
   }
 
-  /** UIDVALIDITY changed: wipe the folder's messages so backfill starts over. */
-  clearFolderMessages(folderId: string) {
-    this.stmt(`DELETE FROM messages WHERE folder_id = ?`).run(folderId);
-    this.stmt(`UPDATE folders SET last_seen_uid = 0, highestmodseq = NULL WHERE id = ?`)
-      .run(folderId);
+  /**
+   * UIDVALIDITY changed: wipe the folder's messages so backfill starts over.
+   * Returns the affected thread ids so the caller can refresh their aggregates.
+   */
+  clearFolderMessages(folderId: string): string[] {
+    return this.raw.transaction(() => {
+      const threadIds = (
+        this.stmt(`SELECT DISTINCT thread_id FROM messages WHERE folder_id = ?`).all(folderId) as Row[]
+      ).map((r) => r.thread_id as string);
+      this.stmt(`DELETE FROM messages WHERE folder_id = ?`).run(folderId);
+      this.stmt(`UPDATE folders SET last_seen_uid = 0, highestmodseq = NULL WHERE id = ?`)
+        .run(folderId);
+      return threadIds;
+    })();
   }
 
   // ---- threads / messages ---------------------------------------------------
@@ -440,12 +454,13 @@ export class MailDb {
   /** Find the thread that a References/In-Reply-To chain points at. */
   findThreadByMessageIds(accountId: string, messageIdHdrs: string[]): string | null {
     if (messageIdHdrs.length === 0) return null;
-    const placeholders = messageIdHdrs.map(() => '?').join(',');
+    // json_each keeps one cached statement for any chain length (a per-length
+    // SQL string churned the statement cache and evicted the hot sync queries).
     const r = this.stmt(
         `SELECT thread_id FROM messages
-         WHERE account_id = ? AND message_id_hdr IN (${placeholders}) LIMIT 1`,
+         WHERE account_id = ? AND message_id_hdr IN (SELECT value FROM json_each(?)) LIMIT 1`,
       )
-      .get(accountId, ...messageIdHdrs) as Row | undefined;
+      .get(accountId, JSON.stringify(messageIdHdrs)) as Row | undefined;
     return r?.thread_id ?? null;
   }
 
@@ -549,13 +564,17 @@ export class MailDb {
 
   deleteMessagesByUids(folderId: string, uids: number[]): string[] {
     if (!uids.length) return [];
-    const placeholders = uids.map(() => '?').join(',');
+    // json_each instead of ?,?,… : no 32k bound-parameter limit (a folder that
+    // lost that many UIDs made every sync throw) and one cached statement.
+    const list = JSON.stringify(uids);
     const threadIds = (
-      this.stmt(`SELECT DISTINCT thread_id FROM messages WHERE folder_id = ? AND uid IN (${placeholders})`)
-        .all(folderId, ...uids) as Row[]
+      this.stmt(
+        `SELECT DISTINCT thread_id FROM messages
+         WHERE folder_id = ? AND uid IN (SELECT value FROM json_each(?))`,
+      ).all(folderId, list) as Row[]
     ).map((r) => r.thread_id as string);
-    this.stmt(`DELETE FROM messages WHERE folder_id = ? AND uid IN (${placeholders})`)
-      .run(folderId, ...uids);
+    this.stmt(`DELETE FROM messages WHERE folder_id = ? AND uid IN (SELECT value FROM json_each(?))`)
+      .run(folderId, list);
     return threadIds;
   }
 
@@ -1046,6 +1065,8 @@ export class MailDb {
    * lives only in archive-role folders becomes 'done'. Snoozed / set-aside
    * placements are never touched. Returns true when anything changed.
    */
+  // A queued archive/snooze has already set placement locally but the server
+  // copy hasn't moved yet; don't let a sync in between flip it back.
   reconcilePlacements(accountId: string): boolean {
     const toInbox = this.stmt(
         `UPDATE threads SET placement = 'inbox'
@@ -1053,7 +1074,8 @@ export class MailDb {
            SELECT DISTINCT m.thread_id FROM messages m
            JOIN folders f ON f.id = m.folder_id
            WHERE m.account_id = ? AND f.role = 'inbox' AND m.draft = 0
-         )`,
+         )
+           AND id NOT IN (${PENDING_THREAD_MOVES})`,
       )
       .run(accountId, accountId).changes;
     const toDone = this.stmt(
@@ -1068,7 +1090,8 @@ export class MailDb {
              SELECT DISTINCT m.thread_id FROM messages m
              JOIN folders f ON f.id = m.folder_id
              WHERE m.account_id = ? AND f.role = 'archive'
-           )`,
+           )
+           AND id NOT IN (${PENDING_THREAD_MOVES})`,
       )
       .run(accountId, accountId, accountId).changes;
     return toInbox > 0 || toDone > 0;

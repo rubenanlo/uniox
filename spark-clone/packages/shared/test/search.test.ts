@@ -48,3 +48,10 @@ describe('parseSearchQuery', () => {
     expect(parseSearchQuery('   ').isEmpty).toBe(true);
   });
 });
+
+describe('parseSearchQuery stray quotes', () => {
+  it('ignores a token that is only quotes', () => {
+    expect(parseSearchQuery('foo "').fts).toBe('"foo"*');
+    expect(parseSearchQuery('"').isEmpty).toBe(true);
+  });
+});

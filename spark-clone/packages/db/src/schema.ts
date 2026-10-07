@@ -301,6 +301,37 @@ ALTER TABLE threads ADD COLUMN last_inbound_from_json TEXT;
 -- than whoever last replied.
 ALTER TABLE threads ADD COLUMN senders_json TEXT NOT NULL DEFAULT '[]';
 `,
+  `
+-- from_text indexed the raw from_json, so the JSON keys "name"/"email" were
+-- searchable words and matched every message. Index just the name + address.
+DROP TRIGGER IF EXISTS messages_fts_insert;
+CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(rowid, subject, from_text, body)
+  VALUES (
+    new.rowid, new.subject,
+    coalesce(json_extract(new.from_json, '$.name'), '') || ' ' ||
+      coalesce(json_extract(new.from_json, '$.email'), ''),
+    ''
+  );
+END;
+UPDATE messages_fts SET from_text = (
+  SELECT coalesce(json_extract(m.from_json, '$.name'), '') || ' ' ||
+         coalesce(json_extract(m.from_json, '$.email'), '')
+  FROM messages m WHERE m.rowid = messages_fts.rowid
+);
+
+-- A re-fetched body goes through upsert's UPDATE path, which the INSERT
+-- trigger never saw: search kept matching the old text.
+CREATE TRIGGER message_bodies_fts_update AFTER UPDATE OF text ON message_bodies BEGIN
+  UPDATE messages_fts
+    SET body = coalesce(new.text, '')
+    WHERE rowid = (SELECT rowid FROM messages WHERE id = new.message_id);
+END;
+
+-- All-accounts Sent/Drafts/Archive/Trash/Pinned views scanned and sorted every
+-- thread; this lets them walk newest-first and stop at LIMIT.
+CREATE INDEX IF NOT EXISTS threads_date ON threads(last_message_date DESC);
+`,
 ];
 
 /** Crossing this version triggers the JS backfills in migrate() (idempotent). */

@@ -2,7 +2,15 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildSrcdoc, IFRAME_SANDBOX, sanitizeEmailHtml, textToHtml } from '../src';
+import {
+  attachmentUrl,
+  buildSrcdoc,
+  escapeAndLinkify,
+  IFRAME_SANDBOX,
+  sanitizeEmailHtml,
+  sanitizeRichText,
+  textToHtml,
+} from '../src';
 
 const fixturesDir = join(__dirname, '../fixtures');
 const fixtures = Object.fromEntries(
@@ -176,5 +184,29 @@ describe('dark-mode text adaptation', () => {
   it('leaves everything alone outside dark mode', () => {
     const { html } = sanitizeEmailHtml('<p style="color:black">a</p>', {});
     expect(html).toMatch(/color:\s*black/i);
+  });
+});
+
+describe('rich text and plain text escaping', () => {
+  it('escapes quotes so a URL cannot inject attributes', () => {
+    const html = escapeAndLinkify('https://x.example/"style="position:fixed"x="');
+    expect(html).not.toContain('style="');
+    expect(html).toContain('&quot;');
+  });
+
+  it('strips styles, style blocks and remote sources from rich text', () => {
+    const out = sanitizeRichText(
+      '<p>x</p><style>body{display:none}</style><div style="position:fixed">y</div>' +
+        '<picture><source srcset="https://t.example/b.png"></picture><img src="https://t.example/i.png">' +
+        '<a href="javascript:alert(1)">bad</a><a href="https://ok.example">ok</a>',
+    );
+    expect(out).not.toMatch(/<style|style=|srcset|<img|javascript:/i);
+    expect(out).toContain('href="https://ok.example"');
+  });
+
+  it('encodes # and ? in attachment URLs', () => {
+    expect(attachmentUrl({ localPath: 'm1/logo#2?.png' } as never)).toBe(
+      'app://attachments/m1/logo%232%3F.png',
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { sanitizeEmailHtml } from '@app/email-render';
+import { escapeAndLinkify, sanitizeRichText } from '@app/email-render';
 
 /**
  * Event descriptions arrive either as Google's HTML or as plain text typed
@@ -8,11 +8,8 @@ import { sanitizeEmailHtml } from '@app/email-render';
  */
 export function descriptionToHtml(input: string): string {
   if (!input) return '';
-  if (/<[a-z!/][\s\S]*>/i.test(input)) return sanitizeEmailHtml(input).html;
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>')
-    .replace(/\n/g, '<br>');
+  // Rendered into the app window itself (no iframe/CSP), so HTML gets the
+  // strict rich-text profile rather than the email one.
+  if (/<[a-z!/][\s\S]*>/i.test(input)) return sanitizeRichText(input);
+  return escapeAndLinkify(input).replace(/\n/g, '<br>');
 }

@@ -315,7 +315,12 @@ function registerAppProtocol(attachmentsDir: string): void {
   protocol.handle('app', (request) => {
     const url = new URL(request.url);
     if (url.hostname !== 'attachments') return new Response('not found', { status: 404 });
-    const rel = decodeURI(url.pathname).replace(/^\//, '');
+    let rel: string;
+    try {
+      rel = decodeURIComponent(url.pathname).replace(/^\//, '');
+    } catch {
+      return new Response('bad path', { status: 400 });
+    }
     const full = containedPath(attachmentsDir, rel);
     if (!full) return new Response('forbidden', { status: 403 });
     return net.fetch(pathToFileURL(full).toString());

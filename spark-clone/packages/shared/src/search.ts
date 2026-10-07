@@ -46,7 +46,9 @@ export function parseSearchQuery(raw: string): ParsedSearch {
   let pendingOp: string | null = null;
 
   const apply = (op: string, value: string): void => {
-    const val = value.trim();
+    // Quotes are stripped by esc(); a value of only quotes would become ""*,
+    // which matches nothing and empties the whole result set.
+    const val = value.replace(/"/g, '').trim();
     if (!val) return;
     switch (op) {
       case 'from':
@@ -83,7 +85,7 @@ export function parseSearchQuery(raw: string): ParsedSearch {
       pendingOp = null;
       continue;
     }
-    ftsTerms.push(esc(token));
+    if (token.replace(/"/g, '')) ftsTerms.push(esc(token));
   }
 
   const fts = ftsTerms.length ? ftsTerms.join(' ') : null;

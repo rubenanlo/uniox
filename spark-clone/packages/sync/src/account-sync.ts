@@ -537,7 +537,7 @@ export class AccountSync {
       const cursor = this.db.getFolderCursor(folder.id);
       const uidValidity = Number(mailbox.uidValidity ?? 0);
       if (cursor.uidvalidity !== null && cursor.uidvalidity !== uidValidity) {
-        this.db.clearFolderMessages(folder.id);
+        for (const tid of this.db.clearFolderMessages(folder.id)) this.db.refreshThreadAggregates(tid);
         this.folderStatus.delete(folder.id);
         this.folderFullSyncAt.delete(folder.id);
       }

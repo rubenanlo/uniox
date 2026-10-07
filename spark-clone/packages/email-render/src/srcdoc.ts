@@ -69,16 +69,24 @@ export function buildSrcdoc(sanitizedHtml: string, opts: SrcdocOptions = {}): st
 </html>`;
 }
 
-/** Plain-text fallback rendering. */
-export function textToHtml(text: string): string {
+/**
+ * Escape plain text for HTML and auto-link http(s) URLs. Quotes are escaped
+ * too: the URL lands inside href="…", and an unescaped `"` in a link let a
+ * plain-text message inject attributes (style=…) into the anchor.
+ */
+export function escapeAndLinkify(text: string, linkAttrs = ''): string {
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  const linked = escaped.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noreferrer noopener">$1</a>',
-  );
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, `<a href="$1"${linkAttrs}>$1</a>`);
+}
+
+/** Plain-text fallback rendering. */
+export function textToHtml(text: string): string {
+  const linked = escapeAndLinkify(text, ' target="_blank" rel="noreferrer noopener"');
   // background/padding:none: the shared pre style renders code blocks, and a
   // plain-text letter must not read as one.
   return `<pre style="white-space:pre-wrap;font:inherit;margin:0;background:none;padding:0">${linked}</pre>`;
