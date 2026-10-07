@@ -533,6 +533,14 @@ export class SyncService {
         this.db.setSetting(key, value);
         return { ok: true };
       }
+      case 'sync:now': {
+        // Manual refresh (⌘R): fire-and-forget; progress shows via sync-status
+        // and threads/calendar deltas, like any scheduled pass.
+        if (this.powerPaused) return { ok: false };
+        for (const sync of this.accounts.values()) sync.refreshNow();
+        void this.syncAllCalendars();
+        return { ok: true };
+      }
       case 'account:set-auth-type': {
         // Main-process only (reconnect flow): flip the auth scheme and restart
         // the account's sync loop so it reconnects with the new credentials.

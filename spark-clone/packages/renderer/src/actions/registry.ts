@@ -136,6 +136,13 @@ function replyAction(mode: 'reply' | 'reply-all' | 'forward') {
   };
 }
 
+/** ⌘R: pull new mail and calendar events now instead of waiting for the next poll. */
+export function refreshNow() {
+  void api.command('sync:now', undefined).then((r) => {
+    toast(r?.ok === false ? 'Can’t refresh while the computer is asleep' : 'Refreshing mail and calendar…');
+  });
+}
+
 export function moveSelection(delta: 1 | -1) {
   const ui = useUi.getState();
   const rows = ui.visibleRows;
@@ -589,6 +596,14 @@ export const ACTIONS: AppAction[] = [
     context: 'global',
     section: 'Layout',
     perform: () => useUi.getState().setCommandOpen(true),
+  },
+  {
+    id: 'refresh',
+    label: 'Refresh mail & calendar',
+    combo: { key: 'r', meta: true },
+    context: 'global',
+    section: 'Navigate',
+    perform: () => refreshNow(),
   },
   {
     id: 'open-settings',
