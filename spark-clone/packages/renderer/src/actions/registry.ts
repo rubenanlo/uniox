@@ -2,7 +2,8 @@ import { toast } from 'sonner';
 import type { ThreadSummary } from '@app/shared';
 import { api } from '../lib/api';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
-import { openSelectedThread, toggleSidebarReveal } from '../lib/panels';
+import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
+import { focusGatekeeper, openSelectedThread, toggleSidebarReveal } from '../lib/panels';
 import { toastWithUndo, handleTriageUndo } from '../lib/undo';
 import { bundleByRowId, keyboardTargetId, navRowId, PRIORITY_TOGGLE_ID, useUi } from '../state/store';
 
@@ -60,14 +61,32 @@ function bundleMoveWithUndo(id: string | null, toRole: 'archive' | 'trash', labe
   return true;
 }
 
+/** When several rows are picked (⇧↑/↓), move them all at once with one undo. */
+function multiMoveWithUndo(toRole: 'archive' | 'trash', label: string): boolean {
+  const threads = multiSelectedThreads();
+  if (!threads) return false;
+  if (toRole === 'trash' && useUi.getState().view === 'drafts') {
+    advancePastMultiSelection();
+    void Promise.all(threads.map(deleteThreadDrafts)).then((counts) => {
+      const n = counts.reduce((a, b) => a + b, 0);
+      toast(n === 1 ? 'Draft deleted' : `${n} drafts deleted`);
+    });
+    return true;
+  }
+  advancePastMultiSelection();
+  moveThreads(threads, toRole);
+  toastWithUndo(`${label} · ${threads.length} conversations`, () => moveThreads(threads, 'inbox'));
+  return true;
+}
+
 /** Delete in the Drafts view targets the draft itself, not the conversation. */
-async function deleteThreadDrafts(thread: ThreadSummary) {
+async function deleteThreadDrafts(thread: ThreadSummary): Promise<number> {
   const messages = await api.query('thread:messages', { threadId: thread.id });
   const drafts = messages.filter((m) => m.draft);
   for (const m of drafts) {
     void api.command('task:enqueue', { type: 'delete-draft', accountId: m.accountId, messageId: m.id });
   }
-  toast(drafts.length > 1 ? `${drafts.length} drafts deleted` : 'Draft deleted');
+  return drafts.length;
 }
 
 function moveWithUndo(thread: ThreadSummary, toRole: 'archive' | 'trash', label: string) {
@@ -123,6 +142,8 @@ export function moveSelection(delta: 1 | -1) {
   if (!rows.length) return;
   const currentId = ui.selectedThreadId ?? ui.hoveredThreadId;
   const idx = rows.findIndex((r) => navRowId(r) === currentId);
+  // ↑ past the first row climbs into the new-sender cards above the list.
+  if (delta === -1 && idx === 0 && focusGatekeeper()) return;
   const next = rows[idx === -1 ? (delta === 1 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, idx + delta))];
   if (next) {
     // Arrow browsing is an auto selection: preview without marking read.
@@ -162,6 +183,7 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Triage',
     perform: (id) => {
+      if (multiMoveWithUndo('archive', 'Done')) return;
       if (bundleMoveWithUndo(id, 'archive', 'Done')) return;
       const t = threadById(id) ?? target();
       if (t) moveWithUndo(t, 'archive', 'Done');
@@ -174,12 +196,13 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Triage',
     perform: (id) => {
+      if (multiMoveWithUndo('trash', 'Deleted')) return;
       if (bundleMoveWithUndo(id, 'trash', 'Deleted')) return;
       const t = threadById(id) ?? target();
       if (!t) return;
       if (useUi.getState().view === 'drafts') {
         advanceSelectionFrom(t.id);
-        void deleteThreadDrafts(t);
+        void deleteThreadDrafts(t).then((n) => toast(n > 1 ? `${n} drafts deleted` : 'Draft deleted'));
         return;
       }
       moveWithUndo(t, 'trash', 'Deleted');
@@ -192,14 +215,19 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Triage',
     perform: (id) => {
+      const many = multiSelectedThreads();
       const t = threadById(id) ?? target();
-      if (!t) return;
-      void api.command('task:enqueue', {
-        type: 'set-pinned',
-        accountId: t.accountId,
-        threadId: t.id,
-        pinned: !t.pinned,
-      });
+      const threads = many ?? (t ? [t] : []);
+      // Pin them all unless every one is already pinned.
+      const pinned = !threads.every((x) => x.pinned);
+      for (const x of threads) {
+        void api.command('task:enqueue', {
+          type: 'set-pinned',
+          accountId: x.accountId,
+          threadId: x.id,
+          pinned,
+        });
+      }
     },
   },
   {
@@ -220,16 +248,22 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Triage',
     perform: (id) => {
+      const many = multiSelectedThreads();
       const t = threadById(id) ?? target();
-      if (!t) return;
+      const threads = many ?? (t ? [t] : []);
+      if (!threads.length) return;
       const aside = useUi.getState().view !== 'set_aside';
-      void api.command('task:enqueue', {
-        type: 'set-aside-thread',
-        accountId: t.accountId,
-        threadId: t.id,
-        aside,
-      });
-      toast(aside ? 'Set aside' : 'Moved back to Inbox');
+      if (many) advancePastMultiSelection();
+      for (const x of threads) {
+        void api.command('task:enqueue', {
+          type: 'set-aside-thread',
+          accountId: x.accountId,
+          threadId: x.id,
+          aside,
+        });
+      }
+      const n = threads.length > 1 ? ` · ${threads.length} conversations` : '';
+      toast((aside ? 'Set aside' : 'Moved back to Inbox') + n);
     },
   },
   {
@@ -251,6 +285,13 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Triage',
     perform: (id) => {
+      const many = multiSelectedThreads();
+      if (many) {
+        // Any unread → mark all read; all read already → mark all unread.
+        if (many.some((t) => t.unreadCount > 0)) void markThreadsRead(many);
+        else for (const t of many) void setThreadSeen(t, false);
+        return;
+      }
       const bundle = bundleByRowId(id);
       if (bundle) {
         void markThreadsRead(bundle.threads);
@@ -387,6 +428,30 @@ export const ACTIONS: AppAction[] = [
     context: 'global',
     section: 'Navigate',
     perform: () => moveSelection(-1),
+  },
+  {
+    id: 'go-to',
+    label: 'Go to…',
+    combo: { key: 'l', meta: true },
+    context: 'global',
+    section: 'Navigate',
+    perform: () => useUi.getState().setCommandOpen(true, 'goto'),
+  },
+  {
+    id: 'select-down',
+    label: 'Add next email to selection',
+    combo: { key: 'arrowdown', shift: true },
+    context: 'global',
+    section: 'Navigate',
+    perform: () => extendSelection(1),
+  },
+  {
+    id: 'select-up',
+    label: 'Add previous email to selection',
+    combo: { key: 'arrowup', shift: true },
+    context: 'global',
+    section: 'Navigate',
+    perform: () => extendSelection(-1),
   },
   {
     id: 'view-inbox',

@@ -6,6 +6,7 @@ import { presetRrule, type RepeatPreset } from '../../lib/rrule';
 import { cn } from '../../lib/utils';
 import { useAccounts } from '../../state/queries';
 import { type EventDraft, useCalendar } from '../../state/calendar';
+import { Keycaps } from '../ui/Keycap';
 import { RichTextArea } from './RichTextArea';
 
 const COLORS = ['#2f63e7', '#e0567c', '#e0913a', '#2ba676', '#8b5cf6', '#6d6d75'];
@@ -138,7 +139,14 @@ export function EventForm({ draft }: { draft: EventDraft }) {
       <input ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)}
              onKeyDown={(e) => e.key === 'Enter' && submit()}
              placeholder="Event title" className={cn(inputCls, 'text-[13.5px] font-medium')} />
-      <label className="text-ink-faint text-[11px] font-semibold tracking-wide uppercase">Account</label>
+      <label className="text-ink-faint flex items-center text-[11px] font-semibold tracking-wide uppercase">
+        Account
+        {!isGoogle && (
+          <span className="ml-auto normal-case">
+            <Keycaps keys={['⌥', '↓']} />
+          </span>
+        )}
+      </label>
       {isGoogle ? (
         <p className="text-ink-muted text-[12.5px]">
           {(() => {
@@ -148,7 +156,8 @@ export function EventForm({ draft }: { draft: EventDraft }) {
           })()}
         </p>
       ) : (
-        <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className={inputCls}>
+        <select value={calendarId} onChange={(e) => setCalendarId(e.target.value)} className={inputCls}
+                data-account-select aria-label="Account">
           {accountCalendars.map((c) => {
             const a = accounts.find((x) => x.id === c.accountId);
             return <option key={c.id} value={c.id}>{a?.email ?? c.name}</option>;

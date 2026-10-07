@@ -40,6 +40,16 @@ export const useKanban = create<KanbanState>((set, get) => ({
   },
 }));
 
+/** Open the Sprint board on Home and clear its new-request indicator. */
+export function openSprintBoard(): void {
+  const ui = useUi.getState();
+  ui.setView('home');
+  ui.setKanbanOpen(true);
+  const k = useKanban.getState();
+  k.markSeen();
+  k.refresh();
+}
+
 /** Called once from App: load persisted state, then poll every 15 minutes. */
 export function wireKanban(): () => void {
   void api

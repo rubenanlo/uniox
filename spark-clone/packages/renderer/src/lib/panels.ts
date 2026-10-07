@@ -138,3 +138,26 @@ export function openSelectedThread(threadId?: string): void {
   // the reading pane may render on this selection; focus it next tick
   setTimeout(focusReading);
 }
+
+/** A gatekeeper card's Accept / Block button, if that card is rendered. */
+export function gatekeeperButton(index: number, choice: 'accept' | 'block'): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(
+    `[data-gk-index="${index}"][data-gk-choice="${choice}"]`,
+  );
+}
+
+/**
+ * ↑ from the first mail row steps up into the new-sender cards, landing on the
+ * first card's Accept. Returns false when no cards are showing.
+ */
+export function focusGatekeeper(): boolean {
+  const btn = gatekeeperButton(0, 'accept');
+  if (!btn) return false;
+  const ui = useUi.getState();
+  // Triage keys act on the selection; with focus up in the cards they must not
+  // silently archive the email underneath.
+  ui.selectThread(null);
+  ui.hoverThread(null);
+  btn.focus();
+  return true;
+}

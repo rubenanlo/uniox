@@ -16,6 +16,8 @@ const SHORTCUTS: [string, string][] = [
   ['Month / Week / Day', 'M W D'],
   ['Move around', '← → ↑ ↓'],
   ['Create on focused day', '↩'],
+  ['Pick event account', '⌥ ↓'],
+  ['Show mail sidebar', '/'],
   ['Toggle sidebar', '⌘ \\'],
   ['Toggle this panel', '⌘ /'],
   ['Back to mail', 'Esc'],
