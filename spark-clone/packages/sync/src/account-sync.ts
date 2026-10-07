@@ -180,8 +180,12 @@ export class AccountSync {
   }
 
   private waitForDisconnect(): Promise<void> {
+    const client = this.client;
+    // If the socket already died mid-sync, 'close' has fired and a new
+    // listener would wait forever — the account would never reconnect.
+    if (!client || !client.usable) return Promise.resolve();
     return new Promise((resolve) => {
-      this.client?.once('close', () => resolve());
+      client.once('close', () => resolve());
     });
   }
 
@@ -206,6 +210,11 @@ export class AccountSync {
     client.on('expunge', () => this.queueInboxSync());
     client.on('flags', () => this.queueInboxSync());
     await client.connect();
+    if (this.stopped) {
+      // stop() ran while we were logging in: it had no client to close.
+      client.close();
+      throw new Error('stopped');
+    }
     this.client = client;
     await this.syncFolderList();
   }
@@ -763,11 +772,16 @@ export class AccountSync {
     updateSnippetFromBody(this.db, msg.id, text);
 
     this.db.clearAttachments(msg.id);
+    const usedNames = new Set<string>();
     for (const att of parsed.attachments ?? []) {
       const dir = join(this.attachmentsDir, msg.id);
       mkdirSync(dir, { recursive: true });
       const filename = safeFilename(att.filename ?? 'attachment');
-      const rel = join(msg.id, filename);
+      // Two parts named image.png must not overwrite each other on disk.
+      let diskName = filename;
+      for (let n = 1; usedNames.has(diskName); n++) diskName = `${n}-${filename}`;
+      usedNames.add(diskName);
+      const rel = join(msg.id, diskName);
       writeFileSync(join(this.attachmentsDir, rel), att.content);
       this.db.insertAttachment({
         id: newId(),
@@ -810,7 +824,10 @@ export class AccountSync {
 
   async storeFlags(folderPath: string, uids: number[], flag: string, add: boolean): Promise<void> {
     const client = this.client;
-    if (!client || !uids.length) return;
+    if (!uids.length) return;
+    // Throw like moveMessages: returning quietly marks the task done and the
+    // flag change never reaches the server.
+    if (!client) throw new Error('not connected');
     const lock = await client.getMailboxLock(folderPath);
     try {
       if (add) await client.messageFlagsAdd(uids.join(','), [flag], { uid: true });

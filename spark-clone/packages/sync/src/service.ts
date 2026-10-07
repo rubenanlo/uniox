@@ -10,6 +10,7 @@ import type {
   Folder,
   FolderRole,
   MessageMeta,
+  OutgoingDraft,
   Signature,
   SyncToMain,
   Task,
@@ -46,6 +47,7 @@ import { composeRaw, smtpSend } from './send';
 import { newId, withTimeout } from './util';
 
 const MAX_TASK_ATTEMPTS = 3;
+const TASK_TIMEOUT_MS = 120_000;
 
 /** Draft retention: drafts untouched for this long are purged (moved to Trash). */
 const DRAFT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -413,12 +415,19 @@ export class SyncService {
       return p ? Promise.resolve(p) : Promise.reject(new Error('no credentials'));
     }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('credential request timed out')), 30_000);
-      const arr = this.pendingCreds.get(accountId) ?? [];
-      arr.push((secret) => {
+      const waiter = (secret: string) => {
         clearTimeout(timer);
         resolve(secret);
-      });
+      };
+      const timer = setTimeout(() => {
+        // Drop the stale waiter so failed refreshes don't pile closures up.
+        const rest = (this.pendingCreds.get(accountId) ?? []).filter((w) => w !== waiter);
+        if (rest.length) this.pendingCreds.set(accountId, rest);
+        else this.pendingCreds.delete(accountId);
+        reject(new Error('credential request timed out'));
+      }, 30_000);
+      const arr = this.pendingCreds.get(accountId) ?? [];
+      arr.push(waiter);
       this.pendingCreds.set(accountId, arr);
       this.post({ kind: 'need-credentials', accountId });
     });
@@ -724,7 +733,9 @@ export class SyncService {
           const task = this.db.claimNextTask();
           if (!task) break;
           try {
-            await this.execute(task);
+            // One hung IMAP op (mailbox-lock waiters can stall on a dead
+            // socket) must not wedge the shared queue for every account.
+            await withTimeout(this.execute(task), TASK_TIMEOUT_MS, `task ${task.payload.type}`);
             this.db.finishTask(task.id, 'done');
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -867,6 +878,35 @@ export class SyncService {
     }
   }
 
+  /**
+   * Best-effort IMAP bookkeeping after a successful SMTP send: copy to Sent,
+   * mark the original \\Answered, drop the server draft. Never throws — the
+   * message is already delivered, so a retry would only send a duplicate.
+   */
+  private async afterSend(accountId: string, raw: Buffer, draft: OutgoingDraft): Promise<void> {
+    try {
+      const sync = this.sync(accountId);
+      const sent = this.db.getFolderByRole(accountId, 'sent');
+      if (sent) {
+        await sync.appendMessage(sent.path, raw, ['\\Seen']);
+        await sync.syncFolder(sent);
+      }
+      if (draft.inReplyToMessageId) {
+        const orig = this.db.getMessage(draft.inReplyToMessageId);
+        const folder = orig && this.db.getFolder(orig.folderId);
+        if (orig && folder) {
+          await sync.storeFlags(folder.path, [orig.uid], '\\Answered', true);
+          this.db.setFlagsById(orig.id, { answered: true });
+        }
+      }
+      if (draft.deleteDraftMessageId) {
+        await this.deleteDraftMessage(accountId, draft.deleteDraftMessageId);
+      }
+    } catch (err) {
+      console.error('[sync] post-send bookkeeping failed (mail WAS sent):', err);
+    }
+  }
+
   private async execute(task: TaskRow): Promise<void> {
     const t = task.payload;
     switch (t.type) {
@@ -876,23 +916,9 @@ export class SyncService {
         const password = await this.freshSecret(account.id);
         const raw = await composeRaw(this.db, account, t.draft);
         await smtpSend(account, password, t.draft, raw);
-        const sync = this.sync(account.id);
-        const sent = this.db.getFolderByRole(account.id, 'sent');
-        if (sent) {
-          await sync.appendMessage(sent.path, raw, ['\\Seen']);
-          await sync.syncFolder(sent);
-        }
-        if (t.draft.inReplyToMessageId) {
-          const orig = this.db.getMessage(t.draft.inReplyToMessageId);
-          const folder = orig && this.db.getFolder(orig.folderId);
-          if (orig && folder) {
-            await sync.storeFlags(folder.path, [orig.uid], '\\Answered', true);
-            this.db.setFlagsById(orig.id, { answered: true });
-          }
-        }
-        if (t.draft.deleteDraftMessageId) {
-          await this.deleteDraftMessage(account.id, t.draft.deleteDraftMessageId);
-        }
+        // Past this point the mail is out: nothing may throw back into the
+        // task retry path, or the recipient gets the message again.
+        await this.afterSend(account.id, raw, t.draft);
         this.delta({ kind: 'threads-changed', accountIds: [account.id] });
         break;
       }
@@ -1084,23 +1110,17 @@ export class SyncService {
         if (!account) throw new Error('account not ready');
         const password = await this.freshSecret(account.id);
         this.db.setScheduledStatus(t.scheduledId, 'sending');
+        const raw = Buffer.from(row.raw, 'utf8');
         try {
-          const raw = Buffer.from(row.raw, 'utf8');
           await smtpSend(account, password, row.draft, raw);
-          const sync = this.sync(account.id);
-          const sent = this.db.getFolderByRole(account.id, 'sent');
-          if (sent) {
-            await sync.appendMessage(sent.path, raw, ['\\Seen']);
-            await sync.syncFolder(sent);
-          }
-          if (row.draft.deleteDraftMessageId) {
-            await this.deleteDraftMessage(account.id, row.draft.deleteDraftMessageId);
-          }
-          this.db.deleteScheduledSend(t.scheduledId);
         } catch (err) {
           this.db.setScheduledStatus(t.scheduledId, 'overdue');
           throw err;
         }
+        // Sent: commit before any bookkeeping so a later IMAP failure can't
+        // leave the row 'overdue' (and a "Send now" that sends it twice).
+        this.db.deleteScheduledSend(t.scheduledId);
+        await this.afterSend(account.id, raw, row.draft);
         this.delta({ kind: 'threads-changed', accountIds: [account.id] });
         break;
       }
@@ -1254,6 +1274,9 @@ export class SyncService {
       case 'fetch-body': {
         const m = this.db.getMessage(t.messageId);
         if (!m) return;
+        // Several views ask for the same body at once and each miss enqueues a
+        // fetch; the queue is serial, so later duplicates find it already stored.
+        if (this.db.getBody(t.messageId)) return;
         const sync = await this.waitForAccount(m.accountId);
         await sync.fetchBody(m);
         break;
