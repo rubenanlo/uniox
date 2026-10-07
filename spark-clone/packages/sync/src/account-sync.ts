@@ -319,6 +319,12 @@ export class AccountSync {
     // Not connected: the reconnect loop is already driving recovery.
   }
 
+  /** Manual refresh: a full folder pass now (a pass already running wins). */
+  refreshNow(): void {
+    if (this.paused || this.stopped || !this.client?.usable) return;
+    void this.syncAllFolders().catch(() => this.status('error', 'refresh failed'));
+  }
+
   private queueInboxSync(): void {
     if (this.inboxSyncQueued || this.stopped || this.paused) return;
     this.inboxSyncQueued = true;

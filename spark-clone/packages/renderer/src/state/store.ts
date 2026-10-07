@@ -57,6 +57,8 @@ interface UiState {
   /** Composer dialog grown to full height / 1100px (the orb repositions on it). */
   composerExpanded: boolean;
   commandOpen: boolean;
+  /** What the open palette lists: every action (⌘K) or places to go (⌘L). */
+  commandMode: 'actions' | 'goto';
   shortcutsOpen: boolean;
   settingsOpen: boolean;
   /** Shows the add-account onboarding overlay (from the sidebar or settings). */
@@ -91,6 +93,13 @@ interface UiState {
   userName: string | null;
   /** Inbox's Priority section: collapsed shows new-since-last-open, expanded shows all. */
   priorityExpanded: boolean;
+  /**
+   * Rows picked together with ⇧↑/↓ or ⇧/⌘-click, in list order. Empty (or one
+   * row) means a plain single selection; triage keys act on all of them.
+   */
+  multiSelected: string[];
+  /** Where a ⇧-range started; the range runs from here to selectedThreadId. */
+  selectionAnchor: string | null;
   /** the list currently rendered, so keyboard nav can move selection */
   visibleThreads: ThreadSummary[];
   /** rendered rows in order, including bundle rows, for arrow navigation */
@@ -112,7 +121,7 @@ interface UiState {
   openComposer(state: ComposerState): void;
   closeComposer(): void;
   setComposerExpanded(expanded: boolean): void;
-  setCommandOpen(open: boolean): void;
+  setCommandOpen(open: boolean, mode?: 'actions' | 'goto'): void;
   setShortcutsOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
   setAddingAccount(adding: boolean): void;
@@ -128,7 +137,11 @@ interface UiState {
   openPicker(picker: { kind: 'snooze' | 'remind'; thread: ThreadSummary }): void;
   closePicker(): void;
   setVisibleRows(rows: NavRow[]): void;
+  setMultiSelected(ids: string[], cursor: string | null, anchor: string | null): void;
+  clearMultiSelect(): void;
 }
+
+const NO_MULTI = { multiSelected: [] as string[], selectionAnchor: null };
 
 export const useUi = create<UiState>((set) => ({
   view: 'home',
@@ -145,6 +158,7 @@ export const useUi = create<UiState>((set) => ({
   composer: null,
   composerExpanded: false,
   commandOpen: false,
+  commandMode: 'actions',
   shortcutsOpen: false,
   settingsOpen: false,
   addingAccount: false,
@@ -163,6 +177,8 @@ export const useUi = create<UiState>((set) => ({
   priorityExpanded: false,
   visibleThreads: [],
   visibleRows: [],
+  multiSelected: [],
+  selectionAnchor: null,
 
   setView: (view) =>
     // Changing screens also drops the Kanban overlay: it's a Home sub-view that
@@ -174,14 +190,17 @@ export const useUi = create<UiState>((set) => ({
       hoveredThreadId: null,
       categoryFocus: null,
       kanbanOpen: false,
+      ...NO_MULTI,
     }),
-  setAccountFilter: (accountFilter) => set({ accountFilter }),
+  setAccountFilter: (accountFilter) => set({ accountFilter, ...NO_MULTI }),
   setListLayout: (listLayout) => set({ listLayout }),
   setDensity: (density) => set({ density }),
   toggleSplit: () => set((s) => ({ split: !s.split })),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   setTheme: (theme) => set({ theme }),
-  selectThread: (selectedThreadId, auto = false) => set({ selectedThreadId, selectionAuto: auto }),
+  // Any single selection (click, plain arrows, triage advance) ends a multi-pick.
+  selectThread: (selectedThreadId, auto = false) =>
+    set({ selectedThreadId, selectionAuto: auto, ...NO_MULTI }),
   setPriorityExpanded: (priorityExpanded) => set({ priorityExpanded }),
   setUserName: (userName) => set({ userName }),
   hoverThread: (hoveredThreadId) => set({ hoveredThreadId }),
@@ -190,12 +209,14 @@ export const useUi = create<UiState>((set) => ({
   openComposer: (composer) => set({ composer, composerExpanded: false }),
   closeComposer: () => set({ composer: null, composerExpanded: false }),
   setComposerExpanded: (composerExpanded) => set({ composerExpanded }),
-  setCommandOpen: (commandOpen) => set({ commandOpen }),
+  setCommandOpen: (commandOpen, commandMode = 'actions') =>
+    set(commandOpen ? { commandOpen, commandMode } : { commandOpen }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setAddingAccount: (addingAccount) => set({ addingAccount }),
   setIntroSeen: (introSeen) => set({ introSeen }),
-  toggleSmartInbox: () => set((s) => ({ smartInbox: !s.smartInbox, categoryFocus: null })),
+  toggleSmartInbox: () =>
+    set((s) => ({ smartInbox: !s.smartInbox, categoryFocus: null, ...NO_MULTI })),
   setPriorityEmails: (priorityEmails) => set({ priorityEmails }),
   setAccountAvatar: (accountId, dataUrl) =>
     set((s) => {
@@ -218,16 +239,26 @@ export const useUi = create<UiState>((set) => ({
     set((s) => ({
       categoryFocus,
       hoveredThreadId: null,
+      ...NO_MULTI,
       // a selected bundle row does not exist inside (or after leaving) the dedicated list
       selectedThreadId: s.selectedThreadId?.startsWith('bundle:') ? null : s.selectedThreadId,
     })),
   openPicker: (picker) => set({ picker }),
   closePicker: () => set({ picker: null }),
   setVisibleRows: (visibleRows) =>
-    set({
-      visibleRows,
-      visibleThreads: visibleRows.flatMap((r) => (r.kind === 'thread' ? [r.thread] : [])),
+    set((s) => {
+      // Rows that left the list (moved, filtered) drop out of a multi-pick.
+      const present = new Set(visibleRows.map(navRowId));
+      const kept = s.multiSelected.filter((id) => present.has(id));
+      return {
+        visibleRows,
+        visibleThreads: visibleRows.flatMap((r) => (r.kind === 'thread' ? [r.thread] : [])),
+        ...(kept.length === s.multiSelected.length ? {} : { multiSelected: kept }),
+      };
     }),
+  setMultiSelected: (multiSelected, selectedThreadId, selectionAnchor) =>
+    set({ multiSelected, selectedThreadId, selectionAnchor, selectionAuto: true, hoveredThreadId: null }),
+  clearMultiSelect: () => set(NO_MULTI),
 }));
 
 /** The bundle the given selection id points at, if any. */

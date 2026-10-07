@@ -108,6 +108,8 @@ export interface Commands {
     result: { ok: boolean; error?: string };
   };
   'settings:set': { args: { key: string; value: unknown }; result: { ok: boolean } };
+  /** ⌘R: sync every account's folders and Google calendars now, off-cadence. */
+  'sync:now': { args: undefined; result: { ok: boolean } };
   /** Play a system sound in the main process so the settings picker can audition it. */
   'notify-sound:preview': { args: { sound: string }; result: { ok: boolean } };
   'templates:save': { args: Template; result: { ok: boolean } };
@@ -215,6 +217,8 @@ export interface RendererApi {
   onAiChunk(cb: (chunk: AiChunk) => void): () => void;
   /** macOS routes ⌘Z through the app menu; this is the renderer handler. */
   onTriageUndo(cb: () => void): () => void;
+  /** ⌘R from the app menu (which replaces Electron's page reload); manual refresh. */
+  onAppRefresh(cb: () => void): () => void;
   /** True for the installed .app / .dmg build (not pnpm dev). */
   isPackaged: boolean;
 }
