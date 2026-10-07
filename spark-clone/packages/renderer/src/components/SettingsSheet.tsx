@@ -26,6 +26,12 @@ import { toast } from 'sonner';
 import { useEscapeClose } from '../hooks/useEscapeClose';
 import { api } from '../lib/api';
 import { fileToAvatarDataUrl } from '../lib/avatar';
+import {
+  buildStyleProfile,
+  forgetStyleProfile,
+  loadStyleProfile,
+  type StyleProfile,
+} from '../lib/writingStyle';
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
 import { mutatePrioritySender } from '../state/priority';
@@ -294,7 +300,93 @@ function AssistantTab() {
           ))}
         </select>
       </Row>
+
+      <WritingStyleField configured={configured} />
     </div>
+  );
+}
+
+/**
+ * The per-account style profile behind the composer's "Rewrite in my style".
+ * It is learned automatically on first use; this shows what was learned and
+ * lets the user re-learn or forget it.
+ */
+function WritingStyleField({ configured }: { configured: boolean }) {
+  const { accounts } = useAccounts();
+  const [profiles, setProfiles] = useState<Record<string, StyleProfile | null>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    void Promise.all(accounts.map(async (a) => [a.id, await loadStyleProfile(a.id)] as const)).then(
+      (rows) => setProfiles(Object.fromEntries(rows)),
+    );
+  }, [accounts]);
+
+  const learn = (accountId: string) => {
+    setBusy(accountId);
+    void buildStyleProfile(accountId, useAssistant.getState().complete)
+      .then((p) => {
+        setProfiles((prev) => ({ ...prev, [accountId]: p }));
+        toast(`Learned your style from ${p.sampleCount} sent emails`);
+      })
+      .catch((e) => toast(e instanceof Error ? e.message : 'Could not learn your style'))
+      .finally(() => setBusy(null));
+  };
+
+  const forget = (accountId: string) => {
+    void forgetStyleProfile(accountId).then(() =>
+      setProfiles((prev) => ({ ...prev, [accountId]: null })),
+    );
+  };
+
+  return (
+    <Field
+      label="Writing style"
+      hint="“Rewrite in my style” learns how you write from each account's recent sent mail. It is learned on first use and refreshed every two weeks. Learning sends those emails to Claude with your key; the profile is saved on this device."
+    >
+      {accounts.map((a) => {
+        const p = profiles[a.id];
+        return (
+          <div key={a.id} className="border-hairline rounded-xl border px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[12.5px] font-medium">{a.email}</p>
+                <p className="text-ink-faint text-[11.5px]">
+                  {p
+                    ? `Learned from ${p.sampleCount} sent emails · ${new Date(p.builtAt).toLocaleDateString()}`
+                    : 'Not learned yet'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                {p && (
+                  <button
+                    onClick={() => forget(a.id)}
+                    className="text-ink-muted hover:text-danger text-[12px]"
+                  >
+                    Forget
+                  </button>
+                )}
+                <button
+                  onClick={() => learn(a.id)}
+                  disabled={!configured || busy !== null}
+                  className="text-accent text-[12px] font-semibold hover:underline disabled:opacity-40"
+                >
+                  {busy === a.id ? 'Learning…' : p ? 'Relearn' : 'Learn now'}
+                </button>
+              </div>
+            </div>
+            {p && (
+              <details className="mt-1.5">
+                <summary className="text-ink-muted hover:text-ink cursor-pointer text-[11.5px]">
+                  What Uniox learned
+                </summary>
+                <p className="text-ink-muted mt-1.5 text-[12px] whitespace-pre-wrap">{p.guide}</p>
+              </details>
+            )}
+          </div>
+        );
+      })}
+    </Field>
   );
 }
 

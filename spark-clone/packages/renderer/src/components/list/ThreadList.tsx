@@ -22,6 +22,7 @@ import { ACTIONS, keysFor } from '../../actions/registry';
 import { useAccountColor } from '../../lib/accountColor';
 import { api } from '../../lib/api';
 import { markThreadsRead, moveThreads } from '../../lib/bulk';
+import { selectRangeTo, toggleInSelection } from '../../lib/multiSelect';
 import { fmtWake } from '../../lib/schedule';
 import { toastWithUndo } from '../../lib/undo';
 import {
@@ -301,14 +302,18 @@ function BundleRow({ category, threads }: { category: Category; threads: ThreadS
   // The bundle row is a keyboard target like any thread row: arrow keys land
   // on it, and E / ⌫ / ⌘U act on the whole group.
   const rowId = bundleRowId(category);
-  const isSelected = useUi((s) => s.selectedThreadId === rowId);
+  const isSelected = useUi((s) => s.selectedThreadId === rowId || s.multiSelected.includes(rowId));
   const isHovered = useUi((s) => s.hoveredThreadId === rowId);
   const anyHovered = useUi((s) => s.hoveredThreadId !== null);
   const rowProps = {
     role: 'button',
     tabIndex: -1,
     'data-bundle': category,
-    onClick: () => setCategoryFocus(category),
+    onClick: (e: React.MouseEvent) => {
+      if (e.shiftKey) selectRangeTo(rowId);
+      else if (e.metaKey || e.ctrlKey) toggleInSelection(rowId);
+      else setCategoryFocus(category);
+    },
     onMouseMove: () => {
       if (!isHovered) hoverThread(rowId);
     },
@@ -658,14 +663,23 @@ function RowShell({
 }) {
   const selectThread = useUi((s) => s.selectThread);
   const hoverThread = useUi((s) => s.hoverThread);
-  const isSelected = useUi((s) => s.selectedThreadId === thread.id);
+  const isSelected = useUi(
+    (s) => s.selectedThreadId === thread.id || s.multiSelected.includes(thread.id),
+  );
   const isHovered = useUi((s) => s.hoveredThreadId === thread.id);
   const anyHovered = useUi((s) => s.hoveredThreadId !== null);
   return (
     <div
       role="button"
       tabIndex={-1}
-      onClick={() => selectThread(thread.id)}
+      aria-selected={isSelected}
+      onClick={(e) => {
+        // ⇧-click picks a range, ⌘-click adds/removes one row; triage keys
+        // then act on every picked email.
+        if (e.shiftKey) selectRangeTo(thread.id);
+        else if (e.metaKey || e.ctrlKey) toggleInSelection(thread.id);
+        else selectThread(thread.id);
+      }}
       // onMouseMove, not onMouseEnter: rows re-sorting under a stationary
       // cursor must not steal the keyboard target from the selected thread.
       onMouseMove={() => {

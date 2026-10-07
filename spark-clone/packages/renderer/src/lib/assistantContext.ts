@@ -4,7 +4,8 @@ import { useAssistant } from '../state/assistant';
 import { useKanban } from '../state/kanban';
 import { useUi } from '../state/store';
 import { api } from './api';
-import { getDraftText, replaceDraftBody } from './composerBridge';
+import { getComposerAccountId, getDraftText, replaceDraftBody } from './composerBridge';
+import { ensureStyleProfile, styleSystem } from './writingStyle';
 
 /** Actions the orb can run; the presentational menu lives in OrbCorner. */
 export type AssistantAction =
@@ -15,7 +16,34 @@ export type AssistantAction =
   | 'translate-thread'
   | 'reply-thread'
   | 'rewrite-composer'
+  | 'formal-composer'
+  | 'informal-composer'
+  | 'style-composer'
   | 'translate-composer';
+
+/** Composer rewrites: one prompt each, all returning just the new body. */
+const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: string }>> = {
+  'rewrite-composer': {
+    busy: 'Rewriting…',
+    prompt:
+      'Rewrite this email so it flows well and reads naturally. Keep the meaning and all ' +
+      'specifics. Return only the rewritten body.',
+  },
+  'formal-composer': {
+    busy: 'Making it formal…',
+    prompt:
+      'Rewrite this email in a formal, professional register: courteous greeting and sign-off, ' +
+      'no slang or contractions, complete sentences. Keep the meaning, every specific, and the ' +
+      "draft's language. Return only the rewritten body.",
+  },
+  'informal-composer': {
+    busy: 'Making it informal…',
+    prompt:
+      'Rewrite this email in a relaxed, friendly, informal register, the way you would write to a ' +
+      "colleague you know well. Keep the meaning, every specific, and the draft's language. " +
+      'Return only the rewritten body.',
+  },
+};
 
 export function stripHtml(html: string): string {
   const el = document.createElement('div');
@@ -69,7 +97,10 @@ function requireConfigured(): boolean {
 }
 
 /** Run an orb action: chat actions stream into the modal; compose actions draft. */
-export async function runAssistantAction(action: AssistantAction): Promise<void> {
+export async function runAssistantAction(
+  action: AssistantAction,
+  opts: { language?: string } = {},
+): Promise<void> {
   if (!requireConfigured()) return;
   const a = useAssistant.getState();
 
@@ -128,36 +159,51 @@ export async function runAssistantAction(action: AssistantAction): Promise<void>
       }
       return;
     }
-    case 'rewrite-composer': {
-      const draft = getDraftText();
-      if (!draft) return void toast('Write something first, then rewrite it.');
-      toast('Rewriting…');
-      try {
-        const out = await a.complete(
-          'Rewrite this email so it flows well and reads naturally. Keep the meaning and all ' +
-            'specifics. Return only the rewritten body.',
-          `Current draft:\n\n${draft}`,
+    case 'rewrite-composer':
+    case 'formal-composer':
+    case 'informal-composer': {
+      const { busy, prompt } = COMPOSER_PROMPTS[action]!;
+      await rewriteDraft(busy, () => a.complete(prompt, `Current draft:\n\n${getDraftText()}`));
+      return;
+    }
+    case 'style-composer': {
+      const accountId = getComposerAccountId();
+      if (!accountId) return;
+      await rewriteDraft('Rewriting in your style…', async () => {
+        const profile = await ensureStyleProfile(accountId, a.complete);
+        return a.complete(
+          "Rewrite this email draft so it reads as if the user wrote it themselves, following their " +
+            'writing style below (greeting, sign-off, tone, length, phrasing). Keep the meaning, ' +
+            "every specific, and the draft's language. Return only the rewritten body.\n\n" +
+            `Current draft:\n\n${getDraftText()}`,
+          styleSystem(profile),
         );
-        replaceDraftBody(out);
-      } catch (e) {
-        toast(e instanceof Error ? e.message : 'Could not rewrite the draft.');
-      }
+      });
       return;
     }
     case 'translate-composer': {
-      const draft = getDraftText();
-      if (!draft) return void toast('Write something first, then translate it.');
-      toast('Translating…');
-      try {
-        const out = await a.complete(
-          'Translate this email into English. Return only the translated body.',
-          `Current draft:\n\n${draft}`,
-        );
-        replaceDraftBody(out);
-      } catch (e) {
-        toast(e instanceof Error ? e.message : 'Could not translate the draft.');
-      }
+      const language = opts.language?.trim() || 'English';
+      await rewriteDraft(`Translating into ${language}…`, () =>
+        a.complete(
+          `Translate this email into ${language}. Keep the tone and formatting. Return only the ` +
+            'translated body.',
+          `Current draft:\n\n${getDraftText()}`,
+        ),
+      );
       return;
     }
+  }
+}
+
+/** Replace the composer draft with `run()`'s output, with toasts on either end. */
+async function rewriteDraft(busy: string, run: () => Promise<string>): Promise<void> {
+  if (!getDraftText()) return void toast('Write something first.');
+  const id = toast.loading(busy);
+  try {
+    const out = (await run()).trim();
+    if (out) replaceDraftBody(out);
+    toast.dismiss(id);
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'The assistant could not rewrite the draft.', { id });
   }
 }

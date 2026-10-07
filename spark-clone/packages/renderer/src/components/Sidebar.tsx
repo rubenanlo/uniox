@@ -20,14 +20,14 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { focusList } from '../lib/panels';
 import { cn, defaultAccountColor } from '../lib/utils';
-import { kanbanNewCount, useKanban } from '../state/kanban';
+import { kanbanNewCount, openSprintBoard, useKanban } from '../state/kanban';
 import { useAccounts, useSyncStatuses, useThreads } from '../state/queries';
 import { useUi } from '../state/store';
 import { AccountIcon } from './ui/AccountIcon';
 import { Keycaps } from './ui/Keycap';
 import { useShallow } from 'zustand/react/shallow';
 
-const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: string[] }[] = [
+export const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: string[] }[] = [
   { view: 'home', label: 'Home', icon: Home },
   { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'inbox', label: 'Inbox', icon: Inbox },
@@ -65,10 +65,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
   const unread = inboxThreads.reduce((n, t) => n + (t.unreadCount > 0 ? 1 : 0), 0);
   const newRequests = useKanban((s) => kanbanNewCount(s.board, s.seenAt));
   const kanbanConfigured = useKanban((s) => s.configured);
-  const kanbanMarkSeen = useKanban((s) => s.markSeen);
-  const kanbanRefresh = useKanban((s) => s.refresh);
   const kanbanOpen = useUi((s) => s.kanbanOpen);
-  const setKanbanOpen = useUi((s) => s.setKanbanOpen);
 
   // Home gets an auto-hiding sidebar: it sits off-canvas and slides in when the
   // pointer reaches the left edge or focus lands inside it (← from the list).
@@ -275,10 +272,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
             data-nav
             data-active={(view === 'home' && kanbanOpen) || undefined}
             onClick={(e) => {
-              setView('home');
-              setKanbanOpen(true);
-              kanbanMarkSeen();
-              kanbanRefresh();
+              openSprintBoard();
               (e.currentTarget as HTMLButtonElement).blur();
             }}
             title={sidebarExpanded ? undefined : 'Sprint board'}

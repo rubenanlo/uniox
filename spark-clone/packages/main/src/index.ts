@@ -166,7 +166,26 @@ function buildMenu(): void {
         { role: 'selectAll' },
       ],
     },
-    { role: 'viewMenu' },
+    {
+      // The stock viewMenu binds ⌘R to a page reload, which would wipe UI
+      // state; ⌘R refreshes mail and calendar instead (⇧⌘R still reloads).
+      label: 'View',
+      submenu: [
+        {
+          label: 'Refresh Mail && Calendar',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => mainWindow?.webContents.send('app:refresh'),
+        },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
     { role: 'windowMenu' },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -611,6 +630,7 @@ function registerIpc(): void {
         return { ok: saved > 0, path: dir, saved, failed };
       }
       case 'settings:set':
+      case 'sync:now':
       case 'templates:save':
       case 'templates:delete':
       case 'signatures:save':

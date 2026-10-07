@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { CONTEXT_SHORTCUTS } from '../actions/contextShortcuts';
 import { ACTIONS, comboLabel } from '../actions/registry';
 import { useEscapeClose } from '../hooks/useEscapeClose';
 import { useUi } from '../state/store';
@@ -22,7 +23,7 @@ export function ShortcutsSheet() {
         role="dialog"
         aria-label="Keyboard shortcuts"
         onMouseDown={(e) => e.stopPropagation()}
-        className="border-hairline bg-surface max-h-[80vh] w-[520px] max-w-[92vw] overflow-y-auto rounded-2xl border p-5 shadow-2xl"
+        className="border-hairline bg-surface max-h-[80vh] w-[680px] max-w-[92vw] overflow-y-auto rounded-2xl border p-5 shadow-2xl"
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-[14px] font-bold">Keyboard shortcuts</h2>
@@ -31,7 +32,8 @@ export function ShortcutsSheet() {
           </button>
         </div>
         <p className="text-ink-muted mb-4 text-[12px]">
-          Spark Desktop’s default map. Actions apply to the hovered email — the row with the cobalt rail.
+          Spark Desktop’s default map. Actions apply to the hovered email (the row with the cobalt
+          rail) or to every selected email.
         </p>
         <div className="grid grid-cols-2 gap-x-6">
           {sections.map((section) => (
@@ -50,6 +52,28 @@ export function ShortcutsSheet() {
                         <Keycaps keys={comboLabel(a.altCombo)} />
                       </>
                     )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+          {CONTEXT_SHORTCUTS.map(({ section, rows }) => (
+            <div key={section} className="mb-4">
+              <h3 className="text-ink-faint mb-1.5 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase">
+                {section}
+              </h3>
+              {rows.map((r) => (
+                <div key={r.label} className="flex items-center justify-between gap-2 py-1 text-[12.5px]">
+                  <span>{r.label}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {r.keys.map((k, i) => (
+                      <span key={i} className="flex items-center gap-1.5">
+                        {i > 0 && (
+                          <span className="text-ink-faint text-[10px]">{r.keys.length > 2 ? '/' : 'or'}</span>
+                        )}
+                        <Keycaps keys={k} />
+                      </span>
+                    ))}
                   </span>
                 </div>
               ))}

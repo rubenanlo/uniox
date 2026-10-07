@@ -24,8 +24,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Address, OutgoingAttachment, OutgoingDraft, Template } from '@app/shared';
 import { api } from '../../lib/api';
-import { registerComposerEditor, textToHtml } from '../../lib/composerBridge';
+import { registerComposerAccount, registerComposerEditor, textToHtml } from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
+import { inlineEmailStyles } from '../../lib/emailHtml';
 import { fmtWake } from '../../lib/schedule';
 import { cn, formatSize } from '../../lib/utils';
 import { useAccounts, useTemplates } from '../../state/queries';
@@ -270,6 +271,10 @@ export function Composer({ state }: { state: ComposerState }) {
     registerComposerEditor(editor ?? null);
     return () => registerComposerEditor(null);
   }, [editor]);
+  useEffect(() => {
+    registerComposerAccount(account?.id ?? null);
+    return () => registerComposerAccount(null);
+  }, [account?.id]);
 
   // An AI-drafted body (from an orb "Create a reply" / "Write" action) seeds
   // the editor once on open, before the signature is appended.
@@ -390,7 +395,7 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${editor.getHTML()}</div>${quotedHtml}`,
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
       text: editor.getText(),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,
@@ -407,7 +412,7 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${editor.getHTML()}</div>${quotedHtml}`,
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
       text: editor.getText(),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,

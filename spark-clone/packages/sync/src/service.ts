@@ -455,6 +455,18 @@ export class SyncService {
         }
         return body;
       }
+      case 'style:samples': {
+        const { accountId, limit } = args as { accountId: string; limit?: number };
+        const rows = this.db.recentSentWithBodies(accountId, Math.min(limit ?? 40, 100));
+        // Bodies are fetched lazily; queue the missing ones so a later rebuild
+        // has more to learn from.
+        for (const r of rows) {
+          if (!r.hasBody) this.enqueue({ type: 'fetch-body', accountId, messageId: r.messageId });
+        }
+        return rows
+          .filter((r) => r.hasBody)
+          .map(({ messageId, html, text }) => ({ messageId, html, text }));
+      }
       case 'search:threads': {
         const { query, limit, accountId } = args as {
           query: string;
@@ -531,6 +543,14 @@ export class SyncService {
       case 'settings:set': {
         const { key, value } = args as { key: string; value: unknown };
         this.db.setSetting(key, value);
+        return { ok: true };
+      }
+      case 'sync:now': {
+        // Manual refresh (⌘R): fire-and-forget; progress shows via sync-status
+        // and threads/calendar deltas, like any scheduled pass.
+        if (this.powerPaused) return { ok: false };
+        for (const sync of this.accounts.values()) sync.refreshNow();
+        void this.syncAllCalendars();
         return { ok: true };
       }
       case 'account:set-auth-type': {

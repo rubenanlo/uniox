@@ -1,10 +1,12 @@
 import type { GatekeeperPending } from '@app/shared';
 import { Check, ShieldQuestion, X } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { keysFor } from '../actions/registry';
 import { api } from '../lib/api';
+import { gatekeeperButton, focusList } from '../lib/panels';
 import { formatListDate, initials } from '../lib/utils';
 import { useGatekeeperPending } from '../state/queries';
-import { useUi } from '../state/store';
+import { navRowId, useUi } from '../state/store';
 import { Keycaps } from './ui/Keycap';
 import { Tip } from './ui/Tip';
 
@@ -19,22 +21,39 @@ function decide(
   void api.command('task:enqueue', { type: 'gatekeeper-decide', accountId, key, kind, decision });
 }
 
+type Choice = 'accept' | 'block';
+
+/** ↓ out of the cards: back to the first mail row. */
+function leaveGatekeeper() {
+  const ui = useUi.getState();
+  const first = ui.visibleRows[0];
+  if (first) ui.selectThread(navRowId(first), true);
+  focusList();
+}
+
+const choiceFocusCls =
+  'focus-visible:ring-accent focus-visible:ring-offset-surface focus-visible:ring-2 focus-visible:ring-offset-2';
+
 function SenderCard({
   pending,
   hue,
-  first,
+  index,
+  onKeyboardDecide,
 }: {
   pending: GatekeeperPending;
   hue: number;
-  /** ⌘T / ⌘B act on the first pending card only — keycaps show just there. */
-  first: boolean;
+  index: number;
+  /** A decision made from the keyboard: focus moves on to the next card. */
+  onKeyboardDecide(index: number): void;
 }) {
+  /** ⌘T / ⌘B act on the first pending card only — keycaps show just there. */
+  const first = index === 0;
   const selectThread = useUi((s) => s.selectThread);
   return (
     // Fixed height so the strip reads as one row of equal cards: the content
     // below varies (optional "N threads waiting", one or two snippet lines),
     // which otherwise left the cards ragged. Overflow is trimmed, not wrapped.
-    <article className="border-hairline bg-surface flex h-[178px] w-[228px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-3 shadow-sm">
+    <article className="border-hairline bg-surface has-[[data-gk-choice]:focus-visible]:border-accent flex h-[178px] w-[228px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border p-3 shadow-sm">
       {/* min-h-0 + flex-1 lets the text block give up space instead of pushing
           the decision buttons out of the fixed-height card. */}
       <button
@@ -84,8 +103,13 @@ function SenderCard({
           className="flex-1"
         >
           <button
-            onClick={() => decide(pending.key, pending.accountId, 'accepted')}
-            className="bg-accent flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-white hover:opacity-90"
+            data-gk-index={index}
+            data-gk-choice="accept"
+            onClick={(e) => {
+              decide(pending.key, pending.accountId, 'accepted');
+              if (e.detail === 0) onKeyboardDecide(index); // Enter / Space, not a click
+            }}
+            className={`${choiceFocusCls} bg-accent flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-white hover:opacity-90`}
           >
             <Check size={12} /> Accept
           </button>
@@ -97,8 +121,13 @@ function SenderCard({
           className="flex-1"
         >
           <button
-            onClick={() => decide(pending.key, pending.accountId, 'blocked')}
-            className="bg-sunken text-ink-muted hover:text-danger flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold"
+            data-gk-index={index}
+            data-gk-choice="block"
+            onClick={(e) => {
+              decide(pending.key, pending.accountId, 'blocked');
+              if (e.detail === 0) onKeyboardDecide(index);
+            }}
+            className={`${choiceFocusCls} bg-sunken text-ink-muted hover:text-danger focus-visible:text-danger flex w-full items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold`}
           >
             <X size={12} /> Block
           </button>
@@ -126,6 +155,10 @@ function SenderCard({
  * First-contact screening (report §2.4): each new sender is a card; the row
  * scrolls horizontally when several are waiting. Accept ⌘T / Block ⌘B act
  * on the first card.
+ *
+ * Keyboard: ↑ from the first mail row focuses the first card's Accept. ← / →
+ * walk Accept ⇄ Block and on across cards (→ on Block lands on the next card's
+ * Accept, ← on Accept on the previous card's Block); ↓ returns to the list.
  */
 export function GatekeeperCard() {
   const allPending = useGatekeeperPending();
@@ -135,7 +168,51 @@ export function GatekeeperCard() {
   const pending = accountFilter
     ? allPending.filter((p) => p.accountId === accountFilter)
     : allPending;
-  if (!pending.length) return null;
+  const shown = pending.slice(0, 25);
+
+  // After a keyboard decision the card leaves on the next refresh; keep focus
+  // in the strip on whichever card slides into that slot.
+  const refocusAt = useRef<number | null>(null);
+  useEffect(() => {
+    const at = refocusAt.current;
+    if (at === null) return;
+    const active = document.activeElement;
+    // Wait for the decided card to actually drop out before moving focus.
+    if (active?.closest('[data-gk-choice]')) return;
+    refocusAt.current = null;
+    if (active && active !== document.body) return; // the user already moved on
+    if (shown.length) gatekeeperButton(Math.min(at, shown.length - 1), 'accept')?.focus();
+    else leaveGatekeeper();
+  });
+
+  if (!shown.length) return null;
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-gk-choice]');
+    if (!btn || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    const index = Number(btn.dataset.gkIndex);
+    const choice = btn.dataset.gkChoice as Choice;
+    let next: HTMLButtonElement | null = null;
+    switch (e.key) {
+      case 'ArrowRight':
+        next = choice === 'accept' ? gatekeeperButton(index, 'block') : gatekeeperButton(index + 1, 'accept');
+        break;
+      case 'ArrowLeft':
+        next = choice === 'block' ? gatekeeperButton(index, 'accept') : gatekeeperButton(index - 1, 'block');
+        break;
+      case 'ArrowDown':
+        leaveGatekeeper();
+        break;
+      case 'ArrowUp':
+        break; // nothing above the strip; just don't let the list move
+      default:
+        return;
+    }
+    // Arrows here belong to the strip, not the global panel / list keymap.
+    e.preventDefault();
+    e.stopPropagation();
+    next?.focus();
+  };
 
   return (
     <section className="border-hairline border-b px-2 py-8" aria-label="Gatekeeper">
@@ -152,6 +229,7 @@ export function GatekeeperCard() {
         )}
       </header>
       <div
+        onKeyDown={onKeyDown}
         // overflow-x-auto forces the y-axis to auto as well, and the Accept/
         // Block tooltips (absolutely positioned inside the row) would count as
         // vertical overflow and summon a scrollbar — clip the y-axis instead;
@@ -160,12 +238,13 @@ export function GatekeeperCard() {
         role="list"
         aria-label="Senders awaiting a decision"
       >
-        {pending.slice(0, 25).map((p, i) => (
+        {shown.map((p, i) => (
           <SenderCard
             key={`${p.accountId}:${p.key}`}
             pending={p}
             hue={SENDER_HUES[i % SENDER_HUES.length]!}
-            first={i === 0}
+            index={i}
+            onKeyboardDecide={(at) => (refocusAt.current = at)}
           />
         ))}
       </div>

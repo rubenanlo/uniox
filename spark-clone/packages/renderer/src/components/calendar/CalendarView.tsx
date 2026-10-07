@@ -1,7 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronRight, PanelRight } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { rangeForView, viewTitle, type CalView } from '../../lib/calendarMonth';
-import { focusSidebar } from '../../lib/panels';
 import { cn } from '../../lib/utils';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useUi } from '../../state/store';
@@ -27,6 +26,16 @@ function inEditable(e: KeyboardEvent): boolean {
   );
 }
 
+/** Focus a native select and pop its option list (Chromium's showPicker). */
+function openSelect(select: HTMLSelectElement) {
+  select.focus();
+  try {
+    select.showPicker();
+  } catch {
+    // No user activation or unsupported: focus alone still lets ↑/↓ change it.
+  }
+}
+
 export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
   const s = useCalendar();
   const { view, anchor } = s;
@@ -50,6 +59,15 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
       if (meta && e.key === '/') {
         stop();
         st.toggleRightPane();
+        return;
+      }
+      // ⌥↓ opens the event form's Account dropdown from anywhere in the form.
+      if (e.altKey && !meta && e.key === 'ArrowDown') {
+        const select = document.querySelector<HTMLSelectElement>('select[data-account-select]');
+        if (select) {
+          stop();
+          openSelect(select);
+        }
         return;
       }
       if (meta || e.altKey || inEditable(e)) return;
@@ -87,16 +105,13 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
           stop();
           st.moveCursorBy(1);
           return;
-        case 'ArrowLeft': {
+        case 'ArrowLeft':
+          // Mirrors →: steps back a day and pages into past weeks/months. The
+          // mail rail stays reachable with / (never ← here, which used to
+          // reveal it at the range's left edge and block going back).
           stop();
-          const { start } = rangeForView(st.view, st.anchor);
-          // Month/week: at the left edge, reveal the mail rail. Day view's
-          // range is a single day (cursor === start always), so ← always
-          // pages back a day there.
-          if (st.view !== 'day' && st.cursor === start) focusSidebar();
-          else st.moveCursorBy(-1);
+          st.moveCursorBy(-1);
           return;
-        }
         case 'ArrowDown':
         case 'ArrowUp': {
           stop();

@@ -322,6 +322,27 @@ export class MailDb {
   }
 
   /**
+   * The account's most recent sent messages, newest first, with their cached
+   * bodies (`hasBody` false when not fetched yet) — raw material for the
+   * writing-style profile.
+   */
+  recentSentWithBodies(
+    accountId: string,
+    limit: number,
+  ): { messageId: string; html: string | null; text: string | null; hasBody: boolean }[] {
+    const rows = this.stmt(
+        `SELECT m.id, b.html, b.text, b.message_id IS NOT NULL AS has_body
+           FROM messages m
+           JOIN folders f ON f.id = m.folder_id
+           LEFT JOIN message_bodies b ON b.message_id = m.id
+         WHERE f.role = 'sent' AND m.account_id = ? AND m.draft = 0
+         ORDER BY m.date DESC LIMIT ?`,
+      )
+      .all(accountId, limit) as { id: string; html: string | null; text: string | null; has_body: number }[];
+    return rows.map((r) => ({ messageId: r.id, html: r.html, text: r.text, hasBody: !!r.has_body }));
+  }
+
+  /**
    * Remove an account and everything under it. Folders, threads, messages,
    * bodies, attachments, scheduled sends, and sender data cascade from the
    * account row; calendars carry no FK to accounts (the local calendar has a
