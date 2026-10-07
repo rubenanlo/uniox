@@ -15,6 +15,9 @@ const DAY_MS = 86_400_000;
 
 /** Weekdays slots are offered on (Date#getDay: 2 = Tue, 3 = Wed, 4 = Thu). */
 export const MEETING_WEEKDAYS = [2, 3, 4] as const;
+/** Working hours slots must fit inside, local time (9:30–17:30). */
+export const WORK_START_HOUR = 9.5;
+export const WORK_END_HOUR = 17.5;
 export const SLOT_COUNT = 3;
 export const DEFAULT_DURATION_MIN = 30;
 

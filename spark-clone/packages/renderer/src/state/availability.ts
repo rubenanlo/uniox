@@ -14,11 +14,12 @@ import {
   templateReply,
   type AvailabilityAsk,
   type Slot,
+  WORK_END_HOUR,
+  WORK_START_HOUR,
 } from '../lib/availability';
 import { stripHtml } from '../lib/assistantContext';
 import { insertDraftText } from '../lib/composerBridge';
 import { expandEvent } from '../lib/rrule';
-import { loadPresets } from '../lib/schedule';
 import { useAssistant } from './assistant';
 import { useUi } from './store';
 
@@ -87,7 +88,6 @@ export function detectAvailabilityAsk(message: MessageMeta): Promise<Availabilit
 
 /** Open times on the next Tue/Wed/Thu, within working hours, across every own calendar. */
 export async function suggestSlots(durationMin: number): Promise<Slot[]> {
-  const presets = await loadPresets((key) => api.query('settings:get', { key }));
   const days = nextMeetingDays(Date.now());
   const range = daysRange(days);
   const events = await api.query('calendar:busy', range);
@@ -95,8 +95,8 @@ export async function suggestSlots(durationMin: number): Promise<Slot[]> {
   return findFreeSlots({
     days,
     busy: busyIntervals(expanded),
-    startHour: presets.morningHour,
-    endHour: presets.eveningHour,
+    startHour: WORK_START_HOUR,
+    endHour: WORK_END_HOUR,
     durationMin,
   });
 }

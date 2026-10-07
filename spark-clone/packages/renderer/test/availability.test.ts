@@ -10,7 +10,8 @@ import {
   templateReply,
 } from '../src/lib/availability';
 
-const at = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min).getTime();
+const at = (y: number, m: number, d: number, h = 0, min = 0) =>
+  new Date(y, m - 1, d, h, min).getTime();
 
 function ev(start: number, end: number, over: Partial<CalendarEvent> = {}): CalendarEvent {
   return {
@@ -31,7 +32,9 @@ describe('looksLikeAvailabilityAsk', () => {
     expect(looksLikeAvailabilityAsk('What is your availability next week?')).toBe(true);
     expect(looksLikeAvailabilityAsk('Are you free for a quick call?')).toBe(true);
     expect(looksLikeAvailabilityAsk('Could we find a time to talk?')).toBe(true);
-    expect(looksLikeAvailabilityAsk('Let me know when you are free, what works for you')).toBe(true);
+    expect(looksLikeAvailabilityAsk('Let me know when you are free, what works for you')).toBe(
+      true,
+    );
     expect(looksLikeAvailabilityAsk('¿Cuándo puedes reunirte?')).toBe(true);
     expect(looksLikeAvailabilityAsk('Here is the invoice for September.')).toBe(false);
   });
@@ -40,9 +43,17 @@ describe('looksLikeAvailabilityAsk', () => {
 describe('nextMeetingDays', () => {
   it('returns the next Tue, Wed and Thu strictly after today', () => {
     // Wed 7 Oct 2026 → Thu 8, Tue 13, Wed 14
-    expect(nextMeetingDays(at(2026, 10, 7, 9))).toEqual([at(2026, 10, 8), at(2026, 10, 13), at(2026, 10, 14)]);
+    expect(nextMeetingDays(at(2026, 10, 7, 9))).toEqual([
+      at(2026, 10, 8),
+      at(2026, 10, 13),
+      at(2026, 10, 14),
+    ]);
     // Mon 5 Oct → Tue 6, Wed 7, Thu 8
-    expect(nextMeetingDays(at(2026, 10, 5, 23))).toEqual([at(2026, 10, 6), at(2026, 10, 7), at(2026, 10, 8)]);
+    expect(nextMeetingDays(at(2026, 10, 5, 23))).toEqual([
+      at(2026, 10, 6),
+      at(2026, 10, 7),
+      at(2026, 10, 8),
+    ]);
   });
 });
 
@@ -90,6 +101,26 @@ describe('findFreeSlots', () => {
     const busy = busyIntervals([ev(at(2026, 10, 13), at(2026, 10, 16))]);
     expect(findFreeSlots({ days, busy, startHour: 9, endHour: 18, durationMin: 30 })).toEqual([]);
   });
+
+  it('keeps slots inside 9:30–17:30', () => {
+    const slots = findFreeSlots({ days, busy: [], startHour: 9.5, endHour: 17.5, durationMin: 60 });
+    for (const s of slots) {
+      const start = new Date(s.startMs);
+      const end = new Date(s.endMs);
+      expect(start.getHours() * 60 + start.getMinutes()).toBeGreaterThanOrEqual(9 * 60 + 30);
+      expect(end.getHours() * 60 + end.getMinutes()).toBeLessThanOrEqual(17 * 60 + 30);
+    }
+    const full = busyIntervals([ev(at(2026, 10, 13, 9, 30), at(2026, 10, 13, 17))]);
+    const late = findFreeSlots({
+      days: [days[0]!],
+      busy: full,
+      startHour: 9.5,
+      endHour: 17.5,
+      durationMin: 30,
+      count: 1,
+    });
+    expect(new Date(late[0]!.startMs).getHours()).toBe(17);
+  });
 });
 
 describe('formatting', () => {
@@ -114,9 +145,13 @@ describe('formatting', () => {
 describe('parseAvailabilityAsk', () => {
   it('reads fenced JSON and clamps the duration', () => {
     expect(
-      parseAvailabilityAsk('```json\n{"asks": true, "durationMinutes": 50, "senderTimeZone": "America/New_York"}\n```'),
+      parseAvailabilityAsk(
+        '```json\n{"asks": true, "durationMinutes": 50, "senderTimeZone": "America/New_York"}\n```',
+      ),
     ).toEqual({ asks: true, durationMinutes: 45, senderTimeZone: 'America/New_York' });
-    expect(parseAvailabilityAsk('{"asks": true, "durationMinutes": 999, "senderTimeZone": "Mars/Base"}')).toEqual({
+    expect(
+      parseAvailabilityAsk('{"asks": true, "durationMinutes": 999, "senderTimeZone": "Mars/Base"}'),
+    ).toEqual({
       asks: true,
       durationMinutes: 30,
       senderTimeZone: null,

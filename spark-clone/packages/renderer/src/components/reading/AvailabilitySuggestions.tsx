@@ -44,7 +44,7 @@ function InfoCard({ anchor, onClose }: { anchor: DOMRect; onClose: () => void })
       <p className="mb-1.5 font-semibold">Suggested times</p>
       <p className="text-ink-muted mb-2">
         This email asks when you’re free, so Uniox picked open times on the next Tuesday, Wednesday and
-        Thursday, inside your working hours from Settings › Scheduling. It checks every calendar on all your
+        Thursday, between 9:30 and 17:30. It checks every calendar on all your
         accounts, but not colleagues’ calendars you subscribed to. Nothing is added to your calendar.
       </p>
       <ul className="text-ink-muted space-y-1">
