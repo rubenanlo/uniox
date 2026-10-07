@@ -1,0 +1,51 @@
+appId: com.sparkclone.mail
+productName: Uniox
+copyright: Copyright © 2026
+icon: build/icon.png
+
+directories:
+  output: release
+  buildResources: build
+
+# Compiled by electron-vite; native module kept outside the asar archive.
+files:
+  - out/**/*
+  - package.json
+  - node_modules/better-sqlite3/**/*
+
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+
+# Rebuild better-sqlite3 for the packaged Electron ABI.
+npmRebuild: true
+buildDependenciesFromSource: false
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  # Ad-hoc signing (no identity/cert needed) gives the app a code signature
+  # with its own bundle identifier, which macOS requires to register with the
+  # notification centre — without it, alerts fall back to an osascript banner
+  # shown under "Script Editor" instead of the app's own icon. electron-builder
+  # 26 skips signing entirely when no identity is set (leaving only the
+  # linker-signed placeholder), so the afterSign hook below ad-hoc signs the
+  # bundle itself. Provide a Developer ID via CSC_LINK / CSC_KEY_PASSWORD to
+  # sign+notarize for distribution instead; the hook steps aside then.
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+afterSign: build/adhoc-sign.cjs
+
+dmg:
+  title: '${productName} ${version}'
+
+win:
+  target:
+    - nsis
+
+linux:
+  target:
+    - AppImage
+  category: Office

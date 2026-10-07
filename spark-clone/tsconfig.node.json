@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node", "electron-vite/node"]
+  },
+  "include": [
+    "packages/main/src",
+    "packages/sync/src",
+    "packages/db/src",
+    "packages/shared/src",
+    "dev",
+    "electron.vite.config.ts"
+  ]
+}

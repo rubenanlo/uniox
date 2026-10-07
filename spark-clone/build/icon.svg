@@ -1,0 +1,35 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="512" cy="420" r="640">
+      <stop offset="0" stop-color="#14141C"/>
+      <stop offset="0.55" stop-color="#0E0E15"/>
+      <stop offset="1" stop-color="#09090F"/>
+    </radialGradient>
+    <linearGradient id="line" gradientUnits="userSpaceOnUse" x1="250" y1="235" x2="760" y2="790">
+      <stop offset="0" stop-color="#30E0B6"/>
+      <stop offset="0.42" stop-color="#4E9BEA"/>
+      <stop offset="1" stop-color="#9D6BFF"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <clipPath id="plate">
+      <rect x="90" y="90" width="844" height="844" rx="190"/>
+    </clipPath>
+  </defs>
+
+  <!-- squircle plate -->
+  <rect x="90" y="90" width="844" height="844" rx="190" fill="url(#bg)"/>
+
+  <g clip-path="url(#plate)">
+    <!-- lit-tube glow for the back card -->
+    <rect x="362" y="378" width="393" height="405" rx="96" fill="none" stroke="url(#line)" stroke-width="52" opacity="0.26" filter="url(#glow)"/>
+    <!-- back card -->
+    <rect x="362" y="378" width="393" height="405" rx="96" fill="none" stroke="url(#line)" stroke-width="52"/>
+
+    <!-- front card occludes the back one, same as the light icon -->
+    <rect x="247" y="232" width="411" height="417" rx="96" fill="url(#bg)"/>
+    <rect x="247" y="232" width="411" height="417" rx="96" fill="none" stroke="url(#line)" stroke-width="52" opacity="0.26" filter="url(#glow)"/>
+    <rect x="247" y="232" width="411" height="417" rx="96" fill="none" stroke="url(#line)" stroke-width="52"/>
+  </g>
+</svg>
