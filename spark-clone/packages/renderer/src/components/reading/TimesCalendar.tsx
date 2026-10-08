@@ -146,11 +146,17 @@ export function TimesCalendar({
       Math.min(rows - 1, Math.floor((e.clientY - col.getBoundingClientRect().top) / ROW)),
     );
 
-  const startDrag = (e: React.MouseEvent<HTMLDivElement>, day: number) => {
+  const startDrag = (e: React.MouseEvent<HTMLDivElement>, day: number, off: boolean) => {
     if (e.button !== 0) return;
     e.preventDefault();
     const col = e.currentTarget;
     const a = rowAt(e, col);
+    // Weekends are off: a click there can only remove a pick made earlier.
+    if (off) {
+      const ms = at(day, a);
+      if (picks.some((p) => p.startMs <= ms && ms < p.endMs)) onChange(removePickAt(picks, ms));
+      return;
+    }
     setDrag({ day, a, b: a });
     const move = (ev: MouseEvent) => setDrag({ day, a, b: rowAt(ev, col) });
     const up = (ev: MouseEvent) => {
@@ -286,7 +292,7 @@ export function TimesCalendar({
               const startMs = at(day, r);
               return {
                 startMs,
-                past: startMs < now,
+                past: startMs < now || weekend,
                 ...cellStatus({ startMs, endMs: startMs + STEP }, ctx),
               };
             });
@@ -321,17 +327,24 @@ export function TimesCalendar({
                   >
                     {date.getDate()}
                   </span>
-                  {chosen.has(day) && !isToday && (
+                  {chosen.has(day) && !isToday && !weekend && (
                     <span className="bg-accent h-1 w-1 rounded-full" aria-hidden />
                   )}
                 </div>
                 <div
                   className={cn(
-                    'border-hairline relative cursor-pointer border-l',
-                    weekend && 'bg-sunken/40',
+                    'border-hairline relative border-l',
+                    weekend ? 'bg-sunken/50 cursor-not-allowed' : 'cursor-pointer',
                   )}
-                  style={{ height: bodyHeight }}
-                  onMouseDown={(e) => startDrag(e, day)}
+                  style={{
+                    height: bodyHeight,
+                    backgroundImage: weekend
+                      ? 'repeating-linear-gradient(135deg, transparent 0 4px, rgb(128 128 128 / 0.12) 4px 6px)'
+                      : undefined,
+                  }}
+                  aria-disabled={weekend || undefined}
+                  title={weekend ? 'Weekends are off' : undefined}
+                  onMouseDown={(e) => startDrag(e, day, weekend)}
                 >
                   {/* Hour lines. */}
                   {Array.from({ length: hi - lo }, (_, i) => (
@@ -365,32 +378,38 @@ export function TimesCalendar({
                     />
                   ))}
                   {/* The user's own meetings. */}
-                  {mine.map((b) => (
-                    <div
-                      key={b.startMs}
-                      className="border-hairline bg-surface/70 text-ink-muted absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[10px] leading-tight"
-                      style={{
-                        top: y(b.startMs) + 1,
-                        height: Math.max(ROW - 2, y(b.endMs) - y(b.startMs) - 2),
-                      }}
-                    >
-                      <span className="text-ink font-medium">Busy</span>
-                      {y(b.endMs) - y(b.startMs) > ROW * 1.5 && (
-                        <span className="block tabular-nums">{hm(b.startMs)}</span>
-                      )}
-                    </div>
-                  ))}
+                  {!weekend &&
+                    mine.map((b) => (
+                      <div
+                        key={b.startMs}
+                        className="border-hairline bg-surface/70 text-ink-muted absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[10px] leading-tight"
+                        style={{
+                          top: y(b.startMs) + 1,
+                          height: Math.max(ROW - 2, y(b.endMs) - y(b.startMs) - 2),
+                        }}
+                      >
+                        <span className="text-ink font-medium">Busy</span>
+                        {y(b.endMs) - y(b.startMs) > ROW * 1.5 && (
+                          <span className="block tabular-nums">{hm(b.startMs)}</span>
+                        )}
+                      </div>
+                    ))}
                   {/* Hover reasons, per half hour. */}
-                  {cells.map((c, r) => (
-                    <div
-                      key={r}
-                      className="absolute inset-x-0"
-                      style={{ top: r * ROW, height: ROW }}
-                      title={`${hm(c.startMs)} · ${
-                        c.past ? 'already passed' : c.ok ? 'everyone is free' : c.issues.join(', ')
-                      }`}
-                    />
-                  ))}
+                  {!weekend &&
+                    cells.map((c, r) => (
+                      <div
+                        key={r}
+                        className="absolute inset-x-0"
+                        style={{ top: r * ROW, height: ROW }}
+                        title={`${hm(c.startMs)} · ${
+                          c.past
+                            ? 'already passed'
+                            : c.ok
+                              ? 'everyone is free'
+                              : c.issues.join(', ')
+                        }`}
+                      />
+                    ))}
                   {/* Picked times. */}
                   {picks
                     .filter((p) => p.startMs >= day && p.startMs < day + DAY_MS)
