@@ -45,7 +45,9 @@ function insertAtCaret(box: HTMLElement, html: string) {
 /**
  * WYSIWYG signature box: paste a signature copied from another mail client,
  * a document or a web page and it keeps its layout, fonts, colors, links and
- * images. It sits on a white card because that is how recipients see it.
+ * images. It follows the app theme: in dark mode the box is inverted (see
+ * app.css) so dark signature text stays readable while colors and images
+ * keep their look; what is saved is the signature exactly as pasted.
  * Uncontrolled: `initialHtml` seeds it once; edits report through onChange.
  */
 export function SignatureEditor({
@@ -81,7 +83,7 @@ export function SignatureEditor({
   };
 
   return (
-    <div className="relative">
+    <div className="border-hairline focus-within:ring-accent relative overflow-hidden rounded-lg border focus-within:ring-2">
       <div
         ref={ref}
         role="textbox"
@@ -110,10 +112,10 @@ export function SignatureEditor({
           }
           void insert(e.dataTransfer);
         }}
-        className="signature-editor border-hairline focus:ring-accent min-h-[96px] overflow-x-auto rounded-lg border bg-white px-3 py-2.5 text-[14px] leading-[1.45] text-[#1c1c1f] focus:ring-2 focus:outline-none"
+        className="signature-editor min-h-[96px] overflow-x-auto px-3 py-2.5 text-[14px] leading-[1.45] focus:outline-none"
       />
       {busy && (
-        <div className="text-ink-muted absolute right-2 bottom-2 rounded-md bg-white/90 px-2 py-0.5 text-[11px]">
+        <div className="text-ink-muted absolute right-2 bottom-2 rounded-md bg-surface/90 px-2 py-0.5 text-[11px]">
           Copying images…
         </div>
       )}
