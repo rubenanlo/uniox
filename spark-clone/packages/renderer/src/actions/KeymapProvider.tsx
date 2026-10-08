@@ -31,6 +31,8 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
       const editable = inEditableTarget(e);
       if (editable && !(e.metaKey || e.ctrlKey)) return;
       if (ui.composer && !(e.metaKey || e.ctrlKey)) return;
+      // Settings owns plain keys (arrows walk its sections); ⌘-combos still pass.
+      if (ui.settingsOpen && !(e.metaKey || e.ctrlKey)) return;
       if (ui.commandOpen) return; // cmdk owns the keyboard
       // Enter must keep activating focused buttons/links natively.
       if (e.key === 'Enter' && (e.target as HTMLElement | null)?.closest?.('button, a')) return;

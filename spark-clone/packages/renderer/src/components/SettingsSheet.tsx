@@ -1316,18 +1316,70 @@ function TemplatesTab() {
   );
 }
 
+/** Focus a section in the rail; with no id, the current one. */
+function focusRail(id?: Tab) {
+  const sel = id ? `[data-settings-section="${id}"]` : '[data-settings-section][aria-current]';
+  (document.querySelector(sel) as HTMLElement | null)?.focus();
+}
+
+function contentFocusables(): HTMLElement[] {
+  const root = document.querySelector('[data-settings-content]');
+  if (!root) return [];
+  return [
+    ...root.querySelectorAll<HTMLElement>(
+      'button, a[href], input, select, textarea, [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter((el) => !el.matches(':disabled') && el.offsetParent !== null);
+}
+
+/** Controls whose own behavior needs the arrow keys. */
+function ownsArrows(el: HTMLElement | null): boolean {
+  if (!el) return false;
+  if (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return true;
+  if (el.tagName !== 'INPUT') return false;
+  const type = (el as HTMLInputElement).type;
+  return !['checkbox', 'button', 'submit', 'reset', 'color', 'file'].includes(type);
+}
+
 export function SettingsSheet() {
   const { settingsOpen, setSettingsOpen } = useUi(
     useShallow((s) => ({ settingsOpen: s.settingsOpen, setSettingsOpen: s.setSettingsOpen })),
   );
   const [tab, setTab] = useState<Tab>('appearance');
   useEscapeClose(settingsOpen, () => setSettingsOpen(false));
+
+  // On open, put focus on the current section so arrows work right away.
+  useEffect(() => {
+    if (settingsOpen) focusRail();
+  }, [settingsOpen]);
+
+  // Arrows pressed while focus has fallen out of the dialog (e.g. after a
+  // click on blank space) land back on the section rail.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.key.startsWith('Arrow')) return;
+      if ((e.target as HTMLElement | null)?.closest?.('[data-settings-dialog]')) return;
+      e.preventDefault();
+      focusRail();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settingsOpen]);
+
   if (!settingsOpen) return null;
 
   const section = SECTIONS.find((s) => s.id === tab)!;
 
-  // ↑/↓ walk the section rail, matching the app's mailbox sidebar.
+  // ↑/↓ walk the section rail, matching the app's mailbox sidebar;
+  // → / ↩ step into the section's content.
   const onRailKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight' || e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      contentFocusables()[0]?.focus();
+      return;
+    }
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     e.stopPropagation();
@@ -1335,7 +1387,27 @@ export function SettingsSheet() {
     const next =
       SECTIONS[Math.min(SECTIONS.length - 1, Math.max(0, idx + (e.key === 'ArrowDown' ? 1 : -1)))]!;
     setTab(next.id);
-    (document.querySelector(`[data-settings-section="${next.id}"]`) as HTMLElement | null)?.focus();
+    focusRail(next.id);
+  };
+
+  // Inside a section, ↑/↓ step between controls and ← returns to the rail.
+  // Fields that use arrows themselves (text, selects, sliders) keep them.
+  const onContentKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'ArrowLeft') return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || ownsArrows(e.target as HTMLElement)) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'ArrowLeft') {
+      focusRail(tab);
+      return;
+    }
+    const items = contentFocusables();
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    const next = items[idx + (e.key === 'ArrowDown' ? 1 : -1)];
+    next?.focus();
+    next?.scrollIntoView({ block: 'nearest' });
   };
 
   return (
@@ -1346,6 +1418,7 @@ export function SettingsSheet() {
       <div
         role="dialog"
         aria-label="Settings"
+        data-settings-dialog
         onMouseDown={(e) => e.stopPropagation()}
         className="border-hairline bg-surface flex h-[440px] max-h-[85vh] w-[640px] max-w-[92vw] overflow-hidden rounded-2xl border shadow-2xl"
       >
@@ -1389,7 +1462,11 @@ export function SettingsSheet() {
               <X size={15} />
             </button>
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div
+            data-settings-content
+            onKeyDown={onContentKeyDown}
+            className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+          >
             {tab === 'appearance' && <AppearanceTab />}
             {tab === 'accounts' && <AccountsTab />}
             {tab === 'priority' && <PriorityTab />}
