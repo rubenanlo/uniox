@@ -32,6 +32,7 @@ import {
 } from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
+import { normalizeSignatureHtml, signatureText } from '../../lib/signature';
 import { fmtWake } from '../../lib/schedule';
 import { cn, formatSize } from '../../lib/utils';
 import { cancelAvailabilityCheck, useComposerTimes } from '../../state/availability';
@@ -42,6 +43,7 @@ import { SchedulePicker } from '../SchedulePicker';
 import { Keycaps } from '../ui/Keycap';
 import { useTimesCalendarOpen } from '../reading/TimesCalendar';
 import { AvailabilityChecking } from './AvailabilityChecking';
+import { SignaturePreview } from './SignaturePreview';
 import { TimesHoverBar } from './TimesHoverBar';
 
 const UNDO_SEND_MS = 5000;
@@ -171,6 +173,11 @@ function replySubject(mode: ComposerState['mode'], subject: string): string {
   if (mode === 'forward') return `Fwd: ${bare}`;
   if (mode === 'reply' || mode === 'reply-all') return `Re: ${bare}`;
   return subject;
+}
+
+/** The signature as sent: the standard "-- " delimiter, then the pasted HTML. */
+function signatureBlock(html: string): string {
+  return html ? `<br><div class="uniox-signature">--&nbsp;<br>${html}</div>` : '';
 }
 
 export function Composer({ state }: { state: ComposerState }) {
@@ -333,20 +340,21 @@ export function Composer({ state }: { state: ComposerState }) {
     if (state.mode === 'new') toRef.current?.focus();
   }, [state.mode]);
 
-  // Per-account signature (Settings → Signatures), appended once on open.
-  // Skipped when editing a draft: its body already carries any signature.
-  const signatureApplied = useRef(false);
+  // Per-account signature (Settings → Signatures), shown under the message
+  // and following the From account. It stays outside the editor so pasted
+  // layouts (tables, fonts, images) survive. Skipped when editing a draft:
+  // its body already carries any signature.
+  const [signatures, setSignatures] = useState<Record<string, string>>({});
+  const [signatureRemoved, setSignatureRemoved] = useState(false);
   useEffect(() => {
-    if (!editor || signatureApplied.current || state.mode === 'edit-draft') return;
+    if (state.mode === 'edit-draft') return;
     void api.query('signatures:list', undefined).then((sigs) => {
-      const sig = sigs.find((s) => s.id === state.accountId);
-      if (sig?.bodyHtml.trim() && !signatureApplied.current) {
-        signatureApplied.current = true;
-        editor.commands.insertContentAt(editor.state.doc.content.size, `<p>—</p>${sig.bodyHtml}`);
-        editor.commands.focus('start');
-      }
+      const map: Record<string, string> = {};
+      for (const s of sigs) map[s.id] = normalizeSignatureHtml(s.bodyHtml);
+      setSignatures(map);
     });
-  }, [editor, state.accountId]);
+  }, [state.mode]);
+  const signatureHtml = (!signatureRemoved && account && signatures[account.id]) || '';
 
   /**
    * Template semantics (report §2.5): {name} resolves from the To field at
@@ -413,13 +421,13 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
-      text: editor.getText(),
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${signatureBlock(signatureHtml)}${quotedHtml}`,
+      text: editor.getText() + (signatureHtml ? `\n\n-- \n${signatureText(signatureHtml)}` : ''),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,
       attachments,
     };
-  }, [account, editor, to, cc, bcc, subject, quotedHtml, attachments, state]);
+  }, [account, editor, to, cc, bcc, subject, quotedHtml, signatureHtml, attachments, state]);
 
   /** Like buildDraft, but without send validation — drafts may be incomplete. */
   const buildLooseDraft = useCallback((): OutgoingDraft | null => {
@@ -430,13 +438,13 @@ export function Composer({ state }: { state: ComposerState }) {
       cc: parseAddresses(cc),
       bcc: parseAddresses(bcc),
       subject: subject || '(no subject)',
-      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${quotedHtml}`,
-      text: editor.getText(),
+      html: `<div>${inlineEmailStyles(editor.getHTML())}</div>${signatureBlock(signatureHtml)}${quotedHtml}`,
+      text: editor.getText() + (signatureHtml ? `\n\n-- \n${signatureText(signatureHtml)}` : ''),
       inReplyToMessageId: state.mode !== 'new' && state.mode !== 'forward' ? state.replyTo?.id : undefined,
       deleteDraftMessageId: state.mode === 'edit-draft' ? state.draftMessage?.id : undefined,
       attachments,
     };
-  }, [account, editor, to, cc, bcc, subject, quotedHtml, attachments, state]);
+  }, [account, editor, to, cc, bcc, subject, quotedHtml, signatureHtml, attachments, state]);
 
   const saveAsDraft = useCallback(() => {
     const draft = buildLooseDraft();
@@ -748,6 +756,9 @@ export function Composer({ state }: { state: ComposerState }) {
             </BubbleMenu>
           )}
           <EditorContent editor={editor} />
+          {signatureHtml && (
+            <SignaturePreview html={signatureHtml} onRemove={() => setSignatureRemoved(true)} />
+          )}
           {quotedHtml && (
             <div className="text-ink-faint border-hairline mt-2 border-t pt-2 text-[11.5px]">
               Quoted message included ·{' '}

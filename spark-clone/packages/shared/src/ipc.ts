@@ -133,6 +133,14 @@ export interface Commands {
   'templates:save': { args: Template; result: { ok: boolean } };
   'templates:delete': { args: { id: string }; result: { ok: boolean } };
   'signatures:save': { args: Signature & { accountId?: string }; result: { ok: boolean } };
+  /**
+   * Download a remote image pasted into a signature (main process) so it is
+   * stored with the signature and sent inline instead of hotlinked.
+   */
+  'signature:fetch-image': {
+    args: { url: string };
+    result: { ok: boolean; dataUri?: string; error?: string };
+  };
   /** Quick Look (macOS) / default-app preview of a downloaded attachment. */
   'attachment:preview': { args: { localPath: string }; result: { ok: boolean } };
   /** Save dialog defaulting to ~/Downloads/<filename>, then copy the file. */

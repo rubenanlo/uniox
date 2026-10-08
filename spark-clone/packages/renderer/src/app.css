@@ -453,3 +453,33 @@ body {
     transform: none !important;
   }
 }
+
+/* Settings → Signatures: pasted signatures render as recipients see them
+   in light mode. In dark mode the whole box is inverted rather than
+   restyled, so text colors set inline by the pasted signature stay legible
+   (dark text turns light, hues are kept by the 180° rotation) without
+   touching the saved HTML. Images are inverted back. The light background
+   is the inverse of the dark surface (#1e1e21). */
+.signature-editor {
+  background: #ffffff;
+  color: #1c1c1f;
+}
+.dark .signature-editor {
+  background: #e1e1de;
+  filter: invert(1) hue-rotate(180deg);
+}
+.dark .signature-editor img {
+  filter: invert(1) hue-rotate(180deg);
+}
+.signature-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #a3a3ab;
+  pointer-events: none;
+}
+.signature-editor img {
+  max-width: 100%;
+  height: auto;
+}
+.signature-editor a {
+  color: #1a56c8;
+}

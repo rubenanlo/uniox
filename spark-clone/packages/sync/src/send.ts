@@ -1,7 +1,47 @@
+import { createHash } from 'node:crypto';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import nodemailer from 'nodemailer';
 import type { MailDb } from '@app/db';
 import type { Account, Address, OutgoingDraft } from '@app/shared';
+
+const DATA_IMG =
+  /(<img\b[^>]*?\bsrc\s*=\s*)(["'])data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)\2/gi;
+
+export interface InlineImage {
+  cid: string;
+  contentType: string;
+  filename: string;
+  content: Buffer;
+}
+
+/**
+ * Pasted signature images are stored as data: URLs, which Gmail and Outlook
+ * refuse to display. Send them the way mail clients do instead: as inline
+ * attachments referenced by cid:, identical images sharing one part.
+ */
+export function inlineDataImages(html: string): { html: string; images: InlineImage[] } {
+  const byHash = new Map<string, InlineImage>();
+  const out = html.replace(
+    DATA_IMG,
+    (_m, head: string, quote: string, type: string, b64: string) => {
+      const content = Buffer.from(b64.replace(/\s+/g, ''), 'base64');
+      const hash = createHash('sha1').update(content).digest('hex').slice(0, 16);
+      let img = byHash.get(hash);
+      if (!img) {
+        const ext = type.split('/')[1]!.replace('svg+xml', 'svg').replace('jpeg', 'jpg');
+        img = {
+          cid: `sig-${hash}@uniox`,
+          contentType: type,
+          filename: `image-${byHash.size + 1}.${ext}`,
+          content,
+        };
+        byHash.set(hash, img);
+      }
+      return `${head}${quote}cid:${img.cid}${quote}`;
+    },
+  );
+  return { html: out, images: [...byHash.values()] };
+}
 
 const fmt = (a: Address) => (a.name ? `"${a.name.replace(/"/g, '')}" <${a.email}>` : a.email);
 
@@ -26,6 +66,7 @@ export async function composeRaw(
     }
   }
 
+  const inline = inlineDataImages(draft.html);
   const composer = new MailComposer({
     from: fmt({ name: account.displayName || undefined, email: account.email }),
     to: draft.to.map(fmt).join(', '),
@@ -33,14 +74,23 @@ export async function composeRaw(
     bcc: draft.bcc.length ? draft.bcc.map(fmt).join(', ') : undefined,
     subject: draft.subject,
     text: draft.text,
-    html: draft.html,
+    html: inline.html,
     inReplyTo,
     references,
-    attachments: draft.attachments.map((a) => ({
-      filename: a.filename,
-      contentType: a.contentType,
-      content: Buffer.from(a.dataBase64, 'base64'),
-    })),
+    attachments: [
+      ...draft.attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        content: Buffer.from(a.dataBase64, 'base64'),
+      })),
+      ...inline.images.map((i) => ({
+        filename: i.filename,
+        contentType: i.contentType,
+        content: i.content,
+        cid: i.cid,
+        contentDisposition: 'inline' as const,
+      })),
+    ],
   });
   return new Promise((resolve, reject) => {
     composer.compile().build((err, message) => (err ? reject(err) : resolve(message)));
