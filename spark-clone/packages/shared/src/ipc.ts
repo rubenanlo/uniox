@@ -6,6 +6,7 @@ import type {
   GatekeeperPending,
   MessageBodyPayload,
   MessageMeta,
+  PersonFreeBusy,
   ScheduledSend,
   Signature,
   SyncStatus,
@@ -68,6 +69,11 @@ export interface Queries {
    * (Free) events are left out. Local recurring series come back unexpanded.
    */
   'calendar:busy': { args: { startMs: number; endMs: number }; result: CalendarEvent[] };
+  /** Other people's free/busy and zone, keyed by lowercased email. */
+  'calendar:freebusy': {
+    args: { emails: string[]; startMs: number; endMs: number };
+    result: Record<string, PersonFreeBusy>;
+  };
 }
 
 export type QueryChannel = keyof Queries;

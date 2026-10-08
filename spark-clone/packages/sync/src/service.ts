@@ -11,6 +11,7 @@ import type {
   FolderRole,
   MessageMeta,
   OutgoingDraft,
+  PersonFreeBusy,
   Signature,
   SyncToMain,
   Task,
@@ -30,11 +31,13 @@ import {
 } from './folders';
 import {
   calendarRowId,
+  getCalendarTimeZone,
   listGoogleCalendars,
   listGoogleEvents,
   listGoogleEventsChanged,
   mapGoogleEvent,
   patchGoogleEvent,
+  queryFreeBusy,
   subscribeGoogleCalendar,
   SyncTokenExpiredError,
   unsubscribeGoogleCalendar,
@@ -45,6 +48,9 @@ import { fetchGoogleSenderName } from './google-profile';
 import { Scheduler } from './scheduler';
 import { composeRaw, smtpSend } from './send';
 import { newId, withTimeout } from './util';
+
+/** People's calendar zones rarely change; look each up once per run. */
+const zoneCache = new Map<string, string | null>();
 
 const MAX_TASK_ATTEMPTS = 3;
 const TASK_TIMEOUT_MS = 120_000;
@@ -654,6 +660,41 @@ export class SyncService {
       case 'calendar:busy': {
         const { startMs, endMs } = args as { startMs: number; endMs: number };
         return this.db.listBusyEvents(startMs, endMs);
+      }
+      case 'calendar:freebusy': {
+        // Ask every Google account: a coworker's free/busy is visible only
+        // from the account in their Workspace (or one they shared with).
+        const { emails, startMs, endMs } = args as {
+          emails: string[];
+          startMs: number;
+          endMs: number;
+        };
+        const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+        const out: Record<string, PersonFreeBusy> = {};
+        for (const e of wanted) out[e] = { busy: null, timeZone: zoneCache.get(e) ?? null };
+        const zoneUnknown = wanted.filter((e) => !zoneCache.has(e));
+        let failed = false;
+        for (const account of this.db.listAccounts()) {
+          if (account.authType !== 'oauth-google') continue;
+          const needBusy = wanted.filter((e) => !out[e]!.busy);
+          const needZone = zoneUnknown.filter((e) => !out[e]!.timeZone);
+          if (!needBusy.length && !needZone.length) break;
+          try {
+            const token = await this.freshSecret(account.id);
+            if (needBusy.length) {
+              const busy = await queryFreeBusy(token, needBusy, startMs, endMs);
+              for (const e of needBusy) if (busy[e]) out[e]!.busy = busy[e]!;
+            }
+            for (const e of needZone) out[e]!.timeZone = await getCalendarTimeZone(token, e);
+          } catch {
+            // Offline or token trouble on this account: try the next one.
+            failed = true;
+          }
+        }
+        // Remember zones, including "can't see it", so reopening costs nothing.
+        for (const e of zoneUnknown)
+          if (!failed || out[e]!.timeZone) zoneCache.set(e, out[e]!.timeZone);
+        return out;
       }
       case 'calendar:list': {
         for (const a of this.db.listAccounts()) {

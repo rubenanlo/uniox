@@ -24,7 +24,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Address, OutgoingAttachment, OutgoingDraft, Template } from '@app/shared';
 import { api } from '../../lib/api';
-import { registerComposerAccount, registerComposerEditor, textToHtml } from '../../lib/composerBridge';
+import {
+  registerComposerAccount,
+  registerComposerEditor,
+  registerComposerRecipients,
+  textToHtml,
+} from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
 import { fmtWake } from '../../lib/schedule';
@@ -275,6 +280,11 @@ export function Composer({ state }: { state: ComposerState }) {
     registerComposerAccount(account?.id ?? null);
     return () => registerComposerAccount(null);
   }, [account?.id]);
+  // ⌘⇧A offers times that suit everyone in To.
+  useEffect(() => {
+    registerComposerRecipients(parseAddresses(to));
+    return () => registerComposerRecipients([]);
+  }, [to]);
 
   // An AI-drafted body (from an orb "Create a reply" / "Write" action) seeds
   // the editor once on open, before the signature is appended.

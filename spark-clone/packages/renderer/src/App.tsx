@@ -19,6 +19,7 @@ import { EmptyReadingPane, ThreadView } from './components/reading/ThreadView';
 import { SchedulePicker } from './components/SchedulePicker';
 import { SettingsSheet } from './components/SettingsSheet';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { TimeZonePrompt } from './components/reading/TimeZonePrompt';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
@@ -406,6 +407,7 @@ export default function App() {
         <ShortcutsSheet />
         <SettingsSheet />
         <ThreadSchedulePicker />
+        <TimeZonePrompt />
         <Toaster
           position="bottom-left"
           // Toasts wear the app's own surface tokens, so they sit naturally on

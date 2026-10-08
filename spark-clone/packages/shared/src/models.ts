@@ -207,6 +207,16 @@ export const DEFAULT_SCHEDULING: SchedulingPresets = {
  * When availability suggestions may offer times: a daily window in local
  * minutes after midnight, on these weekdays (Date#getDay: 0 = Sunday).
  */
+/**
+ * Another person's calendar as Google shows it to the user: busy blocks when
+ * their free/busy is visible (same Workspace, or shared), else null.
+ */
+export interface PersonFreeBusy {
+  busy: { startMs: number; endMs: number }[] | null;
+  /** Their calendar's IANA zone, when the user can read the calendar. */
+  timeZone: string | null;
+}
+
 export interface AvailabilityPrefs {
   startMinutes: number;
   endMinutes: number;

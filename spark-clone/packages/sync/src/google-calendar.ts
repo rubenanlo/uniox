@@ -281,3 +281,54 @@ export function listGoogleEventsChanged(
 ): Promise<{ items: GEventItem[]; nextSyncToken: string | null }> {
   return pageEvents(token, remoteCalendarId, { singleEvents: 'true', syncToken });
 }
+
+/**
+ * Busy blocks for other people's calendars (by email). Google answers with
+ * busy times only when the caller may see them (same Workspace, or shared);
+ * otherwise the entry carries errors and comes back as null.
+ */
+export async function queryFreeBusy(
+  token: string,
+  emails: string[],
+  startMs: number,
+  endMs: number,
+): Promise<Record<string, { startMs: number; endMs: number }[] | null>> {
+  const res = await fetch(`${API}/freeBusy`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      timeMin: new Date(startMs).toISOString(),
+      timeMax: new Date(endMs).toISOString(),
+      items: emails.map((id) => ({ id })),
+    }),
+  });
+  if (!res.ok) throw new Error(`Google Calendar /freeBusy: HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    calendars?: Record<
+      string,
+      { busy?: { start: string; end: string }[]; errors?: { reason?: string }[] }
+    >;
+  };
+  const out: Record<string, { startMs: number; endMs: number }[] | null> = {};
+  for (const email of emails) {
+    const cal = data.calendars?.[email];
+    out[email] =
+      !cal || cal.errors?.length
+        ? null
+        : (cal.busy ?? []).map((b) => ({ startMs: Date.parse(b.start), endMs: Date.parse(b.end) }));
+  }
+  return out;
+}
+
+/** A calendar's IANA zone, or null when the caller can't read its details. */
+export async function getCalendarTimeZone(
+  token: string,
+  calendarId: string,
+): Promise<string | null> {
+  const res = await fetch(`${API}/calendars/${encodeURIComponent(calendarId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const cal = (await res.json()) as { timeZone?: string };
+  return cal.timeZone || null;
+}

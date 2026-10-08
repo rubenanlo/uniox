@@ -37,6 +37,7 @@ import {
 } from '../lib/writingStyle';
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
+import { loadContactZones, saveContactZones, useZonePrompt } from '../state/contactZones';
 import { mutatePrioritySender } from '../state/priority';
 import { useAccounts, useTemplates } from '../state/queries';
 import { useUi, type ThemePref } from '../state/store';
@@ -1044,6 +1045,7 @@ function SchedulingTab() {
         />
       </Row>
       <AvailabilityWindow />
+      <PeopleZones />
     </div>
   );
 }
@@ -1128,6 +1130,38 @@ function AvailabilityWindow() {
         </div>
       </Field>
     </>
+  );
+}
+
+/** Time zones the user set for people whose calendar doesn't show one. */
+function PeopleZones() {
+  const version = useZonePrompt((s) => s.version);
+  const [zones, setZones] = useState<[string, string][]>([]);
+  useEffect(() => {
+    void loadContactZones().then((z) => setZones(Object.entries(z).sort()));
+  }, [version]);
+  if (!zones.length) return null;
+  return (
+    <Field
+      label="People’s time zones"
+      hint="Set when you first offered them times. Used when their calendar doesn’t show a zone."
+    >
+      <ul className="space-y-1">
+        {zones.map(([email, tz]) => (
+          <li key={email} className="flex items-center gap-2 text-[12px]">
+            <span className="flex-1 truncate">{email}</span>
+            <span className="text-ink-muted">{tz.replace(/_/g, ' ')}</span>
+            <button
+              type="button"
+              onClick={() => void saveContactZones({ [email]: null })}
+              className="text-ink-faint hover:text-ink text-[11.5px] font-semibold"
+            >
+              Forget
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Field>
   );
 }
 

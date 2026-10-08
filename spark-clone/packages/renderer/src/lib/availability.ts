@@ -87,10 +87,16 @@ export function nextMeetingDays(now: number, weekdays: readonly number[]): numbe
 
 /** Busy intervals, merged and sorted. Free ('transparent') events never block. */
 export function busyIntervals(events: CalendarEvent[]): Slot[] {
-  const raw = events
-    .filter((e) => e.transparency !== 'transparent' && e.endMs > e.startMs)
-    .map((e) => ({ startMs: e.startMs, endMs: e.endMs }))
-    .sort((a, b) => a.startMs - b.startMs);
+  return mergeIntervals(
+    events
+      .filter((e) => e.transparency !== 'transparent')
+      .map((e) => ({ startMs: e.startMs, endMs: e.endMs })),
+  );
+}
+
+/** Sort and merge overlapping intervals; empty ones drop out. */
+export function mergeIntervals(intervals: Slot[]): Slot[] {
+  const raw = intervals.filter((i) => i.endMs > i.startMs).sort((a, b) => a.startMs - b.startMs);
   const merged: Slot[] = [];
   for (const iv of raw) {
     const last = merged[merged.length - 1];
@@ -117,6 +123,8 @@ export interface SlotOptions {
   stepMin?: number;
   /** Nothing before this instant (defaults to no limit). */
   notBefore?: number;
+  /** Extra test a candidate must pass (e.g. inside everyone's working day). */
+  accept?: (slot: Slot) => boolean;
 }
 
 /** Times of day (hours) each successive pick aims for, so offers vary. */
@@ -146,7 +154,7 @@ export function findFreeSlots(opts: SlotOptions): Slot[] {
     for (let s = open; s + dur <= close; s += step) {
       const slot = { startMs: s, endMs: s + dur };
       if (opts.notBefore !== undefined && s < opts.notBefore) continue;
-      if (!overlaps(slot, opts.busy)) out.push(slot);
+      if (!overlaps(slot, opts.busy) && (opts.accept?.(slot) ?? true)) out.push(slot);
     }
     return { day, at, out };
   });
@@ -283,5 +291,194 @@ export function parseAvailabilityAsk(raw: string): AvailabilityAsk {
     };
   } catch {
     return none;
+  }
+}
+
+/* ── Group availability: everyone in To ─────────────────────────────── */
+
+/** Someone else the meeting is with, as far as the user can see. */
+export interface Participant {
+  email: string;
+  name?: string;
+  /** IANA zone: their calendar's, else read from the thread, else null. */
+  timeZone: string | null;
+  /** Busy blocks when their calendar is visible, else null (unknown). */
+  busy: Slot[] | null;
+}
+
+/** A time that suits the user, with whoever it falls outside the working day for. */
+export interface GroupSlot extends Slot {
+  /** Emails of people for whom this is early or late in their own zone. */
+  offHours: string[];
+  /** Outside the user's own Settings hours (only offered when nothing inside fits everyone). */
+  outsideMine: boolean;
+}
+
+/** How far past their Settings hours the user may be stretched for a group. */
+export const MY_STRETCH_MIN = 120;
+
+/** Everyone else's working day, in their own zone. */
+export const THEIR_DAY_START_MIN = 9 * 60;
+export const THEIR_DAY_END_MIN = 18 * 60;
+
+/** Minutes after midnight of an instant in a zone. */
+function minutesIn(ms: number, timeZone?: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(ms);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return get('hour') * 60 + get('minute');
+}
+
+/**
+ * How many minutes `slot` falls outside 9:00–18:00 in `timeZone` (0 when it
+ * fits). Unknown or invalid zones never count as outside.
+ */
+export function minutesOutsideDay(slot: Slot, timeZone: string | null): number {
+  if (!timeZone || !isValidZone(timeZone)) return 0;
+  const start = minutesIn(slot.startMs, timeZone);
+  const end = start + Math.round((slot.endMs - slot.startMs) / 60_000);
+  return Math.max(0, THEIR_DAY_START_MIN - start) + Math.max(0, end - THEIR_DAY_END_MIN);
+}
+
+export interface GroupSlotOptions extends Omit<SlotOptions, 'accept'> {
+  participants: Participant[];
+}
+
+/**
+ * Times free on the user's calendars and on every visible calendar of the
+ * others, in this order of preference:
+ * 1. inside the user's Settings window and everyone's working day;
+ * 2. up to two hours either side of the user's window, when that is what it
+ *    takes to land inside everyone's working day;
+ * 3. the least stretch overall, saying whose day it stretches.
+ */
+export function findGroupSlots(opts: GroupSlotOptions): GroupSlot[] {
+  const count = opts.count ?? SLOT_COUNT;
+  const dur = opts.durationMin * 60_000;
+  const busy = mergeIntervals([...opts.busy, ...opts.participants.flatMap((p) => p.busy ?? [])]);
+  const theirs = (s: Slot) =>
+    opts.participants.reduce((sum, p) => sum + minutesOutsideDay(s, p.timeZone), 0);
+  const mine = (s: Slot) => {
+    const start = minutesIn(s.startMs);
+    const end = start + opts.durationMin;
+    return Math.max(0, opts.startHour * 60 - start) + Math.max(0, end - opts.endHour * 60);
+  };
+
+  const picked: Slot[] = findFreeSlots({ ...opts, busy, accept: (s) => theirs(s) === 0 });
+  if (picked.length < count) {
+    const wide = findFreeSlots({
+      ...opts,
+      busy,
+      startHour: Math.max(6, opts.startHour - MY_STRETCH_MIN / 60),
+      endHour: Math.min(22, opts.endHour + MY_STRETCH_MIN / 60),
+      count: 1000,
+    });
+    const near = (a: Slot, b: Slot) => a.startMs < b.endMs + dur && a.endMs + dur > b.startMs;
+    const fill = (candidates: Slot[]) => {
+      for (const s of candidates) {
+        if (picked.length >= count) break;
+        if (!picked.some((p) => near(p, s))) picked.push(s);
+      }
+    };
+    // 2: fits everyone, a little outside the user's hours, closest first.
+    fill(
+      wide
+        .filter((s) => theirs(s) === 0 && mine(s) > 0)
+        .sort((a, b) => mine(a) - mine(b) || a.startMs - b.startMs),
+    );
+    // 3: inside the user's hours, least stretch for the others.
+    fill(
+      wide
+        .filter((s) => theirs(s) > 0 && mine(s) === 0)
+        .sort((a, b) => theirs(a) - theirs(b) || a.startMs - b.startMs),
+    );
+  }
+  return picked
+    .sort((a, b) => a.startMs - b.startMs)
+    .map((s) => ({
+      ...s,
+      offHours: opts.participants
+        .filter((p) => minutesOutsideDay(s, p.timeZone) > 0)
+        .map((p) => p.email),
+      outsideMine: mine(s) > 0,
+    }));
+}
+
+function firstName(p: { name?: string; email: string }): string {
+  return (p.name || '').trim().split(/\s+/)[0] || p.email.split('@')[0]!;
+}
+
+/**
+ * "Tuesday, October 13, 15:00–15:30 (CEST) / 9:00–9:30 (EDT) Alex, Sam":
+ * the user's time, then each other zone once with the people in it.
+ */
+export function formatSlotForPeople(slot: Slot, people: Participant[]): string {
+  const mine = formatSlotLong(slot);
+  const myRange = timeRange(slot);
+  const myDay = fmt(slot.startMs, { weekday: 'long' });
+  const byZone = new Map<string, string[]>();
+  for (const p of people) {
+    if (!p.timeZone || !isValidZone(p.timeZone)) continue;
+    const range = timeRange(slot, p.timeZone);
+    if (range === myRange) continue;
+    const day = fmt(slot.startMs, { weekday: 'long' }, p.timeZone);
+    const key = `${day !== myDay ? `${day} ` : ''}${range}`;
+    byZone.set(key, [...(byZone.get(key) ?? []), firstName(p)]);
+  }
+  return [mine, ...[...byZone].map(([when, names]) => `${when} ${names.join(', ')}`)].join(' / ');
+}
+
+/** "early for Alex", "late for Sam and Kim" — for chip tooltips and notes. */
+export function offHoursNote(slot: GroupSlot, people: Participant[]): string {
+  const groups: Record<'early' | 'late', string[]> = { early: [], late: [] };
+  for (const email of slot.offHours) {
+    const p = people.find((x) => x.email === email);
+    if (!p?.timeZone) continue;
+    const early = minutesIn(slot.startMs, p.timeZone) < THEIR_DAY_START_MIN;
+    groups[early ? 'early' : 'late'].push(firstName(p));
+  }
+  if (slot.outsideMine) {
+    const early = minutesIn(slot.startMs) < 12 * 60;
+    groups[early ? 'early' : 'late'].unshift('you');
+  }
+  const list = (n: string[]) =>
+    n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : (n[0] ?? '');
+  return (['early', 'late'] as const)
+    .filter((k) => groups[k].length)
+    .map((k) => `${k} for ${list(groups[k])}`)
+    .join(', ');
+}
+
+/** Plain-text group offer, used when the assistant isn't configured or fails. */
+export function templateGroupReply(
+  slots: Slot[],
+  people: Participant[],
+  greeting?: string,
+): string {
+  const hi = greeting ? `Hi ${greeting},` : 'Hi all,';
+  const lines = slots.map((s) => `• ${formatSlotForPeople(s, people)}`).join('\n');
+  return `${hi}\n\nThese times work on my side:\n${lines}\n\nLet me know which works best for everyone.`;
+}
+
+/**
+ * Parse the model's guess of each person's zone ({"email": "Zone/Name"}),
+ * keeping only valid IANA names.
+ */
+export function parseZoneGuesses(raw: string): Record<string, string> {
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return {};
+  try {
+    const v = JSON.parse(json) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [email, tz] of Object.entries(v)) {
+      if (typeof tz === 'string' && isValidZone(tz)) out[email.toLowerCase()] = tz;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

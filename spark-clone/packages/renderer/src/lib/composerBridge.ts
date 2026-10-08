@@ -18,6 +18,17 @@ export function registerComposerAccount(id: string | null): void {
   accountId = id;
 }
 
+let recipients: { name?: string; email: string }[] = [];
+
+/** The open composer's To field, parsed (tracks edits). */
+export function registerComposerRecipients(list: { name?: string; email: string }[]): void {
+  recipients = list;
+}
+
+export function getComposerRecipients(): { name?: string; email: string }[] {
+  return recipients;
+}
+
 export function getComposerAccountId(): string | null {
   return accountId;
 }

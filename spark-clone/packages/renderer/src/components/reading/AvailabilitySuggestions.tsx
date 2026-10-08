@@ -1,24 +1,31 @@
 import type { MessageMeta } from '@app/shared';
-import { CalendarClock, Info, X } from 'lucide-react';
+import { CalendarClock, Globe2, Info, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import { keysFor } from '../../actions/registry';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
 import {
   describeWindow,
   formatSlotChip,
-  formatSlotLong,
+  formatSlotForPeople,
+  offHoursNote,
   type AvailabilityAsk,
-  type Slot,
+  type GroupSlot,
 } from '../../lib/availability';
 import { cn } from '../../lib/utils';
 import {
+  confirmZones,
   detectAvailabilityAsk,
   loadAvailabilityPrefs,
+  messageText,
+  othersOn,
   replyWithSlots,
-  suggestSlots,
+  suggestGroupSlots,
   useAvailabilityForced,
+  type GroupSuggestion,
 } from '../../state/availability';
+import { useZonePrompt } from '../../state/contactZones';
 import { useAccounts, useDelta } from '../../state/queries';
 import { Keycaps } from '../ui/Keycap';
 
@@ -60,8 +67,9 @@ function InfoCard({
       <p className="text-ink-muted mb-2">
         This email asks when you’re free, so Uniox picked open times in the coming week on {when}.
         Change the days and hours in Settings › Scheduling. It checks every calendar on all your
-        accounts, but not colleagues’ calendars you subscribed to. Nothing is added to your
-        calendar.
+        accounts, plus the free/busy of everyone on the email when Google shows it to you (usually
+        coworkers). Times also fall in their 9:00–18:00, in their own time zone; when nothing fits,
+        the closest times are offered and marked. Nothing is added to your calendar.
       </p>
       <ul className="text-ink-muted space-y-1">
         <li>
@@ -92,7 +100,9 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
   const forceCount = useAvailabilityForced((s) => s.forced.get(message.id) ?? 0);
   const forced = forceCount > 0;
   const [ask, setAsk] = useState<AvailabilityAsk | null>(null);
-  const [slots, setSlots] = useState<Slot[] | null>(null);
+  const [found, setFound] = useState<GroupSuggestion | null>(null);
+  const slots = found?.slots ?? null;
+  const zonesVersion = useZonePrompt((s) => s.version);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // Dismissing hides the row until the next ⌘⇧A on this message.
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
@@ -118,16 +128,33 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
   const active = forced || (!!ask?.asks && !fromMe);
   const duration = ask?.asks ? ask.durationMinutes : undefined;
 
+  const own = new Set(accounts.map((a) => a.email.toLowerCase()));
+  const people = othersOn(message, own);
+  const peopleKey = people.map((p) => p.email).join();
+  const senderZone = ask?.senderTimeZone ?? null;
+  const compute = useCallback(
+    () =>
+      suggestGroupSlots(
+        people,
+        duration ?? 30,
+        message.from && senderZone ? { [message.from.email.toLowerCase()]: senderZone } : {},
+      ),
+    // people is derived from message + accounts; peopleKey stands in for it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [peopleKey, duration, senderZone, message.from],
+  );
   const load = useCallback(() => {
     if (!active) return;
-    void Promise.all([suggestSlots(duration ?? 30), loadAvailabilityPrefs()]).then(
-      ([s, prefs]) => {
+    void Promise.all([compute(), loadAvailabilityPrefs()]).then(
+      ([f, prefs]) => {
         setWindowText(describeWindow(prefs));
-        setSlots(s);
+        setFound(f);
       },
-      () => setSlots([]),
+      () => setFound({ slots: [], participants: [], unconfirmed: [] }),
     );
-  }, [active, duration]);
+    // zonesVersion: a saved time zone changes which times fit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, compute, zonesVersion]);
   useEffect(load, [load]);
   // The calendar changed under us (sync, an edit): offer fresh times.
   useDelta((e) => {
@@ -141,21 +168,34 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
     rowRef.current?.querySelector<HTMLButtonElement>('[data-slot]')?.focus();
   }, [forceCount, slots]);
 
-  if (!active || dismissedAt === forceCount || !slots) return null;
+  if (!active || dismissedAt === forceCount || !found || !slots) return null;
 
-  const effectiveAsk: AvailabilityAsk = ask ?? {
-    asks: true,
-    durationMinutes: 30,
-    senderTimeZone: null,
-  };
-  const reply = (picked: Slot[]) => {
+  const askZones = async (force = false) =>
+    confirmZones(found.unconfirmed, await messageText(message.id), force);
+  const reply = (picked: GroupSlot[]) => {
     if (replying || !picked.length) return;
     setReplying(true);
-    void replyWithSlots(message, picked, effectiveAsk).finally(() => {
+    void (async () => {
+      let use = found;
+      let chosen = picked;
+      // First time offering times to someone with no known zone: ask, then
+      // re-check the picks against their working day.
+      if (await askZones()) {
+        use = await compute();
+        setFound(use);
+        chosen = use.slots.filter((s) => picked.some((p) => p.startMs === s.startMs));
+        if (chosen.length < picked.length) {
+          toast('Updated the times for everyone’s time zones. Pick again.');
+          return;
+        }
+      }
+      await replyWithSlots(message, chosen, use.participants);
+    })().finally(() => {
       setReplying(false);
       setSelected(new Set());
     });
   };
+  const unknownNames = found.unconfirmed.map((p) => (p.name || p.email).split(/\s+/)[0]!);
   const toggle = (i: number) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -181,7 +221,9 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
         <button
           key={s.startMs}
           data-slot
-          title={formatSlotLong(s, effectiveAsk.senderTimeZone)}
+          title={[formatSlotForPeople(s, found.participants), offHoursNote(s, found.participants)]
+            .filter(Boolean)
+            .join(' · ')}
           aria-pressed={selected.has(i)}
           disabled={replying}
           onClick={(e) => (e.shiftKey ? toggle(i) : reply([s]))}
@@ -202,6 +244,12 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
           )}
         >
           {formatSlotChip(s)}
+          {(s.offHours.length > 0 || s.outsideMine) && (
+            <span
+              aria-label={offHoursNote(s, found.participants)}
+              className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle"
+            />
+          )}
         </button>
       ))}
       {selected.size > 0 && (
@@ -214,6 +262,16 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
         </button>
       )}
       <span className="flex-1" />
+      {found.unconfirmed.length > 0 && (
+        <button
+          onClick={() => void askZones(true)}
+          title="Their calendar doesn’t show a time zone"
+          className="text-ink-faint hover:text-ink flex items-center gap-1 rounded-md px-1 text-[11.5px]"
+        >
+          <Globe2 size={12} />
+          Set time zone{unknownNames.length > 1 ? 's' : ''} for {unknownNames.join(', ')}
+        </button>
+      )}
       <button
         aria-label="About suggested times"
         data-info-toggle

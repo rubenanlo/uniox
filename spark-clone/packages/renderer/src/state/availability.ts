@@ -1,23 +1,34 @@
 import { toast } from 'sonner';
 import { create } from 'zustand';
-import { normalizeAvailability, type AvailabilityPrefs, type MessageMeta } from '@app/shared';
+import {
+  normalizeAvailability,
+  type Address,
+  type AvailabilityPrefs,
+  type MessageMeta,
+  type PersonFreeBusy,
+} from '@app/shared';
 import { api } from '../lib/api';
 import {
   busyIntervals,
   daysRange,
   describeWindow,
   DEFAULT_DURATION_MIN,
-  findFreeSlots,
-  formatSlotLong,
+  findGroupSlots,
+  formatSlotForPeople,
   looksLikeAvailabilityAsk,
   nextMeetingDays,
+  offHoursNote,
   parseAvailabilityAsk,
-  templateReply,
+  parseZoneGuesses,
+  templateGroupReply,
   type AvailabilityAsk,
+  type GroupSlot,
+  type Participant,
   type Slot,
 } from '../lib/availability';
 import { stripHtml } from '../lib/assistantContext';
-import { insertDraftText } from '../lib/composerBridge';
+import { getComposerRecipients, insertDraftText } from '../lib/composerBridge';
+import { askForZones, loadContactZones, myZone, wasSkipped } from './contactZones';
 import { expandEvent } from '../lib/rrule';
 import { useAssistant } from './assistant';
 import { useUi } from './store';
@@ -96,43 +107,154 @@ export async function loadAvailabilityPrefs(): Promise<AvailabilityPrefs> {
   return normalizeAvailability(await api.query('settings:get', { key: 'availability' }));
 }
 
-/** Open times on the user's chosen days and hours, across every own calendar. */
-export async function suggestSlots(durationMin: number): Promise<Slot[]> {
+/** Times to offer, and who they were checked against. */
+export interface GroupSuggestion {
+  slots: GroupSlot[];
+  participants: Participant[];
+  /** People whose zone neither Google nor the user has confirmed. */
+  unconfirmed: Participant[];
+}
+
+/**
+ * Open times on the user's chosen days and hours, across every own calendar
+ * and, for each other person, their Google free/busy when visible. Zones
+ * come from their calendar, else what the user saved, else `hints` (read
+ * from the thread, unconfirmed).
+ */
+export async function suggestGroupSlots(
+  people: Address[],
+  durationMin: number,
+  hints: Record<string, string | null> = {},
+): Promise<GroupSuggestion> {
   const prefs = await loadAvailabilityPrefs();
   const days = nextMeetingDays(Date.now(), prefs.weekdays);
   const range = daysRange(days);
-  const events = await api.query('calendar:busy', range);
+  const emails = people.map((p) => p.email.toLowerCase());
+  const [events, freeBusy, saved] = await Promise.all([
+    api.query('calendar:busy', range),
+    emails.length
+      ? api
+          .query('calendar:freebusy', { emails, ...range })
+          .catch((): Record<string, PersonFreeBusy> => ({}))
+      : Promise.resolve<Record<string, PersonFreeBusy>>({}),
+    loadContactZones(),
+  ]);
+  const fb = freeBusy;
+  const unconfirmed: Participant[] = [];
+  const participants = people.map((p): Participant => {
+    const email = p.email.toLowerCase();
+    const known = fb[email]?.timeZone ?? saved[email] ?? null;
+    const participant = {
+      email,
+      name: p.name,
+      timeZone: known ?? hints[email] ?? null,
+      busy: fb[email]?.busy ?? null,
+    };
+    if (!known) unconfirmed.push(participant);
+    return participant;
+  });
   const expanded = events.flatMap((e) => expandEvent(e, range.startMs, range.endMs));
-  return findFreeSlots({
+  const slots = findGroupSlots({
     days,
     busy: busyIntervals(expanded),
     startHour: prefs.startMinutes / 60,
     endHour: prefs.endMinutes / 60,
     durationMin,
+    participants,
   });
+  return { slots, participants, unconfirmed };
+}
+
+/** Everyone on a message except the user's own addresses. */
+export function othersOn(message: MessageMeta, ownEmails: Set<string>): Address[] {
+  const seen = new Set<string>();
+  return [message.from, ...message.to, ...message.cc].filter((a): a is Address => {
+    const e = a?.email.toLowerCase();
+    if (!e || ownEmails.has(e) || seen.has(e)) return false;
+    seen.add(e);
+    return true;
+  });
+}
+
+async function ownEmails(): Promise<Set<string>> {
+  const accounts = await api.query('accounts:list', undefined);
+  return new Set(accounts.map((a) => a.email.toLowerCase()));
+}
+
+/** The assistant's best guess at each person's zone from the thread, if any. */
+async function guessZones(people: Participant[], text: string): Promise<Record<string, string>> {
+  const assistant = useAssistant.getState();
+  if (!assistant.configured || !text) return {};
+  try {
+    const raw = await assistant.complete(
+      'For each person below, guess their IANA time zone from this email thread (signatures, ' +
+        'cities, offices, phone prefixes, times they mention, their email domain). Reply with JSON ' +
+        'only, mapping each email to a zone or null when there is no real clue: {"a@b.com": ' +
+        '"Europe/Madrid"}.\n\nPeople:\n' +
+        people.map((p) => `${p.name ? `${p.name} ` : ''}<${p.email}>`).join('\n'),
+      text,
+    );
+    return parseZoneGuesses(raw);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Ask the user, once, for the zones nobody has confirmed. Resolves true when
+ * they saved answers (the caller should recompute), false when skipped.
+ */
+export async function confirmZones(
+  people: Participant[],
+  threadText = '',
+  /** Ask even about people the user skipped earlier (they clicked to set it). */
+  force = false,
+): Promise<boolean> {
+  const unconfirmed = people.filter((p) => force || !wasSkipped(p.email));
+  if (!unconfirmed.length) return false;
+  const guesses = await guessZones(unconfirmed, threadText);
+  const answers = await askForZones(
+    unconfirmed.map((p) => ({
+      email: p.email,
+      name: p.name,
+      guess: p.timeZone ?? guesses[p.email] ?? myZone(),
+    })),
+  );
+  return !!answers && Object.keys(answers).length > 0;
+}
+
+/** A one-line heads-up when some offered times stretch someone's day. */
+export function stretchNote(s: GroupSuggestion): string {
+  const notes = s.slots.map((slot) => offHoursNote(slot, s.participants)).filter(Boolean);
+  return notes.length
+    ? `Nothing fit everyone inside working hours, so some times are ${notes[0]}.`
+    : '';
 }
 
 /** Open a reply to `message` saying the user is available at `slots`. */
 export async function replyWithSlots(
   message: MessageMeta,
   slots: Slot[],
-  ask: AvailabilityAsk,
+  participants: Participant[],
 ): Promise<void> {
   if (!slots.length) return;
-  const firstName = (message.from?.name || '').split(/\s+/)[0] || undefined;
-  let body = templateReply(slots, ask.senderTimeZone, firstName);
+  const only = participants.length === 1 ? participants[0] : undefined;
+  const greeting = only ? (only.name || '').split(/\s+/)[0] || undefined : undefined;
+  const lines = slots.map((s) => `• ${formatSlotForPeople(s, participants)}`);
+  let body = templateGroupReply(slots, participants, greeting);
   const assistant = useAssistant.getState();
   if (assistant.configured) {
     const id = toast.loading('Drafting your reply…');
     try {
-      const times = slots.map((s) => `• ${formatSlotLong(s, ask.senderTimeZone)}`).join('\n');
       const out = await assistant.complete(
         `Write a short reply to this email saying I'm available at ${
           slots.length > 1 ? 'any of these times, and asking which works best' : 'this time'
-        }:\n${times}\n\nMatch the email's language, tone and formality. Copy each time exactly as ` +
-          'given, keeping the times and the bracketed time zones verbatim (only translate weekday and ' +
-          "month names if you reply in another language). List several times one per line with '• '. " +
-          'Greet the sender by first name. Return only the body: no subject, no signature, no placeholders.',
+        }:\n${lines.join('\n')}\n\nMatch the email's language, tone and formality. Copy each time ` +
+          'exactly as given, keeping the times, the bracketed time zones and the names after ' +
+          "other people's local times verbatim (only translate weekday and month names if you " +
+          "reply in another language). List several times one per line with '• '. Greet the " +
+          'sender by first name, or everyone if several people are on the thread. Return only ' +
+          'the body: no subject, no signature, no placeholders.',
         `The email:\n\n${await messageText(message.id)}`,
       );
       if (out.trim()) body = out.trim();
@@ -141,33 +263,51 @@ export async function replyWithSlots(
       toast.error('Couldn’t draft with the assistant, so a standard reply was used.', { id });
     }
   }
-  useUi
-    .getState()
-    .openComposer({
-      mode: 'reply',
-      accountId: message.accountId,
-      replyTo: message,
-      initialBody: body,
-    });
+  const recipients = participants.length > 1 ? 'reply-all' : 'reply';
+  useUi.getState().openComposer({
+    mode: recipients,
+    accountId: message.accountId,
+    replyTo: message,
+    initialBody: body,
+  });
 }
 
 /**
- * ⌘⇧A: in a reply, insert open times at the cursor; in an open email,
- * show the time suggestions under its latest message.
+ * ⌘⇧A: in a draft, insert times that suit everyone in To (asking for any
+ * unknown time zone first); in an open email, show the time suggestions
+ * under its latest message.
  */
 export async function shareAvailability(): Promise<void> {
   const ui = useUi.getState();
   if (ui.composer) {
     const replyTo = ui.composer.replyTo;
     const ask = replyTo ? await detections.get(replyTo.id) : undefined;
-    const slots = await suggestSlots(ask?.asks ? ask.durationMinutes : DEFAULT_DURATION_MIN);
-    if (!slots.length)
-      return void toast(`No free time on ${describeWindow(await loadAvailabilityPrefs())}.`);
+    const own = await ownEmails();
+    const people = getComposerRecipients().filter((p) => !own.has(p.email.toLowerCase()));
+    const duration = ask?.asks ? ask.durationMinutes : DEFAULT_DURATION_MIN;
+    const hints: Record<string, string | null> =
+      replyTo?.from && ask?.senderTimeZone
+        ? { [replyTo.from.email.toLowerCase()]: ask.senderTimeZone }
+        : {};
+    let found = await suggestGroupSlots(people, duration, hints);
+    const threadText = replyTo ? await messageText(replyTo.id) : '';
+    if (await confirmZones(found.unconfirmed, threadText)) {
+      found = await suggestGroupSlots(people, duration, hints);
+    }
+    if (!found.slots.length) {
+      return void toast(
+        `No time on ${describeWindow(await loadAvailabilityPrefs())} is free for ${
+          people.length ? 'everyone' : 'you'
+        }.`,
+      );
+    }
     insertDraftText(
-      `I'm available at any of these times:\n${slots
-        .map((s) => `• ${formatSlotLong(s, ask?.senderTimeZone)}`)
+      `${people.length ? 'These times work for me:' : "I'm available at any of these times:"}\n${found.slots
+        .map((s) => `• ${formatSlotForPeople(s, found.participants)}`)
         .join('\n')}`,
     );
+    const note = stretchNote(found);
+    if (note) toast(note);
     return;
   }
   const threadId = ui.selectedThreadId;
