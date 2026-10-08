@@ -1,5 +1,5 @@
 import type { MessageMeta } from '@app/shared';
-import { CalendarClock, Globe2, Info, X } from 'lucide-react';
+import { CalendarClock, CalendarDays, Globe2, Info, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ import { useEscapeClose } from '../../hooks/useEscapeClose';
 import {
   describeWindow,
   formatSlotChip,
+  cellStatus,
   formatSlotForPeople,
   offHoursNote,
   type AvailabilityAsk,
@@ -26,6 +27,7 @@ import {
   type GroupSuggestion,
 } from '../../state/availability';
 import { useZonePrompt } from '../../state/contactZones';
+import { TimesCalendar } from './TimesCalendar';
 import { useAccounts, useDelta } from '../../state/queries';
 import { Keycaps } from '../ui/Keycap';
 
@@ -108,6 +110,7 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
   // Dismissing hides the row until the next ⌘⇧A on this message.
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [info, setInfo] = useState<DOMRect | null>(null);
+  const [calendar, setCalendar] = useState<DOMRect | null>(null);
   const [replying, setReplying] = useState(false);
   const [windowText, setWindowText] = useState('');
   const rowRef = useRef<HTMLDivElement>(null);
@@ -151,7 +154,7 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
         setWindowText(describeWindow(prefs));
         setFound(f);
       },
-      () => setFound({ slots: [], participants: [], unconfirmed: [] }),
+      () => setFound(null),
     );
     // zonesVersion: a saved time zone changes which times fit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,6 +283,15 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
         </button>
       )}
       <button
+        aria-label="Pick times on a calendar"
+        title="Change the times on a calendar"
+        data-times-calendar-toggle
+        onClick={(e) => setCalendar(calendar ? null : e.currentTarget.getBoundingClientRect())}
+        className="text-ink-faint hover:text-ink rounded-md p-1"
+      >
+        <CalendarDays size={13} />
+      </button>
+      <button
         aria-label="About suggested times"
         data-info-toggle
         onClick={(e) => setInfo(info ? null : e.currentTarget.getBoundingClientRect())}
@@ -294,6 +306,22 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
       >
         <X size={13} />
       </button>
+      {calendar && (
+        <TimesCalendar
+          found={found}
+          picks={slots}
+          anchor={calendar}
+          onChange={(picks) => {
+            const ctx = { ...found.grid, participants: found.participants };
+            setSelected(new Set());
+            setFound({
+              ...found,
+              slots: picks.map((p) => ({ ...p, outsideMine: !cellStatus(p, ctx).inWindow })),
+            });
+          }}
+          onClose={() => setCalendar(null)}
+        />
+      )}
       {info && <InfoCard anchor={info} when={windowText} onClose={() => setInfo(null)} />}
     </div>
   );

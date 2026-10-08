@@ -489,3 +489,56 @@ export function parseZoneGuesses(raw: string): Record<string, string> {
     return {};
   }
 }
+
+/* ── Calendar picker ────────────────────────────────────────────────── */
+
+/** What a calendar cell means for a meeting at that time. */
+export interface CellStatus {
+  /** Free for the user and every visible calendar, and in everyone's working day. */
+  ok: boolean;
+  /** Inside the user's Settings hours. */
+  inWindow: boolean;
+  /** Why it isn't ok: "You're busy", "Tara is busy", "6:00 for Guilherme". */
+  issues: string[];
+}
+
+export function cellStatus(
+  slot: Slot,
+  ctx: { myBusy: Slot[]; participants: Participant[]; startHour: number; endHour: number },
+): CellStatus {
+  const issues: string[] = [];
+  if (overlaps(slot, ctx.myBusy)) issues.push('You’re busy');
+  for (const p of ctx.participants) {
+    if (p.busy && overlaps(slot, p.busy)) issues.push(`${firstName(p)} is busy`);
+    else if (p.timeZone && minutesOutsideDay(slot, p.timeZone) > 0) {
+      issues.push(`${fmt(slot.startMs, TIME, p.timeZone)} for ${firstName(p)}`);
+    }
+  }
+  const start = minutesIn(slot.startMs);
+  const end = start + Math.round((slot.endMs - slot.startMs) / 60_000);
+  return {
+    ok: issues.length === 0,
+    inWindow: start >= ctx.startHour * 60 && end <= ctx.endHour * 60,
+    issues,
+  };
+}
+
+/**
+ * Add a picked time, replacing any picks it overlaps (dragging over an old
+ * pick reshapes it rather than stacking a second one).
+ */
+export function addPick(picks: Slot[], slot: Slot): Slot[] {
+  return [...picks.filter((p) => p.endMs <= slot.startMs || p.startMs >= slot.endMs), slot].sort(
+    (a, b) => a.startMs - b.startMs,
+  );
+}
+
+/** The picks with the one covering `ms` removed. */
+export function removePickAt(picks: Slot[], ms: number): Slot[] {
+  return picks.filter((p) => !(p.startMs <= ms && ms < p.endMs));
+}
+
+/** The text block ⌘⇧A writes into a draft; its first line finds it again later. */
+export function timesBlock(header: string, slots: Slot[], people: Participant[]): string {
+  return `${header}\n${slots.map((s) => `• ${formatSlotForPeople(s, people)}`).join('\n')}`;
+}

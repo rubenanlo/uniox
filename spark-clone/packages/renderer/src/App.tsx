@@ -20,6 +20,8 @@ import { SchedulePicker } from './components/SchedulePicker';
 import { SettingsSheet } from './components/SettingsSheet';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { TimeZonePrompt } from './components/reading/TimeZonePrompt';
+import { useTimesCalendarOpen } from './components/reading/TimesCalendar';
+import { useZonePrompt } from './state/contactZones';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
@@ -190,6 +192,8 @@ function MailView() {
       const s = useUi.getState();
       if (s.composer || s.commandOpen || s.settingsOpen || s.shortcutsOpen || s.picker) return;
       if (useAssistant.getState().open) return; // the modal's own Esc closes it
+      // The time zone dialog and the times calendar close on their own Esc.
+      if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
       e.preventDefault();
       e.stopPropagation();
       if (s.multiSelected.length > 1) {

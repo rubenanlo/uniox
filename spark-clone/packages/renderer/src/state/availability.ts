@@ -22,13 +22,14 @@ import {
   parseAvailabilityAsk,
   parseZoneGuesses,
   templateGroupReply,
+  timesBlock,
   type AvailabilityAsk,
   type GroupSlot,
   type Participant,
   type Slot,
 } from '../lib/availability';
 import { stripHtml } from '../lib/assistantContext';
-import { getComposerRecipients, insertDraftText } from '../lib/composerBridge';
+import { getComposerRecipients, replaceDraftParagraph } from '../lib/composerBridge';
 import { askForZones, loadContactZones, myZone, type ZoneQuestion } from './contactZones';
 import { expandEvent } from '../lib/rrule';
 import { useAssistant } from './assistant';
@@ -46,6 +47,41 @@ export const useAvailabilityForced = create<{
   forced: new Map(),
   force: (id) => set((s) => ({ forced: new Map(s.forced).set(id, (s.forced.get(id) ?? 0) + 1) })),
 }));
+
+/**
+ * The times block ⌘⇧A last wrote into the open draft, so the hover bar can
+ * review time zones or reopen the calendar and rewrite the block in place.
+ */
+export const useComposerTimes = create<{
+  header: string;
+  picks: Slot[];
+  found: GroupSuggestion;
+} | null>(() => null);
+
+/** Rewrite the draft's times block with `picks` (empty removes it). */
+export function setComposerPicks(picks: Slot[]): void {
+  const cur = useComposerTimes.getState();
+  if (!cur) return;
+  replaceDraftParagraph(
+    cur.header,
+    picks.length ? timesBlock(cur.header, picks, cur.found.participants) : null,
+  );
+  useComposerTimes.setState(picks.length ? { ...cur, picks } : null, true);
+}
+
+/**
+ * 🌐 on the draft's times: review everyone's zone, then rewrite the block
+ * with the new local times (the picks stay).
+ */
+export async function reviewComposerZones(): Promise<void> {
+  const cur = useComposerTimes.getState();
+  if (!cur) return;
+  if (!(await confirmZones(cur.found.participants))) return;
+  const people = cur.found.participants.map((p) => ({ email: p.email, name: p.name }));
+  const found = await suggestGroupSlots(people, cur.found.grid.durationMin);
+  useComposerTimes.setState({ ...cur, found }, true);
+  setComposerPicks(cur.picks);
+}
 
 /**
  * ⌘⇧A in the composer while it looks up calendars: drives the "Checking
@@ -131,6 +167,19 @@ export interface GroupSuggestion {
   participants: Participant[];
   /** People whose zone neither Google nor the user has confirmed. */
   unconfirmed: Participant[];
+  /** What the calendar picker draws. */
+  grid: AvailabilityGrid;
+}
+
+export interface AvailabilityGrid {
+  /** Local midnights: the coming chosen days, then the same days a week later. */
+  weeks: [number[], number[]];
+  /** The user's busy time across own calendars. */
+  myBusy: Slot[];
+  startHour: number;
+  endHour: number;
+  /** Meeting length a single click picks. */
+  durationMin: number;
 }
 
 /**
@@ -185,16 +234,23 @@ export async function suggestGroupSlots(
     return participant;
   });
   const expanded = events.flatMap((e) => expandEvent(e, range.startMs, range.endMs));
-  const slots = findGroupSlots({
-    days,
-    busy: busyIntervals(expanded),
+  const grid: AvailabilityGrid = {
+    weeks: [days, laterDays],
+    myBusy: busyIntervals(expanded),
     startHour: prefs.startMinutes / 60,
     endHour: prefs.endMinutes / 60,
+    durationMin,
+  };
+  const slots = findGroupSlots({
+    days,
+    busy: grid.myBusy,
+    startHour: grid.startHour,
+    endHour: grid.endHour,
     durationMin,
     participants,
     laterDays,
   });
-  return { slots, participants, unconfirmed };
+  return { slots, participants, unconfirmed, grid };
 }
 
 /** Everyone on a message except the user's own addresses. */
@@ -364,11 +420,12 @@ export async function shareAvailability(): Promise<void> {
             : `No free time on ${describeWindow(await loadAvailabilityPrefs())}.`,
         );
       }
-      insertDraftText(
-        `${people.length ? 'These times work for me:' : "I'm available at any of these times:"}\n${found.slots
-          .map((s) => `• ${formatSlotForPeople(s, found.participants)}`)
-          .join('\n')}`,
-      );
+      const header = people.length
+        ? 'These times work for me:'
+        : "I'm available at any of these times:";
+      // A second ⌘⇧A replaces the earlier block rather than adding another.
+      replaceDraftParagraph(header, timesBlock(header, found.slots, found.participants));
+      useComposerTimes.setState({ header, picks: found.slots, found }, true);
       const note = stretchNote(found);
       if (note) toast(note);
     } finally {

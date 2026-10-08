@@ -3,12 +3,16 @@ process.env.TZ = 'Europe/Madrid';
 
 import { describe, expect, it } from 'vitest';
 import {
+  addPick,
+  cellStatus,
   findGroupSlots,
   formatSlotForPeople,
   mergeIntervals,
   minutesOutsideDay,
   offHoursNote,
   parseZoneGuesses,
+  removePickAt,
+  timesBlock,
   type Participant,
   type Slot,
 } from '../src/lib/availability';
@@ -145,5 +149,47 @@ describe('helpers', () => {
         '```json\n{"A@x.com": "Asia/Tokyo", "b@x.com": null, "c@x.com": "Mars"}\n```',
       ),
     ).toEqual({ 'a@x.com': 'Asia/Tokyo' });
+  });
+});
+
+describe('calendar picker', () => {
+  const day = at(2026, 10, 13);
+  const slot = (h: number, m = 0, len = 30) => ({
+    startMs: day + (h * 60 + m) * 60_000,
+    endMs: day + (h * 60 + m + len) * 60_000,
+  });
+
+  it('says why a cell does not work', () => {
+    const ctx = {
+      myBusy: [slot(16)],
+      participants: [
+        person('Tara', 'America/New_York', [slot(15)]),
+        person('Guilherme', 'America/Sao_Paulo'),
+      ],
+      startHour: 9.5,
+      endHour: 17.5,
+    };
+    expect(cellStatus(slot(15, 30), ctx)).toEqual({ ok: true, inWindow: true, issues: [] });
+    expect(cellStatus(slot(15), ctx).issues).toEqual(['Tara is busy']);
+    expect(cellStatus(slot(16), ctx).issues[0]).toBe('You’re busy');
+    // 10:00 Madrid is 5:00 in São Paulo (and 4:00 in New York).
+    expect(cellStatus(slot(10), ctx).issues).toEqual(['04:00 for Tara', '05:00 for Guilherme']);
+    expect(cellStatus(slot(18), ctx).inWindow).toBe(false);
+  });
+
+  it('adds, reshapes and removes picks', () => {
+    let picks = addPick([], slot(15));
+    picks = addPick(picks, slot(10));
+    expect(picks.map((p) => p.startMs)).toEqual([slot(10).startMs, slot(15).startMs]);
+    // Dragging 15:00–16:30 over the 15:00 pick replaces it.
+    picks = addPick(picks, slot(15, 0, 90));
+    expect(picks).toHaveLength(2);
+    expect(picks[1]!.endMs - picks[1]!.startMs).toBe(90 * 60_000);
+    expect(removePickAt(picks, slot(16).startMs)).toEqual([slot(10)]);
+  });
+
+  it('writes the block with a findable first line', () => {
+    const text = timesBlock('These times work for me:', [slot(15)], []);
+    expect(text).toBe('These times work for me:\n• Tuesday, October 13, 15:00–15:30 (CEST)');
   });
 });
