@@ -453,3 +453,17 @@ body {
     transform: none !important;
   }
 }
+
+/* Settings → Signatures: pasted signatures render as recipients see them. */
+.signature-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #a3a3ab;
+  pointer-events: none;
+}
+.signature-editor img {
+  max-width: 100%;
+  height: auto;
+}
+.signature-editor a {
+  color: #1a56c8;
+}

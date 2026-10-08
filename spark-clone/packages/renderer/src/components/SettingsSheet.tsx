@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { sanitizeSignatureHtml } from '@app/email-render';
 import { useEscapeClose } from '../hooks/useEscapeClose';
 import { api } from '../lib/api';
 import { minutesLabel } from '../lib/availability';
@@ -38,11 +39,13 @@ import {
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
 import { loadContactZones, saveContactZones, useZonePrompt } from '../state/contactZones';
+import { normalizeSignatureHtml, signatureText } from '../lib/signature';
 import { mutatePrioritySender } from '../state/priority';
 import { useAccounts, useTemplates } from '../state/queries';
 import { useUi, type ThemePref } from '../state/store';
 import { AccountIcon } from './ui/AccountIcon';
 import { ColorPicker } from './ui/ColorPicker';
+import { SignatureEditor } from './SignatureEditor';
 import { useShallow } from 'zustand/react/shallow';
 
 type Tab =
@@ -1167,38 +1170,56 @@ function PeopleZones() {
 
 function SignaturesTab() {
   const { accounts } = useAccounts();
+  const [loaded, setLoaded] = useState<Record<string, string> | null>(null);
   const [bodies, setBodies] = useState<Record<string, string>>({});
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
   useEffect(() => {
     void api.query('signatures:list', undefined).then((sigs) => {
       const map: Record<string, string> = {};
-      for (const s of sigs) map[s.id] = s.bodyHtml;
+      for (const s of sigs) map[s.id] = normalizeSignatureHtml(s.bodyHtml);
+      setLoaded(map);
       setBodies(map);
     });
   }, []);
   const save = (accountId: string, name: string) => {
+    const html = sanitizeSignatureHtml(bodies[accountId] ?? '');
+    // An emptied box leaves "<br>" or empty divs behind: store that as no signature.
+    const empty = !signatureText(html) && !/<img\b/i.test(html);
     void api
-      .command('signatures:save', { id: accountId, name, bodyHtml: bodies[accountId] ?? '' })
-      .then(() => toast('Signature saved'));
+      .command('signatures:save', { id: accountId, name, bodyHtml: empty ? '' : html })
+      .then(() => {
+        setDirty((prev) => ({ ...prev, [accountId]: false }));
+        toast('Signature saved');
+      });
   };
+  if (!loaded) return null;
   return (
     <div>
+      <p className="text-ink-muted mb-4 text-[12px]">
+        Copy your signature from another mail app, a document or a website and paste it below.
+        Images, links, fonts and colors come along.
+      </p>
       {accounts.map((a) => (
-        <div key={a.id} className="mb-4">
-          <div className="mb-1 flex items-center justify-between">
+        <div key={a.id} className="mb-5">
+          <div className="mb-1.5 flex items-center justify-between">
             <span className="text-[12.5px] font-semibold">{a.email}</span>
             <button
               onClick={() => save(a.id, a.email)}
-              className="text-accent text-[12px] font-semibold hover:underline"
+              className={cn(
+                'text-[12px] font-semibold hover:underline',
+                dirty[a.id] ? 'text-accent' : 'text-ink-faint',
+              )}
             >
               Save
             </button>
           </div>
-          <textarea
-            value={bodies[a.id] ?? ''}
-            onChange={(e) => setBodies((prev) => ({ ...prev, [a.id]: e.target.value }))}
-            placeholder={`<p>${a.displayName}</p>`}
-            rows={3}
-            className={cn(inputCls, 'w-full resize-y font-mono text-[11.5px]')}
+          <SignatureEditor
+            initialHtml={loaded[a.id] ?? ''}
+            placeholder={`Paste your signature for ${a.displayName || a.email}`}
+            onChange={(html) => {
+              setBodies((prev) => ({ ...prev, [a.id]: html }));
+              setDirty((prev) => ({ ...prev, [a.id]: true }));
+            }}
           />
         </div>
       ))}

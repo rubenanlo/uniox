@@ -397,6 +397,24 @@ function registerAppProtocol(attachmentsDir: string): void {
   });
 }
 
+const SIGNATURE_IMAGE_MAX = 2 * 1024 * 1024;
+
+/** A remote signature image as a data: URL (http(s) only, images only, ≤ 2 MB). */
+async function fetchSignatureImage(url: string): Promise<{ ok: boolean; dataUri?: string; error?: string }> {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { ok: false, error: 'bad url' };
+  try {
+    const res = await net.fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if (!/^image\/(png|jpe?g|gif|webp|bmp|svg\+xml)$/.test(type)) return { ok: false, error: 'not an image' };
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > SIGNATURE_IMAGE_MAX) return { ok: false, error: 'image too large' };
+    return { ok: true, dataUri: `data:${type};base64,${buf.toString('base64')}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('query', (event, channel: string, args: unknown) => {
     if (!validSender(event)) throw new Error('invalid sender');
@@ -644,6 +662,8 @@ function registerIpc(): void {
         if (check.ok) credentials!.setNotionToken(trimmed);
         return check;
       }
+      case 'signature:fetch-image':
+        return fetchSignatureImage((args as { url: string }).url);
       case 'attachment:preview': {
         const { localPath } = args as { localPath: string };
         const full = resolveAttachmentPath(localPath);
