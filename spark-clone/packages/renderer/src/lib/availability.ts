@@ -542,3 +542,35 @@ export function removePickAt(picks: Slot[], ms: number): Slot[] {
 export function timesBlock(header: string, slots: Slot[], people: Participant[]): string {
   return `${header}\n${slots.map((s) => `• ${formatSlotForPeople(s, people)}`).join('\n')}`;
 }
+
+/** Another time zone column for the picker: who is there and its short label. */
+export interface ZoneColumn {
+  timeZone: string;
+  /** "EDT", "GMT-3". */
+  label: string;
+  names: string[];
+}
+
+/** The distinct zones of `people` that differ from the user's at `ms`. */
+export function zoneColumns(people: Participant[], ms: number): ZoneColumn[] {
+  const mine = zoneLabel(ms);
+  const cols = new Map<string, ZoneColumn>();
+  for (const p of people) {
+    if (!p.timeZone || !isValidZone(p.timeZone)) continue;
+    const label = zoneLabel(ms, p.timeZone);
+    if (label === mine && minutesIn(ms, p.timeZone) === minutesIn(ms)) continue;
+    const col = cols.get(label) ?? { timeZone: p.timeZone, label, names: [] };
+    col.names.push(firstName(p));
+    cols.set(label, col);
+  }
+  return [...cols.values()];
+}
+
+/** "9:00" style local time of `ms` in a zone, and whether it's in 9:00–18:00 there. */
+export function localHour(ms: number, timeZone: string): { text: string; working: boolean } {
+  const m = minutesIn(ms, timeZone);
+  return {
+    text: `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`,
+    working: m >= THEIR_DAY_START_MIN && m < THEIR_DAY_END_MIN,
+  };
+}

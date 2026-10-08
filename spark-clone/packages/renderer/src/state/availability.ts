@@ -171,9 +171,14 @@ export interface GroupSuggestion {
   grid: AvailabilityGrid;
 }
 
+/** How far ahead the calendar picker reaches. */
+export const CALENDAR_DAYS = 21;
+
 export interface AvailabilityGrid {
-  /** Local midnights: the coming chosen days, then the same days a week later. */
-  weeks: [number[], number[]];
+  /** Local midnights of every day the picker can scroll through. */
+  days: number[];
+  /** The Settings weekdays among them (this week and next), shown first. */
+  chosenDays: number[];
   /** The user's busy time across own calendars. */
   myBusy: Slot[];
   startHour: number;
@@ -197,7 +202,10 @@ export async function suggestGroupSlots(
   const days = nextMeetingDays(Date.now(), prefs.weekdays);
   // Same weekdays a week later, used only when the coming days don't fit everyone.
   const laterDays = days.map((d) => addLocalDays(d, 7));
-  const range = daysRange([...days, ...laterDays]);
+  // The calendar picker scrolls through every day of the next three weeks.
+  const firstDay = addLocalDays(new Date(new Date().setHours(0, 0, 0, 0)).getTime(), 1);
+  const calendarDays = Array.from({ length: CALENDAR_DAYS }, (_, i) => addLocalDays(firstDay, i));
+  const range = daysRange([...calendarDays, ...days, ...laterDays].sort((a, b) => a - b));
   const emails = people.map((p) => p.email.toLowerCase());
   const [events, freeBusy, saved] = await Promise.all([
     api.query('calendar:busy', range),
@@ -235,7 +243,8 @@ export async function suggestGroupSlots(
   });
   const expanded = events.flatMap((e) => expandEvent(e, range.startMs, range.endMs));
   const grid: AvailabilityGrid = {
-    weeks: [days, laterDays],
+    days: calendarDays,
+    chosenDays: [...days, ...laterDays],
     myBusy: busyIntervals(expanded),
     startHour: prefs.startMinutes / 60,
     endHour: prefs.endMinutes / 60,
