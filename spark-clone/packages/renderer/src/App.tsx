@@ -13,6 +13,7 @@ import { ThreadList } from './components/list/ThreadList';
 import { Onboarding } from './components/Onboarding';
 import { Intro } from './components/intro/Intro';
 import { AssistantModal } from './components/orb/AssistantModal';
+import { AssistantPalette } from './components/orb/AssistantPalette';
 import { OrbCorner } from './components/orb/OrbCorner';
 import { OutboxView } from './components/OutboxView';
 import { EmptyReadingPane, ThreadView } from './components/reading/ThreadView';
@@ -409,6 +410,7 @@ export default function App() {
         )}
         <CommandCenter />
         <ShortcutsSheet />
+        <AssistantPalette />
         <SettingsSheet />
         <ThreadSchedulePicker />
         <TimeZonePrompt />

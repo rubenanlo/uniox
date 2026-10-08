@@ -1,38 +1,13 @@
-import {
-  Briefcase,
-  CalendarDays,
-  Coffee,
-  Fingerprint,
-  Inbox,
-  KanbanSquare,
-  Languages,
-  PenLine,
-  Reply,
-  ScrollText,
-  Wand2,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { ACTIONS } from '../../actions/registry';
 import { runAssistantAction, type AssistantAction } from '../../lib/assistantContext';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
 import { useUi } from '../../state/store';
 import { LanguagePicker } from './LanguagePicker';
+import { orbActionsFor } from './orbActions';
 import SpecterOrb from './SpecterOrb';
 
 const IDLE_OPACITY = 0.45;
-
-interface OrbAction {
-  label: string;
-  icon: LucideIcon;
-  /** An AI action (routed through the assistant) … */
-  action?: AssistantAction;
-  /** … or a plain handler (e.g. open the composer). */
-  run?: () => void;
-  /** Ask for a target language first ("Translate into…"). */
-  pickLanguage?: boolean;
-}
 
 /**
  * Robot mark for the orb's resting state (Font Awesome Pro v7 "robot",
@@ -50,35 +25,6 @@ function RobotIcon({ size = 26 }: { size?: number }) {
     </svg>
   );
 }
-
-const HOME_ACTIONS: OrbAction[] = [
-  { label: 'Summarize new emails', icon: Inbox, action: 'summarize-emails' },
-  { label: 'Summarize new tasks', icon: KanbanSquare, action: 'summarize-tasks' },
-  { label: 'Show me the events for today', icon: CalendarDays, action: 'today-events' },
-];
-
-const MAIL_ACTIONS: OrbAction[] = [
-  {
-    label: 'Write an email',
-    icon: PenLine,
-    run: () => ACTIONS.find((a) => a.id === 'compose')?.perform(null),
-  },
-];
-
-const COMPOSER_ACTIONS: OrbAction[] = [
-  { label: 'Rewrite the email to make it flow', icon: Wand2, action: 'rewrite-composer' },
-  { label: 'Rewrite in my style', icon: Fingerprint, action: 'style-composer' },
-  { label: 'Turn this email formal', icon: Briefcase, action: 'formal-composer' },
-  { label: 'Turn this email informal', icon: Coffee, action: 'informal-composer' },
-  { label: 'Translate into…', icon: Languages, action: 'translate-composer', pickLanguage: true },
-];
-
-/** Offered while an email is open in the reading pane. */
-const readingActions = (): OrbAction[] => [
-  { label: 'Translate into English', icon: Languages, action: 'translate-thread' },
-  { label: 'Make a summary', icon: ScrollText, action: 'summarize-thread' },
-  { label: 'Create a reply', icon: Reply, action: 'reply-thread' },
-];
 
 /**
  * Assistant orb pinned to the app's bottom-right corner. Hover eases the
@@ -98,17 +44,7 @@ export function OrbCorner() {
   const [languageFor, setLanguageFor] = useState<AssistantAction | null>(null);
   const [opacity, setOpacity] = useState(IDLE_OPACITY);
 
-  const readingThread =
-    view !== 'home' && selectedThreadId && !selectedThreadId.startsWith('bundle:')
-      ? selectedThreadId
-      : null;
-  const actions = composerOpen
-    ? COMPOSER_ACTIONS
-    : view === 'home'
-      ? HOME_ACTIONS
-      : readingThread
-        ? readingActions()
-        : MAIL_ACTIONS;
+  const actions = orbActionsFor(view, composerOpen, selectedThreadId);
   const menuOpen = hovered || pinned;
   // The picker belongs to the composer it was opened for: drop it (and the
   // pin holding it open) when the composer opens or closes.

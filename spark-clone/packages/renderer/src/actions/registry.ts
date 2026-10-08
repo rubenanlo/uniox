@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import type { ThreadSummary } from '@app/shared';
 import { api } from '../lib/api';
+import { useAssistant } from '../state/assistant';
 import { shareAvailability } from '../state/availability';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
 import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
@@ -374,6 +375,17 @@ export const ACTIONS: AppAction[] = [
     perform: () => void shareAvailability(),
   },
   {
+    id: 'assistant',
+    label: 'Ask the assistant',
+    combo: { key: 'i', meta: true },
+    context: 'global',
+    section: 'Respond',
+    perform: () => {
+      const a = useAssistant.getState();
+      a.setPaletteOpen(!a.paletteOpen);
+    },
+  },
+  {
     id: 'compose',
     label: 'New email',
     combo: { key: 'n', meta: true },
@@ -662,6 +674,8 @@ function physicalKey(e: KeyboardEvent): string {
 
 /** ⌘-keys a text field needs for itself: selection, clipboard, undo, B/I/U formatting. */
 const FIELD_META_KEYS = ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'];
+/** Keys only a rich-text field formats with; plain inputs let them through (⌘I → assistant). */
+const RICH_TEXT_ONLY_KEYS = ['i'];
 
 /**
  * True when the focused field (or the composer) should keep this key instead
@@ -671,7 +685,7 @@ const FIELD_META_KEYS = ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'];
 export function fieldOwnsKey(
   e: KeyboardEvent,
   action: AppAction,
-  ctx: { editable: boolean; inComposer: boolean },
+  ctx: { editable: boolean; inComposer: boolean; richText?: boolean },
 ): boolean {
   if (action.id === 'undo') return false;
   // While writing, keys belong to the draft: nothing may act on the email
@@ -679,7 +693,8 @@ export function fieldOwnsKey(
   if (ctx.inComposer && action.context === 'thread') return true;
   if (!ctx.editable) return false;
   const matched = matchCombo(e, action.combo) ? action.combo : action.altCombo;
-  return !!matched?.meta && !matched.shift && FIELD_META_KEYS.includes(matched.key);
+  if (!matched?.meta || matched.shift || !FIELD_META_KEYS.includes(matched.key)) return false;
+  return ctx.richText || !RICH_TEXT_ONLY_KEYS.includes(matched.key);
 }
 
 export function matchCombo(e: KeyboardEvent, combo: KeyCombo | null): boolean {

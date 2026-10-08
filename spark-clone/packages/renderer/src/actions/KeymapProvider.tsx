@@ -59,10 +59,13 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
 
       for (const action of ACTIONS) {
         if (!matchCombo(e, action.combo) && !matchCombo(e, action.altCombo ?? null)) continue;
-        // Don't hijack ⌘-combos a field needs (clipboard, ⌘B/⌘I/⌘U formatting),
+        // Don't hijack ⌘-combos a field needs (clipboard, ⌘B/⌘I/⌘U formatting —
+        // ⌘I only in rich text, so it opens the assistant from plain inputs),
         // and never act on the email list from inside the composer.
-        const inComposer = !!(e.target as HTMLElement | null)?.closest?.('[data-composer]');
-        if (fieldOwnsKey(e, action, { editable, inComposer })) return;
+        const el = e.target as HTMLElement | null;
+        const inComposer = !!el?.closest?.('[data-composer]');
+        const richText = !!el?.isContentEditable;
+        if (fieldOwnsKey(e, action, { editable, inComposer, richText })) return;
         e.preventDefault();
         action.perform(keyboardTargetId());
         return;
