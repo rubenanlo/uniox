@@ -36,8 +36,10 @@ export async function saveContactZones(zones: Record<string, string | null>): Pr
 export interface ZoneQuestion {
   email: string;
   name?: string;
-  /** Pre-selected answer: the assistant's guess from the thread, else the user's own zone. */
+  /** Pre-selected answer. */
   guess: string;
+  /** Where the pre-selected answer came from, shown next to it. */
+  source: 'saved' | 'google' | 'thread' | 'assistant' | 'yours';
 }
 
 /**
@@ -58,17 +60,9 @@ export function askForZones(questions: ZoneQuestion[]): Promise<ContactZones | n
   return new Promise((resolve) => useZonePrompt.setState({ questions, resolve }));
 }
 
-/** People the user declined to place this session; not asked again until restart. */
-const skipped = new Set<string>();
-
-export function wasSkipped(email: string): boolean {
-  return skipped.has(email.toLowerCase());
-}
-
 export function answerZones(zones: ContactZones | null): void {
-  const { resolve, questions } = useZonePrompt.getState();
+  const { resolve } = useZonePrompt.getState();
   useZonePrompt.setState({ questions: null, resolve: null });
-  for (const q of questions ?? []) if (!zones?.[q.email]) skipped.add(q.email.toLowerCase());
   if (zones && Object.keys(zones).length) {
     void saveContactZones(zones).then(() => resolve?.(zones));
   } else resolve?.(zones);

@@ -29,7 +29,7 @@ import {
 } from '../lib/availability';
 import { stripHtml } from '../lib/assistantContext';
 import { getComposerRecipients, insertDraftText } from '../lib/composerBridge';
-import { askForZones, loadContactZones, myZone, wasSkipped } from './contactZones';
+import { askForZones, loadContactZones, myZone, type ZoneQuestion } from './contactZones';
 import { expandEvent } from '../lib/rrule';
 import { useAssistant } from './assistant';
 import { useUi } from './store';
@@ -163,14 +163,25 @@ export async function suggestGroupSlots(
   const unconfirmed: Participant[] = [];
   const participants = people.map((p): Participant => {
     const email = p.email.toLowerCase();
-    const known = fb[email]?.timeZone ?? saved[email] ?? null;
+    const google = fb[email]?.timeZone ?? null;
+    const hint = hints[email] ?? null;
+    const [timeZone, zoneSource] = saved[email]
+      ? [saved[email]!, 'saved' as const]
+      : google
+        ? [google, 'google' as const]
+        : hint
+          ? [hint, 'thread' as const]
+          : [null, undefined];
     const participant = {
       email,
       name: p.name,
-      timeZone: known ?? hints[email] ?? null,
+      timeZone,
+      zoneSource,
       busy: fb[email]?.busy ?? null,
     };
-    if (!known) unconfirmed.push(participant);
+    // Every new person is confirmed once, even when Google shows a zone:
+    // calendars often carry the company default rather than where they are.
+    if (zoneSource !== 'saved') unconfirmed.push(participant);
     return participant;
   });
   const expanded = events.flatMap((e) => expandEvent(e, range.startMs, range.endMs));
@@ -205,7 +216,7 @@ async function ownEmails(): Promise<Set<string>> {
 /** The assistant's best guess at each person's zone from the thread, if any. */
 async function guessZones(people: Participant[], text: string): Promise<Record<string, string>> {
   const assistant = useAssistant.getState();
-  if (!assistant.configured || !text) return {};
+  if (!assistant.configured || !text || !people.length) return {};
   try {
     const raw = await assistant.complete(
       'For each person below, guess their IANA time zone from this email thread (signatures, ' +
@@ -228,21 +239,25 @@ async function guessZones(people: Participant[], text: string): Promise<Record<s
 export async function confirmZones(
   people: Participant[],
   threadText = '',
-  /** Ask even about people the user skipped earlier (they clicked to set it). */
-  force = false,
   /** Called once the guesses are in, right before the dialog opens; false aborts. */
   beforeAsk: () => boolean = () => true,
 ): Promise<boolean> {
-  const unconfirmed = people.filter((p) => force || !wasSkipped(p.email));
-  if (!unconfirmed.length) return false;
-  const guesses = await guessZones(unconfirmed, threadText);
+  if (!people.length) return false;
+  const guesses = await guessZones(
+    people.filter((p) => !p.timeZone),
+    threadText,
+  );
   if (!beforeAsk()) return false;
   const answers = await askForZones(
-    unconfirmed.map((p) => ({
-      email: p.email,
-      name: p.name,
-      guess: p.timeZone ?? guesses[p.email] ?? myZone(),
-    })),
+    people.map((p): ZoneQuestion => {
+      if (p.timeZone && p.zoneSource) {
+        return { email: p.email, name: p.name, guess: p.timeZone, source: p.zoneSource };
+      }
+      const guess = guesses[p.email];
+      return guess
+        ? { email: p.email, name: p.name, guess, source: 'assistant' }
+        : { email: p.email, name: p.name, guess: myZone(), source: 'yours' };
+    }),
   );
   return !!answers && Object.keys(answers).length > 0;
 }
@@ -331,7 +346,7 @@ export async function shareAvailability(): Promise<void> {
       if (cancelled) return;
       const threadText = replyTo ? await messageText(replyTo.id) : '';
       // The time zone dialog takes over from the animation while it's open.
-      const saved = await confirmZones(found.unconfirmed, threadText, false, () => {
+      const saved = await confirmZones(found.unconfirmed, threadText, () => {
         if (cancelled) return false;
         checking(false);
         return true;

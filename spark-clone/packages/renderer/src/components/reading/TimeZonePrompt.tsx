@@ -6,6 +6,14 @@ import { isValidZone } from '../../lib/availability';
 import { cn } from '../../lib/utils';
 import { allZones, answerZones, useZonePrompt, type ZoneQuestion } from '../../state/contactZones';
 
+const SOURCE: Record<ZoneQuestion['source'], string> = {
+  saved: 'saved',
+  google: 'from Google',
+  thread: 'from the email',
+  assistant: 'guessed from the email',
+  yours: 'your zone, change if needed',
+};
+
 function nowIn(tz: string): string {
   if (!isValidZone(tz)) return '';
   return new Intl.DateTimeFormat('en-US', {
@@ -59,9 +67,9 @@ function PromptDialog({ questions }: { questions: ZoneQuestion[] }) {
           </button>
         </div>
         <p className="text-ink-muted mb-3 text-[12px] leading-relaxed">
-          Their calendars don’t show a time zone. Pick one so the times you offer fall in their
-          working day and show their local time. Uniox remembers it for next time; change it later
-          in Settings › Scheduling.
+          Check each person’s time zone so the times you offer fall in their 9:00–18:00 and show
+          their local time. Uniox remembers your answer and asks once per person; change it later
+          with the globe button or in Settings › Scheduling.
         </p>
         <form
           onSubmit={(e) => {
@@ -77,7 +85,10 @@ function PromptDialog({ questions }: { questions: ZoneQuestion[] }) {
                 <span className="flex items-baseline gap-1.5">
                   <span className="font-semibold">{q.name || q.email}</span>
                   {q.name && <span className="text-ink-faint truncate">{q.email}</span>}
-                  <span className="text-ink-faint ml-auto tabular-nums">{nowIn(v)}</span>
+                  <span className="text-ink-faint ml-auto shrink-0 tabular-nums">
+                    {v === q.guess ? `${SOURCE[q.source]} · ` : ''}
+                    {nowIn(v)}
+                  </span>
                 </span>
                 <input
                   list="tz-options"

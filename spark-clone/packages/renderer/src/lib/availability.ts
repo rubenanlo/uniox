@@ -322,8 +322,10 @@ export function parseAvailabilityAsk(raw: string): AvailabilityAsk {
 export interface Participant {
   email: string;
   name?: string;
-  /** IANA zone: their calendar's, else read from the thread, else null. */
+  /** IANA zone: what the user saved, else their calendar's, else read from the thread. */
   timeZone: string | null;
+  /** Where `timeZone` came from; only 'saved' counts as confirmed by the user. */
+  zoneSource?: 'saved' | 'google' | 'thread';
   /** Busy blocks when their calendar is visible, else null (unknown). */
   busy: Slot[] | null;
 }

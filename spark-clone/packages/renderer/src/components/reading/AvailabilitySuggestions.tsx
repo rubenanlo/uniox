@@ -171,8 +171,9 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
 
   if (!active || dismissedAt === forceCount || !found || !slots) return null;
 
-  const askZones = async (force = false) =>
-    confirmZones(found.unconfirmed, await messageText(message.id), force);
+  /** Ask about people not yet confirmed, or (`all`) review everyone's zone. */
+  const askZones = async (all = false) =>
+    confirmZones(all ? found.participants : found.unconfirmed, await messageText(message.id));
   const reply = (picked: GroupSlot[]) => {
     if (replying || !picked.length) return;
     setReplying(true);
@@ -267,14 +268,15 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
         </button>
       )}
       <span className="flex-1" />
-      {found.unconfirmed.length > 0 && (
+      {found.participants.length > 0 && (
         <button
           onClick={() => void askZones(true)}
-          title="Their calendar doesn’t show a time zone"
-          className="text-ink-faint hover:text-ink flex items-center gap-1 rounded-md px-1 text-[11.5px]"
+          aria-label="Time zones"
+          title="Check everyone’s time zone"
+          className="text-ink-faint hover:text-ink flex items-center gap-1 rounded-md p-1 text-[11.5px]"
         >
-          <Globe2 size={12} />
-          Set time zone{unknownNames.length > 1 ? 's' : ''} for {unknownNames.join(', ')}
+          <Globe2 size={13} />
+          {unknownNames.length > 0 && <span>Confirm {unknownNames.join(', ')}</span>}
         </button>
       )}
       <button
