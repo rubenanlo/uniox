@@ -240,7 +240,7 @@ export function TimesCalendar({
       <div
         ref={scrollRef}
         onScroll={(e) => setFirst(Math.round(e.currentTarget.scrollLeft / COL))}
-        className="overflow-auto overscroll-contain [scrollbar-width:thin]"
+        className="no-scrollbar overflow-auto overscroll-contain"
         style={{
           maxHeight: maxBody + HEAD,
           scrollPaddingLeft: gutter,
