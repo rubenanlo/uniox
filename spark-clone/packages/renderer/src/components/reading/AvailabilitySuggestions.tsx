@@ -4,10 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { keysFor } from '../../actions/registry';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
-import { formatSlotChip, formatSlotLong, type AvailabilityAsk, type Slot } from '../../lib/availability';
+import {
+  describeWindow,
+  formatSlotChip,
+  formatSlotLong,
+  type AvailabilityAsk,
+  type Slot,
+} from '../../lib/availability';
 import { cn } from '../../lib/utils';
 import {
   detectAvailabilityAsk,
+  loadAvailabilityPrefs,
   replyWithSlots,
   suggestSlots,
   useAvailabilityForced,
@@ -16,7 +23,15 @@ import { useAccounts, useDelta } from '../../state/queries';
 import { Keycaps } from '../ui/Keycap';
 
 /** What the strip explains behind its info icon. */
-function InfoCard({ anchor, onClose }: { anchor: DOMRect; onClose: () => void }) {
+function InfoCard({
+  anchor,
+  when,
+  onClose,
+}: {
+  anchor: DOMRect;
+  when: string;
+  onClose: () => void;
+}) {
   useEscapeClose(true, onClose);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -43,20 +58,23 @@ function InfoCard({ anchor, onClose }: { anchor: DOMRect; onClose: () => void })
     >
       <p className="mb-1.5 font-semibold">Suggested times</p>
       <p className="text-ink-muted mb-2">
-        This email asks when you’re free, so Uniox picked open times on the next Tuesday, Wednesday and
-        Thursday, between 9:30 and 17:30. It checks every calendar on all your
-        accounts, but not colleagues’ calendars you subscribed to. Nothing is added to your calendar.
+        This email asks when you’re free, so Uniox picked open times in the coming week on {when}.
+        Change the days and hours in Settings › Scheduling. It checks every calendar on all your
+        accounts, but not colleagues’ calendars you subscribed to. Nothing is added to your
+        calendar.
       </p>
       <ul className="text-ink-muted space-y-1">
         <li>
-          <span className="text-ink font-medium">Click</span> a time to reply that you’re available then.
+          <span className="text-ink font-medium">Click</span> a time to reply that you’re available
+          then.
         </li>
         <li>
           <span className="text-ink font-medium">Shift-click</span> to pick several, then press{' '}
           <Keycaps keys={['↩']} /> or “Reply with these” to offer them all.
         </li>
         <li className="flex items-center gap-1">
-          <Keycaps keys={keysFor('share-availability')} /> shows times on any email, or adds them to a reply.
+          <Keycaps keys={keysFor('share-availability')} /> shows times on any email, or adds them to
+          a reply.
         </li>
       </ul>
     </div>,
@@ -80,10 +98,12 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const [info, setInfo] = useState<DOMRect | null>(null);
   const [replying, setReplying] = useState(false);
+  const [windowText, setWindowText] = useState('');
   const rowRef = useRef<HTMLDivElement>(null);
 
   const fromMe =
-    !!message.from && accounts.some((a) => a.email.toLowerCase() === message.from!.email.toLowerCase());
+    !!message.from &&
+    accounts.some((a) => a.email.toLowerCase() === message.from!.email.toLowerCase());
 
   // Detect once per message (cached), unless it's the user's own mail.
   useEffect(() => {
@@ -100,7 +120,13 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
 
   const load = useCallback(() => {
     if (!active) return;
-    void suggestSlots(duration ?? 30).then(setSlots, () => setSlots([]));
+    void Promise.all([suggestSlots(duration ?? 30), loadAvailabilityPrefs()]).then(
+      ([s, prefs]) => {
+        setWindowText(describeWindow(prefs));
+        setSlots(s);
+      },
+      () => setSlots([]),
+    );
   }, [active, duration]);
   useEffect(load, [load]);
   // The calendar changed under us (sync, an edit): offer fresh times.
@@ -117,7 +143,11 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
 
   if (!active || dismissedAt === forceCount || !slots) return null;
 
-  const effectiveAsk: AvailabilityAsk = ask ?? { asks: true, durationMinutes: 30, senderTimeZone: null };
+  const effectiveAsk: AvailabilityAsk = ask ?? {
+    asks: true,
+    durationMinutes: 30,
+    senderTimeZone: null,
+  };
   const reply = (picked: Slot[]) => {
     if (replying || !picked.length) return;
     setReplying(true);
@@ -145,7 +175,7 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
       <CalendarClock size={14} className="text-ink-muted shrink-0" aria-hidden />
       <span className="text-ink-muted mr-1 text-[12px] font-semibold">You’re free</span>
       {slots.length === 0 && (
-        <span className="text-ink-faint text-[12px]">No open time Tuesday to Thursday in your working hours.</span>
+        <span className="text-ink-faint text-[12px]">No open time on {windowText}.</span>
       )}
       {slots.map((s, i) => (
         <button
@@ -199,7 +229,7 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
       >
         <X size={13} />
       </button>
-      {info && <InfoCard anchor={info} onClose={() => setInfo(null)} />}
+      {info && <InfoCard anchor={info} when={windowText} onClose={() => setInfo(null)} />}
     </div>
   );
 }

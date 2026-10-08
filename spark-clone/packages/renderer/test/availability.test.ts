@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { CalendarEvent } from '@app/shared';
+import { normalizeAvailability, type CalendarEvent } from '@app/shared';
 import {
   busyIntervals,
   findFreeSlots,
   formatSlotLong,
   looksLikeAvailabilityAsk,
+  describeWindow,
   nextMeetingDays,
   parseAvailabilityAsk,
   templateReply,
@@ -43,13 +44,13 @@ describe('looksLikeAvailabilityAsk', () => {
 describe('nextMeetingDays', () => {
   it('returns the next Tue, Wed and Thu strictly after today', () => {
     // Wed 7 Oct 2026 → Thu 8, Tue 13, Wed 14
-    expect(nextMeetingDays(at(2026, 10, 7, 9))).toEqual([
+    expect(nextMeetingDays(at(2026, 10, 7, 9), [2, 3, 4])).toEqual([
       at(2026, 10, 8),
       at(2026, 10, 13),
       at(2026, 10, 14),
     ]);
     // Mon 5 Oct → Tue 6, Wed 7, Thu 8
-    expect(nextMeetingDays(at(2026, 10, 5, 23))).toEqual([
+    expect(nextMeetingDays(at(2026, 10, 5, 23), [2, 3, 4])).toEqual([
       at(2026, 10, 6),
       at(2026, 10, 7),
       at(2026, 10, 8),
@@ -157,5 +158,44 @@ describe('parseAvailabilityAsk', () => {
       senderTimeZone: null,
     });
     expect(parseAvailabilityAsk('no idea').asks).toBe(false);
+  });
+});
+
+describe('availability window settings', () => {
+  it('defaults to Tue–Thu 9:30–17:30 and repairs bad stored values', () => {
+    expect(normalizeAvailability(null)).toEqual({
+      startMinutes: 570,
+      endMinutes: 1050,
+      weekdays: [2, 3, 4],
+    });
+    expect(normalizeAvailability({ startMinutes: 600, endMinutes: 540, weekdays: [] })).toEqual({
+      startMinutes: 570,
+      endMinutes: 1050,
+      weekdays: [2, 3, 4],
+    });
+    expect(
+      normalizeAvailability({ startMinutes: 480, endMinutes: 960, weekdays: [5, 1, 1, 9] }),
+    ).toEqual({
+      startMinutes: 480,
+      endMinutes: 960,
+      weekdays: [1, 5],
+    });
+  });
+
+  it('describes the window in words, Monday first', () => {
+    expect(describeWindow({ startMinutes: 570, endMinutes: 1050, weekdays: [4, 2, 3] })).toBe(
+      'Tuesday, Wednesday and Thursday, 9:30–17:30',
+    );
+    expect(describeWindow({ startMinutes: 480, endMinutes: 720, weekdays: [0, 1] })).toBe(
+      'Monday and Sunday, 8:00–12:00',
+    );
+  });
+
+  it('finds the next Monday and Friday when those are the chosen days', () => {
+    // Wed 7 Oct 2026 → Fri 9, Mon 12
+    expect(nextMeetingDays(at(2026, 10, 7, 9), [1, 5])).toEqual([
+      at(2026, 10, 9),
+      at(2026, 10, 12),
+    ]);
   });
 });

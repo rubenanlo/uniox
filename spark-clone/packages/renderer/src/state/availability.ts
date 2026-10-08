@@ -1,10 +1,11 @@
 import { toast } from 'sonner';
 import { create } from 'zustand';
-import type { MessageMeta } from '@app/shared';
+import { normalizeAvailability, type AvailabilityPrefs, type MessageMeta } from '@app/shared';
 import { api } from '../lib/api';
 import {
   busyIntervals,
   daysRange,
+  describeWindow,
   DEFAULT_DURATION_MIN,
   findFreeSlots,
   formatSlotLong,
@@ -14,8 +15,6 @@ import {
   templateReply,
   type AvailabilityAsk,
   type Slot,
-  WORK_END_HOUR,
-  WORK_START_HOUR,
 } from '../lib/availability';
 import { stripHtml } from '../lib/assistantContext';
 import { insertDraftText } from '../lib/composerBridge';
@@ -42,7 +41,11 @@ export async function messageText(messageId: string): Promise<string> {
   return (body?.text?.trim() || (body?.html ? stripHtml(body.html) : '')).slice(0, 6000);
 }
 
-const NOT_ASKED: AvailabilityAsk = { asks: false, durationMinutes: DEFAULT_DURATION_MIN, senderTimeZone: null };
+const NOT_ASKED: AvailabilityAsk = {
+  asks: false,
+  durationMinutes: DEFAULT_DURATION_MIN,
+  senderTimeZone: null,
+};
 
 /** One detection per message per session: opening an email twice costs nothing. */
 const detections = new Map<string, Promise<AvailabilityAsk>>();
@@ -65,17 +68,19 @@ export function detectAvailabilityAsk(message: MessageMeta): Promise<Availabilit
     if (!looksLikeAvailabilityAsk(`${message.subject}\n${text}`)) return NOT_ASKED;
     if (!useAssistant.getState().configured) return { ...NOT_ASKED, asks: true };
     try {
-      const raw = await useAssistant.getState().complete(
-        'Does this email ask me (the recipient) for my availability, or ask me to propose or ' +
-          'agree on a time to meet or talk? Reply with JSON only, no prose: ' +
-          '{"asks": boolean, "durationMinutes": number | null, "senderTimeZone": string | null}. ' +
-          'durationMinutes: the meeting length the email asks for, else null. senderTimeZone: an ' +
-          "IANA zone (e.g. America/New_York) only when the email states or clearly implies the sender's " +
-          'time zone or city, else null.',
-        `Email from ${message.from?.name || message.from?.email || 'unknown'}, sent ${new Date(
-          message.date,
-        ).toISOString()}, subject "${message.subject}":\n\n${text}`,
-      );
+      const raw = await useAssistant
+        .getState()
+        .complete(
+          'Does this email ask me (the recipient) for my availability, or ask me to propose or ' +
+            'agree on a time to meet or talk? Reply with JSON only, no prose: ' +
+            '{"asks": boolean, "durationMinutes": number | null, "senderTimeZone": string | null}. ' +
+            'durationMinutes: the meeting length the email asks for, else null. senderTimeZone: an ' +
+            "IANA zone (e.g. America/New_York) only when the email states or clearly implies the sender's " +
+            'time zone or city, else null.',
+          `Email from ${message.from?.name || message.from?.email || 'unknown'}, sent ${new Date(
+            message.date,
+          ).toISOString()}, subject "${message.subject}":\n\n${text}`,
+        );
       return parseAvailabilityAsk(raw);
     } catch {
       detections.delete(message.id);
@@ -86,23 +91,33 @@ export function detectAvailabilityAsk(message: MessageMeta): Promise<Availabilit
   return run;
 }
 
-/** Open times on the next Tue/Wed/Thu, within working hours, across every own calendar. */
+/** The user's suggested-time window (Settings › Scheduling). */
+export async function loadAvailabilityPrefs(): Promise<AvailabilityPrefs> {
+  return normalizeAvailability(await api.query('settings:get', { key: 'availability' }));
+}
+
+/** Open times on the user's chosen days and hours, across every own calendar. */
 export async function suggestSlots(durationMin: number): Promise<Slot[]> {
-  const days = nextMeetingDays(Date.now());
+  const prefs = await loadAvailabilityPrefs();
+  const days = nextMeetingDays(Date.now(), prefs.weekdays);
   const range = daysRange(days);
   const events = await api.query('calendar:busy', range);
   const expanded = events.flatMap((e) => expandEvent(e, range.startMs, range.endMs));
   return findFreeSlots({
     days,
     busy: busyIntervals(expanded),
-    startHour: WORK_START_HOUR,
-    endHour: WORK_END_HOUR,
+    startHour: prefs.startMinutes / 60,
+    endHour: prefs.endMinutes / 60,
     durationMin,
   });
 }
 
 /** Open a reply to `message` saying the user is available at `slots`. */
-export async function replyWithSlots(message: MessageMeta, slots: Slot[], ask: AvailabilityAsk): Promise<void> {
+export async function replyWithSlots(
+  message: MessageMeta,
+  slots: Slot[],
+  ask: AvailabilityAsk,
+): Promise<void> {
   if (!slots.length) return;
   const firstName = (message.from?.name || '').split(/\s+/)[0] || undefined;
   let body = templateReply(slots, ask.senderTimeZone, firstName);
@@ -117,7 +132,7 @@ export async function replyWithSlots(message: MessageMeta, slots: Slot[], ask: A
         }:\n${times}\n\nMatch the email's language, tone and formality. Copy each time exactly as ` +
           'given, keeping the times and the bracketed time zones verbatim (only translate weekday and ' +
           "month names if you reply in another language). List several times one per line with '• '. " +
-          "Greet the sender by first name. Return only the body: no subject, no signature, no placeholders.",
+          'Greet the sender by first name. Return only the body: no subject, no signature, no placeholders.',
         `The email:\n\n${await messageText(message.id)}`,
       );
       if (out.trim()) body = out.trim();
@@ -126,7 +141,14 @@ export async function replyWithSlots(message: MessageMeta, slots: Slot[], ask: A
       toast.error('Couldn’t draft with the assistant, so a standard reply was used.', { id });
     }
   }
-  useUi.getState().openComposer({ mode: 'reply', accountId: message.accountId, replyTo: message, initialBody: body });
+  useUi
+    .getState()
+    .openComposer({
+      mode: 'reply',
+      accountId: message.accountId,
+      replyTo: message,
+      initialBody: body,
+    });
 }
 
 /**
@@ -139,7 +161,8 @@ export async function shareAvailability(): Promise<void> {
     const replyTo = ui.composer.replyTo;
     const ask = replyTo ? await detections.get(replyTo.id) : undefined;
     const slots = await suggestSlots(ask?.asks ? ask.durationMinutes : DEFAULT_DURATION_MIN);
-    if (!slots.length) return void toast('No free time on Tuesday to Thursday within your working hours.');
+    if (!slots.length)
+      return void toast(`No free time on ${describeWindow(await loadAvailabilityPrefs())}.`);
     insertDraftText(
       `I'm available at any of these times:\n${slots
         .map((s) => `• ${formatSlotLong(s, ask?.senderTimeZone)}`)

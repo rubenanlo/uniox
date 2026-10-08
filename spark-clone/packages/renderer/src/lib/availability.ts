@@ -13,11 +13,6 @@ export interface Slot {
 
 const DAY_MS = 86_400_000;
 
-/** Weekdays slots are offered on (Date#getDay: 2 = Tue, 3 = Wed, 4 = Thu). */
-export const MEETING_WEEKDAYS = [2, 3, 4] as const;
-/** Working hours slots must fit inside, local time (9:30–17:30). */
-export const WORK_START_HOUR = 9.5;
-export const WORK_END_HOUR = 17.5;
 export const SLOT_COUNT = 3;
 export const DEFAULT_DURATION_MIN = 30;
 
@@ -57,7 +52,30 @@ function addLocalDays(midnight: number, n: number): number {
  * Local midnights of the next occurrence of each weekday, strictly after
  * today (so the sender has time to answer), in date order.
  */
-export function nextMeetingDays(now: number, weekdays: readonly number[] = MEETING_WEEKDAYS): number[] {
+/** "9:30" from minutes after midnight. */
+export function minutesLabel(m: number): string {
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Tuesday, Wednesday and Thursday, 9:30–17:30" for explanations and empty states. */
+export function describeWindow(p: {
+  startMinutes: number;
+  endMinutes: number;
+  weekdays: number[];
+}): string {
+  const order = [1, 2, 3, 4, 5, 6, 0]
+    .filter((d) => p.weekdays.includes(d))
+    .map((d) => DAY_NAMES[d]!);
+  const days =
+    order.length > 1
+      ? `${order.slice(0, -1).join(', ')} and ${order[order.length - 1]}`
+      : (order[0] ?? '');
+  return `${days}, ${minutesLabel(p.startMinutes)}–${minutesLabel(p.endMinutes)}`;
+}
+
+export function nextMeetingDays(now: number, weekdays: readonly number[]): number[] {
   const today = localMidnight(now);
   const days: number[] = [];
   for (let i = 1; i <= 7 && days.length < weekdays.length; i++) {
@@ -115,7 +133,13 @@ export function findFreeSlots(opts: SlotOptions): Slot[] {
   const candidatesByDay = opts.days.map((day) => {
     const d = new Date(day);
     const at = (h: number) =>
-      new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.round((h % 1) * 60)).getTime();
+      new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        Math.floor(h),
+        Math.round((h % 1) * 60),
+      ).getTime();
     const open = at(opts.startHour);
     const close = at(opts.endHour);
     const out: Slot[] = [];
@@ -128,7 +152,8 @@ export function findFreeSlots(opts: SlotOptions): Slot[] {
   });
 
   const picked: Slot[] = [];
-  const conflicts = (s: Slot) => picked.some((p) => p.startMs < s.endMs + dur && p.endMs + dur > s.startMs);
+  const conflicts = (s: Slot) =>
+    picked.some((p) => p.startMs < s.endMs + dur && p.endMs + dur > s.startMs);
   let target = 0;
   for (let round = 0; picked.length < count && round < count; round++) {
     for (const c of candidatesByDay) {
@@ -210,10 +235,15 @@ export function isValidZone(tz: string): boolean {
 }
 
 /** Plain-text reply used when the assistant isn't configured or fails. */
-export function templateReply(slots: Slot[], senderTimeZone?: string | null, firstName?: string): string {
+export function templateReply(
+  slots: Slot[],
+  senderTimeZone?: string | null,
+  firstName?: string,
+): string {
   const hi = firstName ? `Hi ${firstName},` : 'Hi,';
   const lines = slots.map((s) => formatSlotLong(s, senderTimeZone));
-  if (lines.length === 1) return `${hi}\n\nI'm available on ${lines[0]}. Let me know if that works for you.`;
+  if (lines.length === 1)
+    return `${hi}\n\nI'm available on ${lines[0]}. Let me know if that works for you.`;
   return `${hi}\n\nI'm available at any of these times:\n${lines.map((l) => `• ${l}`).join('\n')}\n\nLet me know which works best for you.`;
 }
 
@@ -229,16 +259,26 @@ export interface AvailabilityAsk {
  * fence). Anything unparseable reads as "doesn't ask".
  */
 export function parseAvailabilityAsk(raw: string): AvailabilityAsk {
-  const none: AvailabilityAsk = { asks: false, durationMinutes: DEFAULT_DURATION_MIN, senderTimeZone: null };
+  const none: AvailabilityAsk = {
+    asks: false,
+    durationMinutes: DEFAULT_DURATION_MIN,
+    senderTimeZone: null,
+  };
   const json = raw.match(/\{[\s\S]*\}/)?.[0];
   if (!json) return none;
   try {
     const v = JSON.parse(json) as Record<string, unknown>;
     const dur = Number(v.durationMinutes);
-    const tz = typeof v.senderTimeZone === 'string' && isValidZone(v.senderTimeZone) ? v.senderTimeZone : null;
+    const tz =
+      typeof v.senderTimeZone === 'string' && isValidZone(v.senderTimeZone)
+        ? v.senderTimeZone
+        : null;
     return {
       asks: v.asks === true,
-      durationMinutes: Number.isFinite(dur) && dur >= 15 && dur <= 240 ? Math.round(dur / 15) * 15 : DEFAULT_DURATION_MIN,
+      durationMinutes:
+        Number.isFinite(dur) && dur >= 15 && dur <= 240
+          ? Math.round(dur / 15) * 15
+          : DEFAULT_DURATION_MIN,
       senderTimeZone: tz,
     };
   } catch {
