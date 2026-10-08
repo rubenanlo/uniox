@@ -43,7 +43,7 @@ function localMidnight(ms: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function addLocalDays(midnight: number, n: number): number {
+export function addLocalDays(midnight: number, n: number): number {
   const d = new Date(midnight);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
 }
@@ -306,10 +306,8 @@ export interface Participant {
   busy: Slot[] | null;
 }
 
-/** A time that suits the user, with whoever it falls outside the working day for. */
+/** A time that suits everyone, and whether it stretches the user's own hours. */
 export interface GroupSlot extends Slot {
-  /** Emails of people for whom this is early or late in their own zone. */
-  offHours: string[];
   /** Outside the user's own Settings hours (only offered when nothing inside fits everyone). */
   outsideMine: boolean;
 }
@@ -346,66 +344,63 @@ export function minutesOutsideDay(slot: Slot, timeZone: string | null): number {
 
 export interface GroupSlotOptions extends Omit<SlotOptions, 'accept'> {
   participants: Participant[];
+  /** Fallback days (e.g. the same weekdays a week later) when `days` has too few fits. */
+  laterDays?: number[];
 }
 
 /**
  * Times free on the user's calendars and on every visible calendar of the
- * others, in this order of preference:
- * 1. inside the user's Settings window and everyone's working day;
- * 2. up to two hours either side of the user's window, when that is what it
- *    takes to land inside everyone's working day;
- * 3. the least stretch overall, saying whose day it stretches.
+ * others, and always inside each other person's 9:00–18:00 in their own zone
+ * (when known). The user's side gives way in this order:
+ * 1. the user's Settings window on the next chosen days;
+ * 2. the same window on the chosen days a week later;
+ * 3. up to two hours either side of the window, closest first.
+ * Fewer (or no) times come back when nothing fits everyone.
  */
 export function findGroupSlots(opts: GroupSlotOptions): GroupSlot[] {
   const count = opts.count ?? SLOT_COUNT;
   const dur = opts.durationMin * 60_000;
   const busy = mergeIntervals([...opts.busy, ...opts.participants.flatMap((p) => p.busy ?? [])]);
-  const theirs = (s: Slot) =>
-    opts.participants.reduce((sum, p) => sum + minutesOutsideDay(s, p.timeZone), 0);
+  const fitsThem = (s: Slot) =>
+    opts.participants.every((p) => minutesOutsideDay(s, p.timeZone) === 0);
   const mine = (s: Slot) => {
     const start = minutesIn(s.startMs);
     const end = start + opts.durationMin;
     return Math.max(0, opts.startHour * 60 - start) + Math.max(0, end - opts.endHour * 60);
   };
+  const later = opts.laterDays ?? [];
 
-  const picked: Slot[] = findFreeSlots({ ...opts, busy, accept: (s) => theirs(s) === 0 });
+  const picked: Slot[] = findFreeSlots({ ...opts, busy, accept: fitsThem });
+  if (picked.length < count && later.length) {
+    picked.push(
+      ...findFreeSlots({
+        ...opts,
+        days: later,
+        busy,
+        accept: fitsThem,
+        count: count - picked.length,
+      }),
+    );
+  }
   if (picked.length < count) {
-    const wide = findFreeSlots({
+    const near = (a: Slot, b: Slot) => a.startMs < b.endMs + dur && a.endMs + dur > b.startMs;
+    const stretched = findFreeSlots({
       ...opts,
+      days: [...opts.days, ...later],
       busy,
       startHour: Math.max(6, opts.startHour - MY_STRETCH_MIN / 60),
       endHour: Math.min(22, opts.endHour + MY_STRETCH_MIN / 60),
       count: 1000,
-    });
-    const near = (a: Slot, b: Slot) => a.startMs < b.endMs + dur && a.endMs + dur > b.startMs;
-    const fill = (candidates: Slot[]) => {
-      for (const s of candidates) {
-        if (picked.length >= count) break;
-        if (!picked.some((p) => near(p, s))) picked.push(s);
-      }
-    };
-    // 2: fits everyone, a little outside the user's hours, closest first.
-    fill(
-      wide
-        .filter((s) => theirs(s) === 0 && mine(s) > 0)
-        .sort((a, b) => mine(a) - mine(b) || a.startMs - b.startMs),
-    );
-    // 3: inside the user's hours, least stretch for the others.
-    fill(
-      wide
-        .filter((s) => theirs(s) > 0 && mine(s) === 0)
-        .sort((a, b) => theirs(a) - theirs(b) || a.startMs - b.startMs),
-    );
+      accept: (s) => fitsThem(s) && mine(s) > 0,
+    }).sort((a, b) => mine(a) - mine(b) || a.startMs - b.startMs);
+    for (const s of stretched) {
+      if (picked.length >= count) break;
+      if (!picked.some((p) => near(p, s))) picked.push(s);
+    }
   }
   return picked
     .sort((a, b) => a.startMs - b.startMs)
-    .map((s) => ({
-      ...s,
-      offHours: opts.participants
-        .filter((p) => minutesOutsideDay(s, p.timeZone) > 0)
-        .map((p) => p.email),
-      outsideMine: mine(s) > 0,
-    }));
+    .map((s) => ({ ...s, outsideMine: mine(s) > 0 }));
 }
 
 function firstName(p: { name?: string; email: string }): string {
@@ -432,25 +427,10 @@ export function formatSlotForPeople(slot: Slot, people: Participant[]): string {
   return [mine, ...[...byZone].map(([when, names]) => `${when} ${names.join(', ')}`)].join(' / ');
 }
 
-/** "early for Alex", "late for Sam and Kim" — for chip tooltips and notes. */
-export function offHoursNote(slot: GroupSlot, people: Participant[]): string {
-  const groups: Record<'early' | 'late', string[]> = { early: [], late: [] };
-  for (const email of slot.offHours) {
-    const p = people.find((x) => x.email === email);
-    if (!p?.timeZone) continue;
-    const early = minutesIn(slot.startMs, p.timeZone) < THEIR_DAY_START_MIN;
-    groups[early ? 'early' : 'late'].push(firstName(p));
-  }
-  if (slot.outsideMine) {
-    const early = minutesIn(slot.startMs) < 12 * 60;
-    groups[early ? 'early' : 'late'].unshift('you');
-  }
-  const list = (n: string[]) =>
-    n.length > 1 ? `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}` : (n[0] ?? '');
-  return (['early', 'late'] as const)
-    .filter((k) => groups[k].length)
-    .map((k) => `${k} for ${list(groups[k])}`)
-    .join(', ');
+/** "early for you" / "late for you" when a time stretches the user's own hours. */
+export function offHoursNote(slot: GroupSlot): string {
+  if (!slot.outsideMine) return '';
+  return `${minutesIn(slot.startMs) < 12 * 60 ? 'early' : 'late'} for you`;
 }
 
 /** Plain-text group offer, used when the assistant isn't configured or fails. */

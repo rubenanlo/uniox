@@ -68,8 +68,9 @@ function InfoCard({
         This email asks when you’re free, so Uniox picked open times in the coming week on {when}.
         Change the days and hours in Settings › Scheduling. It checks every calendar on all your
         accounts, plus the free/busy of everyone on the email when Google shows it to you (usually
-        coworkers). Times also fall in their 9:00–18:00, in their own time zone; when nothing fits,
-        the closest times are offered and marked. Nothing is added to your calendar.
+        coworkers). Times always fall in their 9:00–18:00, in their own time zone. If your days and
+        hours don’t fit, it tries the same days a week later, then up to two hours outside your
+        hours (marked with a dot). Nothing is added to your calendar.
       </p>
       <ul className="text-ink-muted space-y-1">
         <li>
@@ -215,13 +216,17 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
       <CalendarClock size={14} className="text-ink-muted shrink-0" aria-hidden />
       <span className="text-ink-muted mr-1 text-[12px] font-semibold">You’re free</span>
       {slots.length === 0 && (
-        <span className="text-ink-faint text-[12px]">No open time on {windowText}.</span>
+        <span className="text-ink-faint text-[12px]">
+          {found.participants.length
+            ? 'No time in the next two weeks fits you and everyone’s 9:00–18:00.'
+            : `No open time on ${windowText}.`}
+        </span>
       )}
       {slots.map((s, i) => (
         <button
           key={s.startMs}
           data-slot
-          title={[formatSlotForPeople(s, found.participants), offHoursNote(s, found.participants)]
+          title={[formatSlotForPeople(s, found.participants), offHoursNote(s)]
             .filter(Boolean)
             .join(' · ')}
           aria-pressed={selected.has(i)}
@@ -244,9 +249,9 @@ export function AvailabilitySuggestions({ message }: { message: MessageMeta }) {
           )}
         >
           {formatSlotChip(s)}
-          {(s.offHours.length > 0 || s.outsideMine) && (
+          {s.outsideMine && (
             <span
-              aria-label={offHoursNote(s, found.participants)}
+              aria-label={offHoursNote(s)}
               className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle"
             />
           )}

@@ -40,6 +40,10 @@ describe('minutesOutsideDay', () => {
 });
 
 describe('findGroupSlots', () => {
+  const laterDays = days.map((d) => d + 7 * 86_400_000);
+  const nyBusyAfternoons = (ds: number[]) =>
+    ds.map((d) => ({ startMs: d + 15 * 3_600_000, endMs: d + 17.5 * 3_600_000 }));
+
   it("keeps to the user's window when it fits everyone", () => {
     const slots = findGroupSlots({ ...window, participants: [person('Alex', 'America/New_York')] });
     expect(slots).toHaveLength(3);
@@ -47,7 +51,6 @@ describe('findGroupSlots', () => {
       // New York's 9:00 is 15:00 in Madrid; the user's day ends at 17:30.
       expect(madridMinutes(s.startMs)).toBeGreaterThanOrEqual(15 * 60);
       expect(madridMinutes(s.endMs)).toBeLessThanOrEqual(17 * 60 + 30);
-      expect(s.offHours).toEqual([]);
       expect(s.outsideMine).toBe(false);
     }
   });
@@ -61,37 +64,54 @@ describe('findGroupSlots', () => {
     for (const s of slots) expect(madridMinutes(s.startMs)).toBeGreaterThanOrEqual(16 * 60);
   });
 
-  it("stretches the user's hours a little before stretching anyone else's", () => {
+  it('never offers a time before 9:00 or after 18:00 for the others', () => {
+    // The overlap (15:00–17:30 Madrid) is booked on the coming days.
+    const people = [
+      person('Alyson', 'America/New_York', nyBusyAfternoons(days)),
+      person('Tara', 'America/New_York'),
+    ];
+    const slots = findGroupSlots({ ...window, participants: people, laterDays });
+    expect(slots).toHaveLength(3);
+    for (const s of slots) {
+      for (const p of people) expect(minutesOutsideDay(s, p.timeZone)).toBe(0);
+    }
+  });
+
+  it("tries the user's window a week later before stretching the user's hours", () => {
+    const people = [person('Alyson', 'America/New_York', nyBusyAfternoons(days))];
+    const slots = findGroupSlots({ ...window, participants: people, laterDays });
+    expect(slots).toHaveLength(3);
+    for (const s of slots) {
+      expect(s.startMs).toBeGreaterThanOrEqual(laterDays[0]!);
+      expect(s.outsideMine).toBe(false);
+    }
+  });
+
+  it("stretches the user's hours only when the window never fits", () => {
     // Los Angeles 9:00 is 18:00 in Madrid, past the user's 17:30.
     const slots = findGroupSlots({
       ...window,
       participants: [person('Kim', 'America/Los_Angeles')],
+      laterDays,
     });
     expect(slots).toHaveLength(3);
     for (const s of slots) {
-      expect(s.offHours).toEqual([]);
       expect(s.outsideMine).toBe(true);
       expect(madridMinutes(s.startMs)).toBeGreaterThanOrEqual(18 * 60);
       expect(madridMinutes(s.endMs)).toBeLessThanOrEqual(19 * 60 + 30);
     }
-    expect(offHoursNote(slots[0]!, [person('Kim', 'America/Los_Angeles')])).toBe('late for you');
+    expect(offHoursNote(slots[0]!)).toBe('late for you');
   });
 
-  it('offers the least-bad times, flagged, when no hour suits everyone', () => {
+  it('offers nothing when no hour suits everyone', () => {
     const people = [person('Ana', 'Pacific/Auckland'), person('Kim', 'America/Los_Angeles')];
-    const slots = findGroupSlots({ ...window, participants: people });
-    expect(slots).toHaveLength(3);
-    for (const s of slots) {
-      expect(s.offHours.length).toBeGreaterThan(0);
-      expect(s.outsideMine).toBe(false);
-      expect(offHoursNote(s, people)).toMatch(/^(early|late) for /);
-    }
+    expect(findGroupSlots({ ...window, participants: people, laterDays })).toEqual([]);
   });
 
   it('treats unknown zones and hidden calendars as no constraint', () => {
     const slots = findGroupSlots({ ...window, participants: [person('Sam', null)] });
     expect(slots).toHaveLength(3);
-    expect(slots.every((s) => !s.outsideMine && s.offHours.length === 0)).toBe(true);
+    expect(slots.every((s) => !s.outsideMine)).toBe(true);
   });
 });
 

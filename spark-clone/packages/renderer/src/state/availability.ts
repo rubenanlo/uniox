@@ -9,6 +9,7 @@ import {
 } from '@app/shared';
 import { api } from '../lib/api';
 import {
+  addLocalDays,
   busyIntervals,
   daysRange,
   describeWindow,
@@ -145,7 +146,9 @@ export async function suggestGroupSlots(
 ): Promise<GroupSuggestion> {
   const prefs = await loadAvailabilityPrefs();
   const days = nextMeetingDays(Date.now(), prefs.weekdays);
-  const range = daysRange(days);
+  // Same weekdays a week later, used only when the coming days don't fit everyone.
+  const laterDays = days.map((d) => addLocalDays(d, 7));
+  const range = daysRange([...days, ...laterDays]);
   const emails = people.map((p) => p.email.toLowerCase());
   const [events, freeBusy, saved] = await Promise.all([
     api.query('calendar:busy', range),
@@ -178,6 +181,7 @@ export async function suggestGroupSlots(
     endHour: prefs.endMinutes / 60,
     durationMin,
     participants,
+    laterDays,
   });
   return { slots, participants, unconfirmed };
 }
@@ -245,9 +249,9 @@ export async function confirmZones(
 
 /** A one-line heads-up when some offered times stretch someone's day. */
 export function stretchNote(s: GroupSuggestion): string {
-  const notes = s.slots.map((slot) => offHoursNote(slot, s.participants)).filter(Boolean);
+  const notes = s.slots.map((slot) => offHoursNote(slot)).filter(Boolean);
   return notes.length
-    ? `Nothing fit everyone inside working hours, so some times are ${notes[0]}.`
+    ? `Your hours didn’t fit everyone’s 9:00–18:00, so some times are ${notes[0]}.`
     : '';
 }
 
@@ -340,9 +344,9 @@ export async function shareAvailability(): Promise<void> {
       }
       if (!found.slots.length) {
         return void toast(
-          `No time on ${describeWindow(await loadAvailabilityPrefs())} is free for ${
-            people.length ? 'everyone' : 'you'
-          }.`,
+          people.length
+            ? `No time in the next two weeks fits both your hours and everyone’s 9:00–18:00.`
+            : `No free time on ${describeWindow(await loadAvailabilityPrefs())}.`,
         );
       }
       insertDraftText(
