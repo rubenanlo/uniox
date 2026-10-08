@@ -29,7 +29,7 @@ import { api } from './lib/api';
 import { composeFromMailto } from './lib/mailto';
 import { fmtWake } from './lib/schedule';
 import { softTint } from './lib/utils';
-import { useAssistant, wireAssistant } from './state/assistant';
+import { assistantOwnsEscape, wireAssistant } from './state/assistant';
 import { wireCalendar } from './state/calendar';
 import { wireKanban } from './state/kanban';
 import { usePersistedUiPrefs } from './state/persist';
@@ -192,7 +192,7 @@ function MailView() {
         return;
       const s = useUi.getState();
       if (s.composer || s.commandOpen || s.settingsOpen || s.shortcutsOpen || s.picker) return;
-      if (useAssistant.getState().open) return; // the modal's own Esc closes it
+      if (assistantOwnsEscape()) return; // the assistant's own Esc closes it first
       // The time zone dialog and the times calendar close on their own Esc.
       if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
       e.preventDefault();

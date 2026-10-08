@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { api } from '../../lib/api';
 import { toastWithUndo } from '../../lib/undo';
 import { cn } from '../../lib/utils';
-import { useAssistant } from '../../state/assistant';
+import { assistantOwnsEscape } from '../../state/assistant';
 import { useUi } from '../../state/store';
 
 const STATUS_DOT: Record<string, string> = {
@@ -342,7 +342,7 @@ export function KanbanView({ board, onBack }: { board: KanbanBoard | null; onBac
         (sidebarNav.matches(':hover') || sidebarNav.contains(document.activeElement));
       if (e.key === 'Escape') {
         if (sidebarActive) return; // the drawer's own Esc closes it first
-        if (useAssistant.getState().open) return; // the modal's own Esc closes it
+        if (assistantOwnsEscape()) return; // the assistant's own Esc closes it first
         e.preventDefault();
         e.stopPropagation();
         setSelectedId((sel) => {

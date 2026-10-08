@@ -39,6 +39,7 @@ import {
 } from '../../lib/utils';
 import { parseSearchQuery } from '@app/shared';
 import { HoverCard, type HoverAnchor } from '../ui/HoverCard';
+import { assistantOwnsEscape } from '../../state/assistant';
 import {
   bundleRowId,
   PRIORITY_TOGGLE_ID,
@@ -408,7 +409,8 @@ function FocusHeader({ category, threads }: { category: Category; threads: Threa
         !ui.composer &&
         !ui.picker &&
         !ui.shortcutsOpen &&
-        !ui.settingsOpen
+        !ui.settingsOpen &&
+        !assistantOwnsEscape()
       ) {
         e.stopPropagation();
         setCategoryFocus(null);
