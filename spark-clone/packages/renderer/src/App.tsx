@@ -22,6 +22,7 @@ import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
+import { composeFromMailto } from './lib/mailto';
 import { fmtWake } from './lib/schedule';
 import { softTint } from './lib/utils';
 import { useAssistant, wireAssistant } from './state/assistant';
@@ -317,8 +318,17 @@ export default function App() {
       ui.selectThread(e.threadId);
     } else if (e.kind === 'open-calendar') {
       useUi.getState().setView('calendar');
+    } else if (e.kind === 'compose') {
+      composeFromMailto(e.draft);
     }
   });
+  // A mailto: link that launched the app (or reopened its window) was parked
+  // in main until now; collecting it also tells main we're listening.
+  useEffect(() => {
+    void api.query('mailto:pending', undefined).then((draft) => {
+      if (draft) composeFromMailto(draft);
+    });
+  }, []);
   const { accounts, loaded, refresh } = useAccounts();
   const { composer, view } = useUi(useShallow((s) => ({ composer: s.composer, view: s.view })));
   const searching = useUi((s) => !!s.searchQuery.trim());

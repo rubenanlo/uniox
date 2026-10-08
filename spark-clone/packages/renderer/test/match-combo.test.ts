@@ -4,7 +4,7 @@ vi.mock('../src/lib/api', () => ({
   api: { query: vi.fn(), command: vi.fn(), onTriageUndo: vi.fn(() => () => {}) },
 }));
 
-import { ACTIONS, matchCombo } from '../src/actions/registry';
+import { ACTIONS, fieldOwnsKey, matchCombo } from '../src/actions/registry';
 
 const ev = (over: Partial<KeyboardEvent>) =>
   ({ key: '', code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...over }) as KeyboardEvent;
@@ -35,5 +35,33 @@ describe('layout shortcuts (⌘⌥1/2/3) on macOS', () => {
 
   it('plain 1 (no modifiers) matches nothing', () => {
     expect(dispatchTarget(ev({ key: '1', code: 'Digit1' }))).toBeNull();
+  });
+});
+
+describe('fields keep their own ⌘-keys', () => {
+  const toggleRead = ACTIONS.find((a) => a.id === 'toggle-read')!;
+  const cmdU = ev({ key: 'u', code: 'KeyU', metaKey: true });
+
+  it('⌘U matches mark read / unread through its alt binding', () => {
+    expect(dispatchTarget(cmdU)?.id).toBe('toggle-read');
+  });
+
+  it('⌘U inside the composer never marks the replied-to email', () => {
+    expect(fieldOwnsKey(cmdU, toggleRead, { editable: false, inComposer: true })).toBe(true);
+    expect(fieldOwnsKey(cmdU, toggleRead, { editable: true, inComposer: true })).toBe(true);
+  });
+
+  it('⌘U in any text field is left to the field (underline)', () => {
+    expect(fieldOwnsKey(cmdU, toggleRead, { editable: true, inComposer: false })).toBe(true);
+  });
+
+  it('⌘U on the mail list still toggles read', () => {
+    expect(fieldOwnsKey(cmdU, toggleRead, { editable: false, inComposer: false })).toBe(false);
+  });
+
+  it('global shortcuts like ⌘R still work from the composer', () => {
+    const refresh = ACTIONS.find((a) => a.id === 'refresh')!;
+    const cmdR = ev({ key: 'r', code: 'KeyR', metaKey: true });
+    expect(fieldOwnsKey(cmdR, refresh, { editable: true, inComposer: true })).toBe(false);
   });
 });

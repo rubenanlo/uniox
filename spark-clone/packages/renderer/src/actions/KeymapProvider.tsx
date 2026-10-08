@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { focusPanelLeft, focusPanelRight } from '../lib/panels';
 import { handleTriageUndo } from '../lib/undo';
 import { keyboardTargetId, useUi } from '../state/store';
-import { ACTIONS, matchCombo, refreshNow } from './registry';
+import { ACTIONS, fieldOwnsKey, matchCombo, refreshNow } from './registry';
 
 function inEditableTarget(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;
@@ -59,16 +59,10 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
 
       for (const action of ACTIONS) {
         if (!matchCombo(e, action.combo) && !matchCombo(e, action.altCombo ?? null)) continue;
-        // In an editable field, don't hijack native ⌘-combos the field needs
-        // (selection/clipboard plus the editor's ⌘B/⌘I/⌘U formatting).
-        if (
-          editable &&
-          action.id !== 'undo' &&
-          ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'].includes(action.combo!.key) &&
-          action.combo!.meta &&
-          !action.combo!.shift
-        )
-          return;
+        // Don't hijack ⌘-combos a field needs (clipboard, ⌘B/⌘I/⌘U formatting),
+        // and never act on the email list from inside the composer.
+        const inComposer = !!(e.target as HTMLElement | null)?.closest?.('[data-composer]');
+        if (fieldOwnsKey(e, action, { editable, inComposer })) return;
         e.preventDefault();
         action.perform(keyboardTargetId());
         return;

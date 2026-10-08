@@ -660,6 +660,28 @@ function physicalKey(e: KeyboardEvent): string {
   return '';
 }
 
+/** ⌘-keys a text field needs for itself: selection, clipboard, undo, B/I/U formatting. */
+const FIELD_META_KEYS = ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'];
+
+/**
+ * True when the focused field (or the composer) should keep this key instead
+ * of the action running. Checks the binding that actually matched: an action
+ * whose main combo is plain (U) can still match via a ⌘ altCombo (⌘U).
+ */
+export function fieldOwnsKey(
+  e: KeyboardEvent,
+  action: AppAction,
+  ctx: { editable: boolean; inComposer: boolean },
+): boolean {
+  if (action.id === 'undo') return false;
+  // While writing, keys belong to the draft: nothing may act on the email
+  // behind it (⌘U must not mark the thread you're replying to read/unread).
+  if (ctx.inComposer && action.context === 'thread') return true;
+  if (!ctx.editable) return false;
+  const matched = matchCombo(e, action.combo) ? action.combo : action.altCombo;
+  return !!matched?.meta && !matched.shift && FIELD_META_KEYS.includes(matched.key);
+}
+
 export function matchCombo(e: KeyboardEvent, combo: KeyCombo | null): boolean {
   if (!combo) return false;
   const keyMatches =

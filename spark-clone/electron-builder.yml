@@ -20,6 +20,16 @@ asarUnpack:
 npmRebuild: true
 buildDependenciesFromSource: false
 
+# Declares the mailto: URL scheme (CFBundleURLTypes on macOS, registry/.desktop
+# entries elsewhere) so the OS lists Uniox as a mail app and routes clicked
+# mailto: links to it once it is chosen as the default (Settings → Appearance,
+# or Mail ▸ Settings ▸ Default email reader).
+protocols:
+  - name: Email
+    schemes:
+      - mailto
+    role: Editor
+
 mac:
   category: public.app-category.productivity
   target:
