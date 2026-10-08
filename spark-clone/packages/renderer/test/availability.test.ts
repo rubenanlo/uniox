@@ -78,7 +78,14 @@ describe('findFreeSlots', () => {
 
   it('offers one slot per day inside working hours, avoiding busy time', () => {
     const busy = busyIntervals([ev(at(2026, 10, 13, 9), at(2026, 10, 13, 12))]);
-    const slots = findFreeSlots({ days, busy, startHour: 9, endHour: 18, durationMin: 30 });
+    const slots = findFreeSlots({
+      days,
+      busy,
+      startHour: 9,
+      endHour: 18,
+      durationMin: 30,
+      random: () => 0.9,
+    });
     expect(slots).toHaveLength(3);
     expect(new Date(slots[0]!.startMs).getDate()).toBe(13);
     expect(new Date(slots[0]!.startMs).getHours()).toBeGreaterThanOrEqual(12);
@@ -96,6 +103,37 @@ describe('findFreeSlots', () => {
     const slots = findFreeSlots({ days, busy, startHour: 9, endHour: 18, durationMin: 60 });
     expect(slots).toHaveLength(3);
     expect(slots.some((s) => new Date(s.startMs).getDate() === 14)).toBe(false);
+  });
+
+  it('sometimes uses two days, two times on one, never three on a day', () => {
+    const slots = findFreeSlots({
+      days,
+      busy: [],
+      startHour: 9,
+      endHour: 18,
+      durationMin: 30,
+      random: () => 0.1,
+    });
+    const dates = slots.map((s) => new Date(s.startMs).getDate());
+    expect(slots).toHaveLength(3);
+    expect(new Set(dates).size).toBe(2);
+    for (let i = 0; i < 50; i++) {
+      const counts = new Map<number, number>();
+      for (const s of findFreeSlots({ days, busy: [], startHour: 9, endHour: 18, durationMin: 30 }))
+        counts.set(
+          new Date(s.startMs).getDate(),
+          (counts.get(new Date(s.startMs).getDate()) ?? 0) + 1,
+        );
+      expect(Math.max(...counts.values())).toBeLessThanOrEqual(2);
+    }
+    const oneDay = findFreeSlots({
+      days: [days[0]!],
+      busy: [],
+      startHour: 9,
+      endHour: 18,
+      durationMin: 30,
+    });
+    expect(oneDay).toHaveLength(2);
   });
 
   it('returns fewer slots when the calendar is full', () => {

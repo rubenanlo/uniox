@@ -125,6 +125,10 @@ export interface SlotOptions {
   notBefore?: number;
   /** Extra test a candidate must pass (e.g. inside everyone's working day). */
   accept?: (slot: Slot) => boolean;
+  /** At most this many picks on one day (default 2, so never three in a day). */
+  maxPerDay?: number;
+  /** Randomness for varying the spread; tests pass a fixed one. */
+  random?: () => number;
 }
 
 /** Times of day (hours) each successive pick aims for, so offers vary. */
@@ -160,20 +164,38 @@ export function findFreeSlots(opts: SlotOptions): Slot[] {
   });
 
   const picked: Slot[] = [];
+  const perDay = new Map<number, number>();
+  const maxPerDay = opts.maxPerDay ?? 2;
   const conflicts = (s: Slot) =>
     picked.some((p) => p.startMs < s.endMs + dur && p.endMs + dur > s.startMs);
   let target = 0;
+  const pickOn = (c: (typeof candidatesByDay)[number]): boolean => {
+    if (picked.length >= count || (perDay.get(c.day) ?? 0) >= maxPerDay) return false;
+    const aim = c.at(TARGET_HOURS[target % TARGET_HOURS.length]!);
+    const best = c.out
+      .filter((s) => !conflicts(s))
+      .sort((a, b) => Math.abs(a.startMs - aim) - Math.abs(b.startMs - aim))[0];
+    if (!best) return false;
+    picked.push(best);
+    perDay.set(c.day, (perDay.get(c.day) ?? 0) + 1);
+    target++;
+    return true;
+  };
+
+  // Vary the spread: about half the time two of the first three open days,
+  // one of them with two times; otherwise one time per day.
+  const random = opts.random ?? Math.random;
+  const open = candidatesByDay.filter((c) => c.out.length);
+  if (count === 3 && maxPerDay >= 2 && open.length >= 2 && random() < 0.5) {
+    const first = open.slice(0, 3);
+    const a = first.splice(Math.floor(random() * first.length), 1)[0]!;
+    const b = first[Math.floor(random() * first.length)]!;
+    const [x, y] = a.day < b.day ? [a, b] : [b, a];
+    for (const c of random() < 0.5 ? [x, y, x] : [x, y, y]) pickOn(c);
+  }
+  // One per day, round after round, until there are enough.
   for (let round = 0; picked.length < count && round < count; round++) {
-    for (const c of candidatesByDay) {
-      if (picked.length >= count) break;
-      const aim = c.at(TARGET_HOURS[target % TARGET_HOURS.length]!);
-      const best = c.out
-        .filter((s) => !conflicts(s))
-        .sort((a, b) => Math.abs(a.startMs - aim) - Math.abs(b.startMs - aim))[0];
-      if (!best) continue;
-      picked.push(best);
-      target++;
-    }
+    for (const c of candidatesByDay) pickOn(c);
   }
   return picked.sort((a, b) => a.startMs - b.startMs);
 }
@@ -391,11 +413,14 @@ export function findGroupSlots(opts: GroupSlotOptions): GroupSlot[] {
       startHour: Math.max(6, opts.startHour - MY_STRETCH_MIN / 60),
       endHour: Math.min(22, opts.endHour + MY_STRETCH_MIN / 60),
       count: 1000,
+      maxPerDay: 1000,
       accept: (s) => fitsThem(s) && mine(s) > 0,
     }).sort((a, b) => mine(a) - mine(b) || a.startMs - b.startMs);
+    const day = (ms: number) => new Date(ms).toDateString();
     for (const s of stretched) {
       if (picked.length >= count) break;
-      if (!picked.some((p) => near(p, s))) picked.push(s);
+      const sameDay = picked.filter((p) => day(p.startMs) === day(s.startMs)).length;
+      if (sameDay < 2 && !picked.some((p) => near(p, s))) picked.push(s);
     }
   }
   return picked
