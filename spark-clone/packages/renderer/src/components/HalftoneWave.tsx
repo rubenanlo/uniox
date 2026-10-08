@@ -8,7 +8,8 @@ import { useUi } from '../state/store';
  * bending surface, each stroke growing in around its own centre on arrival
  * and lit where the crest passes. The surface math is the original's; the
  * palette runs aqua -> accent -> violet so it echoes the greeting and follows
- * the accent picked in Settings.
+ * the accent picked in Settings. Unlike the original it plays its entrance
+ * once and then holds still, redrawing only on resize or a palette change.
  */
 const VS = `
 attribute vec2 aFlow;
@@ -84,11 +85,9 @@ const CORNERS: [number, number][] = [
   [1, -1],
   [1, 1],
 ];
-/** Past this many seconds every stroke stands; only the surface still moves. */
+/** Past this many seconds every stroke stands. The wave settles there and
+ *  stops: Home costs nothing to keep open once the entrance has played. */
 const ENTRANCE_S = 1.6;
-/** After the entrance the surface drifts slowly enough that ~24fps reads as
- *  smooth, and it keeps the Home view off a 60fps GPU loop. */
-const DRIFT_FRAME_MS = 1000 / 24;
 
 function buildGrid(): Float32Array {
   const verts = new Float32Array(COLS * ROWS * 6 * 4);
@@ -126,9 +125,11 @@ export function HalftoneWave({ className }: { className?: string }) {
   // Colours are re-read on the next frame rather than in this effect: App's
   // effect that writes --color-accent runs after ours (parents last).
   const paletteDirty = useRef(true);
+  const redraw = useRef<() => void>(() => {});
 
   useEffect(() => {
     paletteDirty.current = true;
+    redraw.current();
   }, [accent, dark]);
 
   useEffect(() => {
@@ -184,6 +185,24 @@ export function HalftoneWave({ className }: { className?: string }) {
       gl.uniform3f(uCool, ...rgbOf(probe, css.getPropertyValue('--color-violet')));
     };
 
+    let t = 0;
+    let raf = 0;
+    const draw = () => {
+      if (paletteDirty.current) {
+        paletteDirty.current = false;
+        readPalette();
+      }
+      gl.uniform1f(uTime, t);
+      gl.uniform1f(uReveal, t);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArrays(gl.TRIANGLES, 0, verts.length / 4);
+    };
+    // One-off redraws (resize, palette) wait a frame so --color-accent is
+    // already written, and coalesce if several land together.
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(() => ((raf = 0), draw()));
+    };
+
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       const w = Math.max(1, Math.round(cv.clientWidth * dpr));
@@ -194,56 +213,30 @@ export function HalftoneWave({ className }: { className?: string }) {
         gl.viewport(0, 0, w, h);
       }
       gl.uniform2f(uSize, Math.max(1, cv.clientWidth), Math.max(1, cv.clientHeight));
+      if (t >= ENTRANCE_S) schedule();
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(cv);
 
-    // Decorative motion stays on under reduced motion, only much slower
-    // (the original's rule).
+    // Reduced motion slows the entrance rather than skipping it (the
+    // original's rule).
     const slow = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let t = 0;
     let last = 0;
-    let lastDraw = 0;
-    let raf = 0;
-    const frame = (now: number) => {
-      raf = requestAnimationFrame(frame);
+    const entrance = (now: number) => {
       const delta = last ? Math.min(now - last, 40) : 0;
       last = now;
-      t += (delta / 1000) * (slow ? 0.3 : 1);
-      if (t > ENTRANCE_S && now - lastDraw < DRIFT_FRAME_MS) return;
-      lastDraw = now;
-      if (paletteDirty.current) {
-        paletteDirty.current = false;
-        readPalette();
-      }
-      gl.uniform1f(uTime, t);
-      gl.uniform1f(uReveal, t);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.drawArrays(gl.TRIANGLES, 0, verts.length / 4);
+      t = Math.min(ENTRANCE_S, t + (delta / 1000) * (slow ? 0.3 : 1));
+      draw();
+      raf = t < ENTRANCE_S ? requestAnimationFrame(entrance) : 0;
+      if (!raf) redraw.current = schedule;
     };
-    // Hold the clock while the window is in the background; a focused
-    // window picks the wave up where it left off.
-    const pause = () => {
-      cancelAnimationFrame(raf);
-      raf = 0;
-      last = 0;
-    };
-    const resume = () => {
-      if (!raf && !document.hidden) raf = requestAnimationFrame(frame);
-    };
-    const onVisibility = () => (document.hidden ? pause() : resume());
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('blur', pause);
-    window.addEventListener('focus', resume);
-    resume();
+    raf = requestAnimationFrame(entrance);
 
     return () => {
-      pause();
+      cancelAnimationFrame(raf);
+      redraw.current = () => {};
       ro.disconnect();
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('blur', pause);
-      window.removeEventListener('focus', resume);
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, []);
