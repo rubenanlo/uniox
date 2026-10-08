@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
 import { isValidZone } from '../../lib/availability';
-import { cn } from '../../lib/utils';
+import { ZoneSelect } from '../ui/ZoneSelect';
 import { allZones, answerZones, useZonePrompt, type ZoneQuestion } from '../../state/contactZones';
 
 const SOURCE: Record<ZoneQuestion['source'], string> = {
@@ -11,7 +11,7 @@ const SOURCE: Record<ZoneQuestion['source'], string> = {
   google: 'from Google',
   thread: 'from the email',
   assistant: 'guessed from the email',
-  yours: 'your zone, change if needed',
+  yours: 'not found, set to your zone',
 };
 
 function nowIn(tz: string): string {
@@ -53,7 +53,7 @@ function PromptDialog({ questions }: { questions: ZoneQuestion[] }) {
         role="dialog"
         aria-label="Time zones"
         onMouseDown={(e) => e.stopPropagation()}
-        className="border-hairline bg-surface text-ink w-[400px] max-w-[92vw] rounded-2xl border p-4 shadow-2xl"
+        className="border-hairline bg-surface text-ink w-[460px] max-w-[92vw] rounded-2xl border p-4 shadow-2xl"
       >
         <div className="mb-2 flex items-center gap-2">
           <Globe2 size={15} className="text-accent" />
@@ -67,50 +67,44 @@ function PromptDialog({ questions }: { questions: ZoneQuestion[] }) {
           </button>
         </div>
         <p className="text-ink-muted mb-3 text-[12px] leading-relaxed">
-          Check each person’s time zone so the times you offer fall in their 9:00–18:00 and show
-          their local time. Uniox remembers your answer and asks once per person; change it later
-          with the globe button or in Settings › Scheduling.
+          Times you offer fall in each person’s 9:00–18:00 and show their local time. Uniox
+          remembers your answers; change them later with the globe button or in Settings ›
+          Scheduling.
         </p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             save();
           }}
-          className="space-y-2"
         >
-          {questions.map((q, i) => {
-            const v = values[q.email] ?? '';
-            return (
-              <label key={q.email} className="block text-[12px]">
-                <span className="flex items-baseline gap-1.5">
-                  <span className="font-semibold">{q.name || q.email}</span>
-                  {q.name && <span className="text-ink-faint truncate">{q.email}</span>}
-                  <span className="text-ink-faint ml-auto shrink-0 tabular-nums">
-                    {v === q.guess ? `${SOURCE[q.source]} · ` : ''}
-                    {nowIn(v)}
-                  </span>
-                </span>
-                <input
-                  list="tz-options"
-                  autoFocus={i === 0}
-                  value={v}
-                  onChange={(e) => setValues((s) => ({ ...s, [q.email]: e.target.value }))}
-                  onFocus={(e) => e.currentTarget.select()}
-                  className={cn(
-                    'border-hairline bg-surface mt-1 w-full rounded-md border px-2 py-1 text-[12.5px] outline-none',
-                    v && !isValidZone(v) ? 'border-red-400' : 'focus:border-accent',
-                  )}
-                  placeholder="e.g. America/New_York"
-                />
-              </label>
-            );
-          })}
-          <datalist id="tz-options">
-            {zones.map((z) => (
-              <option key={z} value={z} />
-            ))}
-          </datalist>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="border-hairline border-t">
+            {questions.map((q, i) => {
+              const v = values[q.email] ?? '';
+              const name = q.name && q.name.toLowerCase() !== q.email ? q.name : null;
+              return (
+                <div
+                  key={q.email}
+                  className="border-hairline flex items-center gap-4 border-b py-2.5 text-[12.5px]"
+                >
+                  <div className="min-w-0 flex-1" title={q.email}>
+                    <p className="truncate font-medium">{name ?? q.email}</p>
+                    <p className="text-ink-faint truncate text-[11px]">
+                      {v === q.guess ? SOURCE[q.source] : 'changed'}
+                      {v && isValidZone(v) ? ` · ${nowIn(v)} there` : ''}
+                    </p>
+                  </div>
+                  <ZoneSelect
+                    value={v}
+                    zones={zones}
+                    autoFocus={i === 0}
+                    label={`Time zone for ${name ?? q.email}`}
+                    onChange={(z) => setValues((s) => ({ ...s, [q.email]: z }))}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-3">
             <button
               type="button"
               onClick={() => answerZones(null)}
