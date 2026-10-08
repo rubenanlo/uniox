@@ -282,6 +282,13 @@ body {
 .home-colon {
   animation: home-blink 1.1s steps(1, end) infinite;
 }
+/* Home's halftone wave (from sdsn-crm's Admin masthead): feathered at the
+   bottom so it dissolves into the glow above the priority list. */
+.home-wave {
+  opacity: 0.85;
+  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent);
+  mask-image: linear-gradient(to bottom, #000 45%, transparent);
+}
 /* The day-arc marker eases to its position on load. */
 @keyframes home-slide-in {
   from {
