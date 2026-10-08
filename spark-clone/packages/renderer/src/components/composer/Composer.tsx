@@ -34,10 +34,13 @@ import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
 import { fmtWake } from '../../lib/schedule';
 import { cn, formatSize } from '../../lib/utils';
+import { cancelAvailabilityCheck } from '../../state/availability';
+import { useZonePrompt } from '../../state/contactZones';
 import { useAccounts, useTemplates } from '../../state/queries';
 import { useUi, type ComposerState } from '../../state/store';
 import { SchedulePicker } from '../SchedulePicker';
 import { Keycaps } from '../ui/Keycap';
+import { AvailabilityChecking } from './AvailabilityChecking';
 
 const UNDO_SEND_MS = 5000;
 
@@ -538,7 +541,13 @@ export function Composer({ state }: { state: ComposerState }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // The time zone dialog closes itself; Esc while checking only cancels the check.
+        if (useZonePrompt.getState().questions) return;
         e.preventDefault();
+        if (cancelAvailabilityCheck()) {
+          e.stopImmediatePropagation();
+          return;
+        }
         if (linkOpen) setLinkOpen(false);
         else if (confirmClose) setConfirmClose(false);
         else requestClose();
@@ -698,6 +707,7 @@ export function Composer({ state }: { state: ComposerState }) {
           </div>
         )}
 
+        <AvailabilityChecking />
         <div className="composer-editor min-h-0 flex-1 overflow-y-auto px-4 py-2" onClick={() => editor?.commands.focus()}>
           {/* Spark-style selection toolbar: appears over selected text with
               the common formats; the editor's ⌘B/⌘I/⌘U shortcuts still work. */}

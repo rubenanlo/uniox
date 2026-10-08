@@ -46,6 +46,23 @@ export const useAvailabilityForced = create<{
   force: (id) => set((s) => ({ forced: new Map(s.forced).set(id, (s.forced.get(id) ?? 0) + 1) })),
 }));
 
+/**
+ * ⌘⇧A in the composer while it looks up calendars: drives the "Checking
+ * availability" overlay, and `cancel` (Esc) drops the result.
+ */
+export const useAvailabilityCheck = create<{
+  checking: boolean;
+  cancel: (() => void) | null;
+}>(() => ({ checking: false, cancel: null }));
+
+/** Esc while checking: cancel and report true so the key does nothing else. */
+export function cancelAvailabilityCheck(): boolean {
+  const { cancel } = useAvailabilityCheck.getState();
+  if (!cancel) return false;
+  cancel();
+  return true;
+}
+
 /** Plain text of a message body (empty while it's still downloading). */
 export async function messageText(messageId: string): Promise<string> {
   const body = await api.query('message:body', { messageId });
@@ -209,10 +226,13 @@ export async function confirmZones(
   threadText = '',
   /** Ask even about people the user skipped earlier (they clicked to set it). */
   force = false,
+  /** Called once the guesses are in, right before the dialog opens; false aborts. */
+  beforeAsk: () => boolean = () => true,
 ): Promise<boolean> {
   const unconfirmed = people.filter((p) => force || !wasSkipped(p.email));
   if (!unconfirmed.length) return false;
   const guesses = await guessZones(unconfirmed, threadText);
+  if (!beforeAsk()) return false;
   const answers = await askForZones(
     unconfirmed.map((p) => ({
       email: p.email,
@@ -280,34 +300,61 @@ export async function replyWithSlots(
 export async function shareAvailability(): Promise<void> {
   const ui = useUi.getState();
   if (ui.composer) {
-    const replyTo = ui.composer.replyTo;
-    const ask = replyTo ? await detections.get(replyTo.id) : undefined;
-    const own = await ownEmails();
-    const people = getComposerRecipients().filter((p) => !own.has(p.email.toLowerCase()));
-    const duration = ask?.asks ? ask.durationMinutes : DEFAULT_DURATION_MIN;
-    const hints: Record<string, string | null> =
-      replyTo?.from && ask?.senderTimeZone
-        ? { [replyTo.from.email.toLowerCase()]: ask.senderTimeZone }
-        : {};
-    let found = await suggestGroupSlots(people, duration, hints);
-    const threadText = replyTo ? await messageText(replyTo.id) : '';
-    if (await confirmZones(found.unconfirmed, threadText)) {
-      found = await suggestGroupSlots(people, duration, hints);
-    }
-    if (!found.slots.length) {
-      return void toast(
-        `No time on ${describeWindow(await loadAvailabilityPrefs())} is free for ${
-          people.length ? 'everyone' : 'you'
-        }.`,
+    if (useAvailabilityCheck.getState().checking) return;
+    let cancelled = false;
+    const checking = (on: boolean) =>
+      useAvailabilityCheck.setState({
+        checking: on,
+        cancel: on
+          ? () => {
+              cancelled = true;
+              checking(false);
+            }
+          : null,
+      });
+    checking(true);
+    try {
+      const replyTo = ui.composer.replyTo;
+      const ask = replyTo ? await detections.get(replyTo.id) : undefined;
+      const own = await ownEmails();
+      const people = getComposerRecipients().filter((p) => !own.has(p.email.toLowerCase()));
+      const duration = ask?.asks ? ask.durationMinutes : DEFAULT_DURATION_MIN;
+      const hints: Record<string, string | null> =
+        replyTo?.from && ask?.senderTimeZone
+          ? { [replyTo.from.email.toLowerCase()]: ask.senderTimeZone }
+          : {};
+      let found = await suggestGroupSlots(people, duration, hints);
+      if (cancelled) return;
+      const threadText = replyTo ? await messageText(replyTo.id) : '';
+      // The time zone dialog takes over from the animation while it's open.
+      const saved = await confirmZones(found.unconfirmed, threadText, false, () => {
+        if (cancelled) return false;
+        checking(false);
+        return true;
+      });
+      if (cancelled) return;
+      if (saved) {
+        checking(true);
+        found = await suggestGroupSlots(people, duration, hints);
+        if (cancelled) return;
+      }
+      if (!found.slots.length) {
+        return void toast(
+          `No time on ${describeWindow(await loadAvailabilityPrefs())} is free for ${
+            people.length ? 'everyone' : 'you'
+          }.`,
+        );
+      }
+      insertDraftText(
+        `${people.length ? 'These times work for me:' : "I'm available at any of these times:"}\n${found.slots
+          .map((s) => `• ${formatSlotForPeople(s, found.participants)}`)
+          .join('\n')}`,
       );
+      const note = stretchNote(found);
+      if (note) toast(note);
+    } finally {
+      if (!cancelled) checking(false);
     }
-    insertDraftText(
-      `${people.length ? 'These times work for me:' : "I'm available at any of these times:"}\n${found.slots
-        .map((s) => `• ${formatSlotForPeople(s, found.participants)}`)
-        .join('\n')}`,
-    );
-    const note = stretchNote(found);
-    if (note) toast(note);
     return;
   }
   const threadId = ui.selectedThreadId;
