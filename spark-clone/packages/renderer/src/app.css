@@ -91,6 +91,16 @@ body {
 .titlebar-drag select {
   -webkit-app-region: no-drag;
 }
+/* macOS hit-tests drag regions before z-order, so anything floating over the
+   title bar (the expanded composer, modal dialogs and their backdrops) must
+   opt out or its clicks start a window drag instead. Later no-drag regions
+   subtract from earlier drag ones. */
+.no-drag,
+[data-composer],
+[role='dialog'],
+[role='alertdialog'] {
+  -webkit-app-region: no-drag;
+}
 
 /* Scrollbars: a slim pill floating on a transparent track, derived from ink
    so it adapts to both themes. The transparent border keeps it off the edge. */

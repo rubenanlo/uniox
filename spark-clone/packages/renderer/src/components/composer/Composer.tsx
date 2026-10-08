@@ -904,7 +904,7 @@ export function Composer({ state }: { state: ComposerState }) {
       </div>
       {confirmClose && (
         <div
-          className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
+          className="no-drag pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setConfirmClose(false);
           }}

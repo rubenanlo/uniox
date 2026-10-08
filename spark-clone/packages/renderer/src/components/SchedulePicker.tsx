@@ -47,7 +47,7 @@ export function SchedulePicker({ title, icon, someday, notifyToggle, onPick, onC
 
   return (
     <div
-      className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
+      className="no-drag pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
       onMouseDown={onClose}
     >
       <div

@@ -46,7 +46,7 @@ function PromptDialog({ questions }: { questions: ZoneQuestion[] }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30"
+      className="no-drag fixed inset-0 z-[70] flex items-center justify-center bg-black/30"
       onMouseDown={() => answerZones(null)}
     >
       <div
