@@ -903,51 +903,17 @@ export function Composer({ state }: { state: ComposerState }) {
         </footer>
       </div>
       {confirmClose && (
-        <div
-          className="no-drag pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setConfirmClose(false);
+        <CloseConfirmDialog
+          onDelete={() => {
+            setConfirmClose(false);
+            discardDraft();
           }}
-        >
-          <div
-            role="alertdialog"
-            aria-label="Close email"
-            className="border-hairline bg-surface w-80 rounded-2xl border p-4 shadow-2xl"
-          >
-            <p className="text-[13px] font-bold">Save this email?</p>
-            <p className="text-ink-muted mt-1 text-[12px]">
-              You can keep it as a draft and finish it later.
-            </p>
-            <div className="mt-3.5 flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setConfirmClose(false);
-                  discardDraft();
-                }}
-                className="border-hairline text-danger hover:bg-sunken rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
-              >
-                Delete
-              </button>
-              <span className="flex-1" />
-              <button
-                onClick={() => setConfirmClose(false)}
-                className="text-ink-muted hover:text-ink rounded-lg px-3 py-1.5 text-[12px] font-semibold"
-              >
-                Keep editing
-              </button>
-              <button
-                autoFocus
-                onClick={() => {
-                  setConfirmClose(false);
-                  saveAsDraft();
-                }}
-                className="bg-accent rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
-              >
-                Save draft
-              </button>
-            </div>
-          </div>
-        </div>
+          onKeepEditing={() => setConfirmClose(false)}
+          onSave={() => {
+            setConfirmClose(false);
+            saveAsDraft();
+          }}
+        />
       )}
       {showSendLater && (
         <SchedulePicker
@@ -959,6 +925,115 @@ export function Composer({ state }: { state: ComposerState }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** "Save this email?" — ←/→ move between the buttons, D/K/S pick one, ↩ runs the selected one
+ *  (Save draft by default). Esc is handled by the composer and keeps editing. */
+function CloseConfirmDialog({
+  onDelete,
+  onKeepEditing,
+  onSave,
+}: {
+  onDelete: () => void;
+  onKeepEditing: () => void;
+  onSave: () => void;
+}) {
+  const [selected, setSelected] = useState(2);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const latest = useRef({ actions: [onDelete, onKeepEditing, onSave], selected });
+  useEffect(() => {
+    latest.current = { actions: [onDelete, onKeepEditing, onSave], selected };
+  });
+
+  useEffect(() => {
+    buttons.current[selected]?.focus();
+  }, [selected]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Escape') return;
+      const { actions, selected } = latest.current;
+      const key = e.key.toLowerCase();
+      const letter = ['d', 'k', 's'].indexOf(key);
+      let handled = true;
+      if (key === 'arrowleft' || key === 'arrowup' || (key === 'tab' && e.shiftKey))
+        setSelected((selected + 2) % 3);
+      else if (key === 'arrowright' || key === 'arrowdown' || key === 'tab')
+        setSelected((selected + 1) % 3);
+      else if (key === 'home') setSelected(0);
+      else if (key === 'end') setSelected(2);
+      else if (key === 'enter' || key === ' ') actions[selected]!();
+      else if (letter >= 0) actions[letter]!();
+      else handled = false;
+      if (handled) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
+
+  const button = 'rounded-lg px-3 py-1.5 text-[12px] font-semibold';
+  return (
+    <div
+      className="no-drag pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/30"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onKeepEditing();
+      }}
+    >
+      <div
+        role="alertdialog"
+        aria-label="Close email"
+        className="border-hairline bg-surface w-80 rounded-2xl border p-4 shadow-2xl"
+      >
+        <p className="text-[13px] font-bold">Save this email?</p>
+        <p className="text-ink-muted mt-1 text-[12px]">
+          You can keep it as a draft and finish it later.
+        </p>
+        <div className="mt-3.5 flex items-center gap-2">
+          <button
+            ref={(el) => {
+              buttons.current[0] = el;
+            }}
+            onClick={onDelete}
+            onMouseEnter={() => setSelected(0)}
+            className={cn(
+              button,
+              'border-hairline text-danger border',
+              selected === 0 && 'bg-danger/10 border-danger/40',
+            )}
+          >
+            Delete
+          </button>
+          <span className="flex-1" />
+          <button
+            ref={(el) => {
+              buttons.current[1] = el;
+            }}
+            onClick={onKeepEditing}
+            onMouseEnter={() => setSelected(1)}
+            className={cn(button, selected === 1 ? 'bg-sunken text-ink' : 'text-ink-muted')}
+          >
+            Keep editing
+          </button>
+          <button
+            ref={(el) => {
+              buttons.current[2] = el;
+            }}
+            onClick={onSave}
+            onMouseEnter={() => setSelected(2)}
+            className={cn(
+              button,
+              selected === 2 ? 'bg-accent text-white' : 'bg-accent-soft text-accent',
+            )}
+          >
+            Save draft
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
