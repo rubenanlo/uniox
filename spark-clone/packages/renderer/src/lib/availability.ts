@@ -344,7 +344,7 @@ export const THEIR_DAY_START_MIN = 9 * 60;
 export const THEIR_DAY_END_MIN = 18 * 60;
 
 /** Minutes after midnight of an instant in a zone. */
-function minutesIn(ms: number, timeZone?: string): number {
+export function minutesIn(ms: number, timeZone?: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hour: '2-digit',

@@ -172,7 +172,7 @@ export interface GroupSuggestion {
 }
 
 /** How far ahead the calendar picker reaches. */
-export const CALENDAR_DAYS = 21;
+export const CALENDAR_DAYS = 22;
 
 export interface AvailabilityGrid {
   /** Local midnights of every day the picker can scroll through. */
@@ -202,8 +202,8 @@ export async function suggestGroupSlots(
   const days = nextMeetingDays(Date.now(), prefs.weekdays);
   // Same weekdays a week later, used only when the coming days don't fit everyone.
   const laterDays = days.map((d) => addLocalDays(d, 7));
-  // The calendar picker scrolls through every day of the next three weeks.
-  const firstDay = addLocalDays(new Date(new Date().setHours(0, 0, 0, 0)).getTime(), 1);
+  // The calendar picker scrolls through today and the next three weeks.
+  const firstDay = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
   const calendarDays = Array.from({ length: CALENDAR_DAYS }, (_, i) => addLocalDays(firstDay, i));
   const range = daysRange([...calendarDays, ...days, ...laterDays].sort((a, b) => a - b));
   const emails = people.map((p) => p.email.toLowerCase());

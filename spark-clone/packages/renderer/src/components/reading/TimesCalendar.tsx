@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
@@ -8,6 +8,8 @@ import {
   addPick,
   cellStatus,
   localHour,
+  mergeIntervals,
+  minutesIn,
   removePickAt,
   zoneColumns,
   zoneLabel,
@@ -19,22 +21,61 @@ import type { GroupSuggestion } from '../../state/availability';
 /** True while the picker is open, so Esc closes it and nothing underneath. */
 export const useTimesCalendarOpen = create<boolean>(() => false);
 
-const ROW = 13; // px per half hour
-const COL = 64; // px per day
-const LABEL = 42; // px per time zone column
+const ROW = 18; // px per half hour
+const COL = 104; // px per day
+const LABEL = 52; // px per time zone column
+const HEAD = 44; // px of the day header row
 const VISIBLE_DAYS = 5;
 const STEP = 30 * 60_000;
+const DAY_MS = 86_400_000;
 
 function hm(ms: number): string {
   const d = new Date(ms);
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/** "9 am" in the user's zone or another one ("9:30 am" for half-hour zones). */
+function hourText(ms: number, timeZone?: string): string {
+  const m = minutesIn(ms, timeZone);
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    ...(m % 60 ? { minute: '2-digit' } : {}),
+    timeZone,
+  })
+    .format(ms)
+    .toLowerCase();
+}
+
+/** "8 – 12 June 2026", or "29 June – 3 July 2026" across months. */
+function rangeLabel(a: number, b: number): string {
+  const da = new Date(a);
+  const db = new Date(b);
+  const month = (d: Date) => d.toLocaleDateString(undefined, { month: 'long' });
+  const y = db.getFullYear();
+  if (da.getMonth() === db.getMonth()) {
+    return `${da.getDate()} – ${db.getDate()} ${month(db)} ${y}`;
+  }
+  return `${da.getDate()} ${month(da)} – ${db.getDate()} ${month(db)} ${y}`;
+}
+
+/** Consecutive half-hour rows with the same truthy key, as [from, to) runs. */
+function runs<T>(keys: (T | null)[]): { from: number; to: number; key: T }[] {
+  const out: { from: number; to: number; key: T }[] = [];
+  keys.forEach((k, i) => {
+    const last = out[out.length - 1];
+    if (k === null) return;
+    if (last && last.to === i && last.key === k) last.to = i + 1;
+    else out.push({ from: i, to: i + 1, key: k });
+  });
+  return out;
+}
+
 /**
- * A small calendar of the next three weeks, scrolling sideways: green where everyone is free and
- * inside their working day, faded outside the user's hours. Click a cell to
- * add a time (the meeting length), drag to pick a longer one, click a pick
- * to remove it. Every change goes straight to `onChange`.
+ * The next three weeks as a small week-view calendar, scrolling sideways:
+ * accent bands where everyone is free (strong inside the user's hours),
+ * the user's own meetings as outlined blocks, and the picked times in solid
+ * accent. Click a free spot to add a time (the meeting length), drag for a
+ * longer one, click a pick to remove it. Every change goes to `onChange`.
  */
 export function TimesCalendar({
   found,
@@ -56,7 +97,10 @@ export function TimesCalendar({
     return () => useTimesCalendarOpen.setState(false, true);
   }, []);
   const [drag, setDrag] = useState<{ day: number; a: number; b: number } | null>(null);
+  const [now] = useState(() => Date.now());
+  const [first, setFirst] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Close on a click outside (not on the buttons that toggle it).
   useEffect(() => {
@@ -74,21 +118,27 @@ export function TimesCalendar({
   const days = grid.days;
   const chosen = new Set(grid.chosenDays);
   const zones = zoneColumns(participants, days[0] ?? 0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Open scrolled to the first pick's day (or the first chosen day).
-  useEffect(() => {
-    const target = picks[0]?.startMs ?? grid.chosenDays[0];
-    if (target === undefined || !scrollRef.current) return;
-    const i = days.findIndex((d) => target >= d && target < d + 86_400_000);
-    if (i > 0) scrollRef.current.scrollLeft = Math.max(0, (i - 0.5) * COL);
-    // Only on open.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const gutter = LABEL * (1 + zones.length);
   const at = (day: number, row: number) => {
     const d = new Date(day);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate(), lo, row * 30).getTime();
   };
   const ctx = { ...grid, participants };
+
+  // Open on today, or on the first pick's day when that's further out.
+  useEffect(() => {
+    const target = picks[0]?.startMs ?? grid.chosenDays[0];
+    if (target === undefined || !scrollRef.current) return;
+    const i = days.findIndex((d) => target >= d && target < d + DAY_MS);
+    if (i >= VISIBLE_DAYS) scrollRef.current.scrollLeft = (i - 1) * COL;
+    // Only on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const scrollToDay = (i: number) =>
+    scrollRef.current?.scrollTo({
+      left: Math.max(0, Math.min(days.length - VISIBLE_DAYS, i)) * COL,
+      behavior: 'smooth',
+    });
 
   const rowAt = (e: { clientY: number }, col: HTMLElement) =>
     Math.max(
@@ -113,6 +163,10 @@ export function TimesCalendar({
         onChange(removePickAt(picks, startMs));
         return;
       }
+      if (startMs < now) {
+        toast('That time has already passed.');
+        return;
+      }
       const slot =
         a === b
           ? { startMs, endMs: startMs + grid.durationMin * 60_000 }
@@ -125,119 +179,236 @@ export function TimesCalendar({
     window.addEventListener('mouseup', up);
   };
 
-  const width = LABEL * (1 + zones.length) + COL * Math.min(VISIBLE_DAYS, days.length) + 24;
-  const height = rows * ROW + 110;
+  const shown = Math.min(VISIBLE_DAYS, days.length);
+  const width = gutter + COL * shown + 26;
+  const bodyHeight = rows * ROW;
+  const maxBody = Math.max(200, window.innerHeight - 150);
+  const height = Math.min(bodyHeight, maxBody) + HEAD + 92;
   const top = Math.max(8, Math.min(anchor.bottom + 6, window.innerHeight - height - 8));
   const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
+  const last = Math.min(days.length - 1, first + shown - 1);
+
   return createPortal(
     <div
       ref={ref}
       role="dialog"
       aria-label="Pick meeting times"
       style={{ position: 'fixed', top, left, width }}
-      className="border-hairline bg-surface text-ink z-[65] rounded-xl border p-3 shadow-2xl select-none"
+      className="border-hairline bg-surface text-ink z-[65] overflow-hidden rounded-xl border shadow-2xl select-none"
     >
-      <div className="mb-2 flex items-center gap-1.5 text-[12px]">
-        <span className="font-semibold">Pick times</span>
-        <span className="text-ink-faint">· scroll sideways for more days</span>
+      {/* Toolbar: ‹ › Today, the visible range, close. */}
+      <div className="border-hairline flex items-center gap-1 border-b px-2 py-2">
+        <button
+          onClick={() => scrollToDay(first - VISIBLE_DAYS)}
+          aria-label="Earlier days"
+          className="text-ink-muted hover:text-ink hover:bg-sunken rounded-md p-1"
+        >
+          <ChevronLeft size={15} />
+        </button>
+        <button
+          onClick={() => scrollToDay(first + VISIBLE_DAYS)}
+          aria-label="Later days"
+          className="text-ink-muted hover:text-ink hover:bg-sunken rounded-md p-1"
+        >
+          <ChevronRight size={15} />
+        </button>
+        <button
+          onClick={() => scrollToDay(0)}
+          className="bg-sunken hover:text-ink text-ink-muted ml-1 rounded-md px-2 py-0.5 text-[12px] font-semibold"
+        >
+          Today
+        </button>
+        <span className="ml-2 text-[13px] font-semibold tabular-nums">
+          {days.length ? rangeLabel(days[first] ?? days[0]!, days[last]!) : ''}
+        </span>
         <span className="flex-1" />
-        <button onClick={onClose} aria-label="Close" className="text-ink-faint hover:text-ink">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="text-ink-faint hover:text-ink rounded-md p-1"
+        >
           <X size={14} />
         </button>
       </div>
-      <div className="flex">
-        {/* Time columns: the user's, then one per other zone, lit in their 9:00–18:00. */}
-        {[null, ...zones].map((z) => (
-          <div key={z?.label ?? 'me'} className="shrink-0" style={{ width: LABEL }}>
-            <div
-              className="text-ink-muted h-[20px] truncate pr-1.5 text-right text-[10px] font-semibold"
-              title={z ? `${z.names.join(', ')} (${z.label})` : `You (${zoneLabel(days[0] ?? 0)})`}
-            >
-              {z ? z.label : 'You'}
-            </div>
-            <div className="relative" style={{ height: rows * ROW }}>
-              {Array.from({ length: hi - lo + 1 }, (_, i) => {
-                const ms = at(days[0] ?? 0, i * 2);
-                const t = z ? localHour(ms, z.timeZone) : { text: `${lo + i}:00`, working: true };
-                return (
-                  <div
-                    key={i}
-                    style={{ top: i * 2 * ROW - 6 }}
+
+      <div
+        ref={scrollRef}
+        onScroll={(e) => setFirst(Math.round(e.currentTarget.scrollLeft / COL))}
+        className="overflow-auto overscroll-contain [scrollbar-width:thin]"
+        style={{
+          maxHeight: maxBody + HEAD,
+          scrollPaddingLeft: gutter,
+          scrollSnapType: 'x mandatory',
+        }}
+      >
+        <div className="flex" style={{ width: gutter + COL * days.length }}>
+          {/* Time columns, pinned left: the user's, then one per other zone. */}
+          <div className="bg-surface sticky left-0 z-20 flex shrink-0">
+            {[null, ...zones].map((z) => (
+              <div key={z?.label ?? 'me'} className="shrink-0" style={{ width: LABEL }}>
+                <div
+                  className="bg-surface text-ink-faint border-hairline sticky top-0 z-10 flex items-end justify-end truncate border-b pr-2 pb-1.5 text-[10px] font-semibold"
+                  style={{ height: HEAD }}
+                  title={
+                    z ? `${z.names.join(', ')} (${z.label})` : `You (${zoneLabel(days[0] ?? 0)})`
+                  }
+                >
+                  {z ? z.label : 'You'}
+                </div>
+                <div className="relative" style={{ height: bodyHeight }}>
+                  {Array.from({ length: hi - lo }, (_, i) => {
+                    const ms = at(days[0] ?? 0, i * 2);
+                    const working = z ? localHour(ms, z.timeZone).working : true;
+                    return (
+                      <div
+                        key={i}
+                        style={{ top: i * 2 * ROW }}
+                        className={cn(
+                          'absolute right-2 -translate-y-1/2 text-[10px] leading-none whitespace-nowrap tabular-nums',
+                          i === 0 && 'translate-y-0',
+                          z && working ? 'text-ink font-semibold' : 'text-ink-faint',
+                        )}
+                      >
+                        {hourText(ms, z?.timeZone)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {days.map((day) => {
+            const date = new Date(day);
+            const isToday = day <= now && now < day + DAY_MS;
+            const weekend = [0, 6].includes(date.getDay());
+            const cells = Array.from({ length: rows }, (_, r) => {
+              const startMs = at(day, r);
+              return {
+                startMs,
+                past: startMs < now,
+                ...cellStatus({ startMs, endMs: startMs + STEP }, ctx),
+              };
+            });
+            const free = runs(
+              cells.map((c) => (c.ok && !c.past ? (c.inWindow ? 'in' : 'out') : null)),
+            );
+            const mine = mergeIntervals(
+              grid.myBusy.filter((b) => b.startMs < at(day, rows) && b.endMs > at(day, 0)),
+            );
+            const y = (ms: number) =>
+              Math.max(0, Math.min(bodyHeight, ((ms - at(day, 0)) / STEP) * ROW));
+            return (
+              <div key={day} className="shrink-0" style={{ width: COL, scrollSnapAlign: 'start' }}>
+                <div
+                  className="bg-surface border-hairline sticky top-0 z-10 flex items-center justify-center gap-1.5 border-b"
+                  style={{ height: HEAD }}
+                >
+                  <span
                     className={cn(
-                      'absolute right-1.5 text-[10px] leading-none tabular-nums',
-                      z && t.working ? 'font-semibold text-emerald-500' : 'text-ink-faint',
+                      'text-[10.5px] font-semibold tracking-wide uppercase',
+                      weekend ? 'text-ink-faint' : 'text-ink-muted',
                     )}
                   >
-                    {t.text}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-        <div
-          ref={scrollRef}
-          className="flex min-w-0 flex-1 overflow-x-auto overscroll-x-contain [scrollbar-width:thin]"
-        >
-          {days.map((day) => {
-            const weekend = [0, 6].includes(new Date(day).getDay());
-            return (
-              <div key={day} className="shrink-0" style={{ width: COL }}>
-                <div
-                  className={cn(
-                    'h-[20px] text-center text-[11px] font-semibold whitespace-nowrap',
-                    chosen.has(day) ? 'text-accent' : weekend ? 'text-ink-faint' : 'text-ink-muted',
-                  )}
-                >
-                  {new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric' }).format(
-                    day,
+                    {date.toLocaleDateString(undefined, { weekday: 'short' })}
+                  </span>
+                  <span
+                    className={cn(
+                      'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold tabular-nums',
+                      isToday ? 'bg-accent text-white' : weekend ? 'text-ink-faint' : 'text-ink',
+                    )}
+                    title={chosen.has(day) ? 'One of your meeting days' : undefined}
+                  >
+                    {date.getDate()}
+                  </span>
+                  {chosen.has(day) && !isToday && (
+                    <span className="bg-accent h-1 w-1 rounded-full" aria-hidden />
                   )}
                 </div>
                 <div
-                  className="border-hairline relative cursor-pointer border-l"
-                  style={{ height: rows * ROW }}
+                  className={cn(
+                    'border-hairline relative cursor-pointer border-l',
+                    weekend && 'bg-sunken/40',
+                  )}
+                  style={{ height: bodyHeight }}
                   onMouseDown={(e) => startDrag(e, day)}
                 >
-                  {Array.from({ length: rows }, (_, r) => {
-                    const startMs = at(day, r);
-                    const s = cellStatus({ startMs, endMs: startMs + STEP }, ctx);
-                    return (
-                      <div
-                        key={r}
-                        title={`${hm(startMs)} · ${s.ok ? 'everyone is free' : s.issues.join(', ')}`}
-                        style={{
-                          height: ROW,
-                          backgroundImage: s.ok
-                            ? undefined
-                            : 'repeating-linear-gradient(135deg, transparent 0 3px, rgb(128 128 128 / 0.12) 3px 5px)',
-                        }}
-                        className={cn(
-                          'border-hairline border-b',
-                          s.ok && (s.inWindow ? 'bg-emerald-500/40' : 'bg-emerald-500/15'),
-                          (!s.inWindow || weekend) && 'opacity-60',
-                        )}
-                      />
-                    );
-                  })}
+                  {/* Hour lines. */}
+                  {Array.from({ length: hi - lo }, (_, i) => (
+                    <div
+                      key={i}
+                      className="border-hairline absolute inset-x-0 border-t"
+                      style={{ top: i * 2 * ROW }}
+                    />
+                  ))}
+                  {/* Time already gone today. */}
+                  {isToday && (
+                    <div
+                      className="absolute inset-x-0 top-0"
+                      style={{
+                        height: y(now),
+                        backgroundImage:
+                          'repeating-linear-gradient(135deg, transparent 0 4px, rgb(128 128 128 / 0.12) 4px 6px)',
+                      }}
+                    />
+                  )}
+                  {/* When everyone is free: strong inside the user's hours. */}
+                  {free.map((f) => (
+                    <div
+                      key={f.from}
+                      className="absolute inset-x-1 rounded-md"
+                      style={{
+                        top: f.from * ROW + 1,
+                        height: (f.to - f.from) * ROW - 2,
+                        background: `color-mix(in srgb, var(--color-accent) ${f.key === 'in' ? 34 : 10}%, transparent)`,
+                      }}
+                    />
+                  ))}
+                  {/* The user's own meetings. */}
+                  {mine.map((b) => (
+                    <div
+                      key={b.startMs}
+                      className="border-hairline bg-surface/70 text-ink-muted absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[10px] leading-tight"
+                      style={{
+                        top: y(b.startMs) + 1,
+                        height: Math.max(ROW - 2, y(b.endMs) - y(b.startMs) - 2),
+                      }}
+                    >
+                      <span className="text-ink font-medium">Busy</span>
+                      {y(b.endMs) - y(b.startMs) > ROW * 1.5 && (
+                        <span className="block tabular-nums">{hm(b.startMs)}</span>
+                      )}
+                    </div>
+                  ))}
+                  {/* Hover reasons, per half hour. */}
+                  {cells.map((c, r) => (
+                    <div
+                      key={r}
+                      className="absolute inset-x-0"
+                      style={{ top: r * ROW, height: ROW }}
+                      title={`${hm(c.startMs)} · ${
+                        c.past ? 'already passed' : c.ok ? 'everyone is free' : c.issues.join(', ')
+                      }`}
+                    />
+                  ))}
+                  {/* Picked times. */}
                   {picks
-                    .filter((p) => p.startMs >= day && p.startMs < day + 86_400_000)
+                    .filter((p) => p.startMs >= day && p.startMs < day + DAY_MS)
                     .map((p) => (
                       <div
                         key={p.startMs}
-                        className="bg-accent pointer-events-none absolute inset-x-0.5 overflow-hidden rounded-md px-1 text-[10px] leading-[12px] font-semibold text-white"
+                        className="bg-accent pointer-events-none absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-0.5 text-[10.5px] leading-tight font-semibold text-white shadow-sm"
                         style={{
-                          top: ((p.startMs - at(day, 0)) / STEP) * ROW,
-                          height: Math.max(ROW - 2, ((p.endMs - p.startMs) / STEP) * ROW - 2),
+                          top: y(p.startMs) + 1,
+                          height: Math.max(ROW - 2, y(p.endMs) - y(p.startMs) - 2),
                         }}
                       >
-                        {p.endMs - p.startMs > STEP
-                          ? `${hm(p.startMs)}–${hm(p.endMs)}`
-                          : hm(p.startMs)}
+                        {hm(p.startMs)}–{hm(p.endMs)}
                       </div>
                     ))}
                   {drag?.day === day && (
                     <div
-                      className="border-accent bg-accent/20 pointer-events-none absolute inset-x-0.5 rounded-md border"
+                      className="border-accent bg-accent/25 pointer-events-none absolute inset-x-1 rounded-md border"
                       style={{
                         top: Math.min(drag.a, drag.b) * ROW,
                         height: (Math.abs(drag.b - drag.a) + 1) * ROW,
@@ -250,10 +421,22 @@ export function TimesCalendar({
           })}
         </div>
       </div>
-      <p className="text-ink-faint mt-2 text-[11px] leading-snug">
-        Green: everyone’s free. Lit hours: their 9:00–18:00. Click to add a time, drag for a longer
-        one, click a time to remove it.
-      </p>
+      <div className="border-hairline text-ink-faint flex items-center gap-3 border-t px-3 py-2 text-[11px]">
+        <span className="flex items-center gap-1.5">
+          <span
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ background: 'color-mix(in srgb, var(--color-accent) 34%, transparent)' }}
+          />
+          Everyone’s free
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="bg-accent h-2.5 w-2.5 rounded-sm" />
+          Your picks
+        </span>
+        <span className="flex-1 text-right">
+          Click to add, drag for longer, click a pick to remove
+        </span>
+      </div>
     </div>,
     document.body,
   );
