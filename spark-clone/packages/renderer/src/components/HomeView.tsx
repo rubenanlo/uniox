@@ -7,6 +7,7 @@ import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/home
 import { kanbanNewCount, useKanban } from '../state/kanban';
 import { useAccounts, useThreads } from '../state/queries';
 import { useUi } from '../state/store';
+import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
 
 /** Re-render every 30s — the greeting, marker, and countdown are all
@@ -301,6 +302,9 @@ export function HomeView() {
 
   return (
     <div className="relative flex h-full flex-col">
+      {/* sdsn-crm Admin's halftone wave washes the top of Home behind the
+          greeting, feathered out before the priority list. */}
+      <HalftoneWave className="home-wave pointer-events-none absolute inset-x-0 top-0 h-[440px] w-full" />
       {kanban.configured && (
         <button
           onClick={() => {
@@ -327,7 +331,7 @@ export function HomeView() {
           )}
         </button>
       )}
-      <div className="mx-auto my-auto flex h-[60%] w-full max-w-160 flex-col gap-y-14 px-8 pt-16 pb-6">
+      <div className="relative mx-auto my-auto flex h-[60%] w-full max-w-160 flex-col gap-y-14 px-8 pt-16 pb-6">
         <header className="home-rise">
           <p className="text-ink-faint font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
             {dateLine}
