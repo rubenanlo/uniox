@@ -8,8 +8,8 @@ import { useUi } from '../state/store';
  * bending surface, each stroke growing in around its own centre on arrival
  * and lit where the crest passes. The surface math is the original's; the
  * palette runs aqua -> accent -> violet so it echoes the greeting and follows
- * the accent picked in Settings. Unlike the original it plays its entrance
- * once and then holds still, redrawing only on resize or a palette change.
+ * the accent picked in Settings. It only moves while the window has focus;
+ * in the background it holds its last frame and costs nothing.
  */
 const VS = `
 attribute vec2 aFlow;
@@ -85,9 +85,11 @@ const CORNERS: [number, number][] = [
   [1, -1],
   [1, 1],
 ];
-/** Past this many seconds every stroke stands. The wave settles there and
- *  stops: Home costs nothing to keep open once the entrance has played. */
+/** Past this many seconds every stroke stands; only the surface still moves. */
 const ENTRANCE_S = 1.6;
+/** After the entrance the surface drifts slowly enough that ~24fps reads as
+ *  smooth, and it keeps Home off a 60fps GPU loop. */
+const DRIFT_FRAME_MS = 1000 / 24;
 
 function buildGrid(): Float32Array {
   const verts = new Float32Array(COLS * ROWS * 6 * 4);
@@ -187,6 +189,7 @@ export function HalftoneWave({ className }: { className?: string }) {
 
     let t = 0;
     let raf = 0;
+    let running = false;
     const draw = () => {
       if (paletteDirty.current) {
         paletteDirty.current = false;
@@ -197,11 +200,39 @@ export function HalftoneWave({ className }: { className?: string }) {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, verts.length / 4);
     };
-    // One-off redraws (resize, palette) wait a frame so --color-accent is
-    // already written, and coalesce if several land together.
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(() => ((raf = 0), draw()));
+
+    // Reduced motion slows the wave rather than stopping it (the original's
+    // rule).
+    const slow = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let last = 0;
+    let lastDraw = 0;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      const delta = last ? Math.min(now - last, 40) : 0;
+      last = now;
+      t += (delta / 1000) * (slow ? 0.3 : 1);
+      if (t > ENTRANCE_S && now - lastDraw < DRIFT_FRAME_MS) return;
+      lastDraw = now;
+      draw();
     };
+    const start = () => {
+      if (running || document.hidden || !document.hasFocus()) return;
+      running = true;
+      cancelAnimationFrame(raf);
+      last = 0;
+      raf = requestAnimationFrame(frame);
+    };
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    // While stopped, resize and palette changes still need one fresh frame.
+    // It waits a frame so App has written --color-accent by then.
+    const redrawOnce = () => {
+      if (!running && !raf) raf = requestAnimationFrame(() => ((raf = 0), draw()));
+    };
+    redraw.current = redrawOnce;
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -213,31 +244,25 @@ export function HalftoneWave({ className }: { className?: string }) {
         gl.viewport(0, 0, w, h);
       }
       gl.uniform2f(uSize, Math.max(1, cv.clientWidth), Math.max(1, cv.clientHeight));
-      if (t >= ENTRANCE_S) schedule();
+      redrawOnce();
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(cv);
 
-    // Reduced motion slows the entrance rather than skipping it (the
-    // original's rule).
-    const slow = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let last = 0;
-    const entrance = (now: number) => {
-      const delta = last ? Math.min(now - last, 40) : 0;
-      last = now;
-      t = Math.min(ENTRANCE_S, t + (delta / 1000) * (slow ? 0.3 : 1));
-      draw();
-      raf = t < ENTRANCE_S ? requestAnimationFrame(entrance) : 0;
-      if (!raf) redraw.current = schedule;
-    };
-    raf = requestAnimationFrame(entrance);
+    const onVisibility = () => (document.hidden ? stop() : start());
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', stop);
+    window.addEventListener('focus', start);
+    start();
 
     return () => {
-      cancelAnimationFrame(raf);
+      stop();
       redraw.current = () => {};
       ro.disconnect();
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', stop);
+      window.removeEventListener('focus', start);
     };
   }, []);
 
