@@ -24,15 +24,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Address, OutgoingAttachment, OutgoingDraft, Template } from '@app/shared';
 import { api } from '../../lib/api';
-import { registerComposerAccount, registerComposerEditor, textToHtml } from '../../lib/composerBridge';
+import {
+  registerComposerAccount,
+  registerComposerEditor,
+  registerComposerRecipients,
+  textToHtml,
+} from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
 import { fmtWake } from '../../lib/schedule';
 import { cn, formatSize } from '../../lib/utils';
+import { cancelAvailabilityCheck, useComposerTimes } from '../../state/availability';
+import { useZonePrompt } from '../../state/contactZones';
 import { useAccounts, useTemplates } from '../../state/queries';
 import { useUi, type ComposerState } from '../../state/store';
 import { SchedulePicker } from '../SchedulePicker';
 import { Keycaps } from '../ui/Keycap';
+import { useTimesCalendarOpen } from '../reading/TimesCalendar';
+import { AvailabilityChecking } from './AvailabilityChecking';
+import { TimesHoverBar } from './TimesHoverBar';
 
 const UNDO_SEND_MS = 5000;
 
@@ -244,6 +254,7 @@ export function Composer({ state }: { state: ComposerState }) {
   const { templates } = useTemplates();
 
   const toRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const ccRef = useRef<HTMLInputElement>(null);
   const bccRef = useRef<HTMLInputElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
@@ -275,6 +286,13 @@ export function Composer({ state }: { state: ComposerState }) {
     registerComposerAccount(account?.id ?? null);
     return () => registerComposerAccount(null);
   }, [account?.id]);
+  // The times block belongs to this draft only.
+  useEffect(() => () => useComposerTimes.setState(null, true), []);
+  // ⌘⇧A offers times that suit everyone in To.
+  useEffect(() => {
+    registerComposerRecipients(parseAddresses(to));
+    return () => registerComposerRecipients([]);
+  }, [to]);
 
   // An AI-drafted body (from an orb "Create a reply" / "Write" action) seeds
   // the editor once on open, before the signature is appended.
@@ -528,7 +546,14 @@ export function Composer({ state }: { state: ComposerState }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // The time zone dialog and the times calendar close themselves;
+        // Esc while checking only cancels the check.
+        if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
         e.preventDefault();
+        if (cancelAvailabilityCheck()) {
+          e.stopImmediatePropagation();
+          return;
+        }
         if (linkOpen) setLinkOpen(false);
         else if (confirmClose) setConfirmClose(false);
         else requestClose();
@@ -571,6 +596,7 @@ export function Composer({ state }: { state: ComposerState }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-40 flex items-end justify-end p-4">
       <div
+        ref={cardRef}
         data-composer
         role="dialog"
         aria-label="Compose email"
@@ -688,6 +714,8 @@ export function Composer({ state }: { state: ComposerState }) {
           </div>
         )}
 
+        <AvailabilityChecking />
+        <TimesHoverBar card={cardRef} />
         <div className="composer-editor min-h-0 flex-1 overflow-y-auto px-4 py-2" onClick={() => editor?.commands.focus()}>
           {/* Spark-style selection toolbar: appears over selected text with
               the common formats; the editor's ⌘B/⌘I/⌘U shortcuts still work. */}

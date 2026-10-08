@@ -1,7 +1,9 @@
 import {
   DEFAULT_NOTIFY_SOUND,
   DEFAULT_SCHEDULING,
+  normalizeAvailability,
   NOTIFY_SOUNDS,
+  type AvailabilityPrefs,
   type NotifySound,
   type SchedulingPresets,
   type Template,
@@ -25,6 +27,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useEscapeClose } from '../hooks/useEscapeClose';
 import { api } from '../lib/api';
+import { minutesLabel } from '../lib/availability';
 import { fileToAvatarDataUrl } from '../lib/avatar';
 import {
   buildStyleProfile,
@@ -34,6 +37,7 @@ import {
 } from '../lib/writingStyle';
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
+import { loadContactZones, saveContactZones, useZonePrompt } from '../state/contactZones';
 import { mutatePrioritySender } from '../state/priority';
 import { useAccounts, useTemplates } from '../state/queries';
 import { useUi, type ThemePref } from '../state/store';
@@ -74,7 +78,7 @@ const SECTIONS: { id: Tab; label: string; icon: typeof SunMoon; blurb: string }[
     id: 'scheduling',
     label: 'Scheduling',
     icon: CalendarClock,
-    blurb: 'One set of presets drives Snooze, Reminders, and Send Later.',
+    blurb: 'Presets for Snooze, Reminders and Send Later, and when suggested meeting times can fall.',
   },
   {
     id: 'signatures',
@@ -1040,7 +1044,124 @@ function SchedulingTab() {
           onChange={(e) => save({ ...p, notify: e.target.checked })}
         />
       </Row>
+      <AvailabilityWindow />
+      <PeopleZones />
     </div>
+  );
+}
+
+/** Half-hour steps from 6:00 to 22:00, as minutes after midnight. */
+const HALF_HOURS = Array.from({ length: 33 }, (_, i) => 6 * 60 + i * 30);
+/** Monday-first week (Date#getDay values). */
+const WEEK = [
+  [1, 'Mon'],
+  [2, 'Tue'],
+  [3, 'Wed'],
+  [4, 'Thu'],
+  [5, 'Fri'],
+  [6, 'Sat'],
+  [0, 'Sun'],
+] as const;
+
+/** The days and hours availability suggestions may offer (see AvailabilitySuggestions). */
+function AvailabilityWindow() {
+  const [a, setA] = useState<AvailabilityPrefs>(() => normalizeAvailability(null));
+  useEffect(() => {
+    void api.query('settings:get', { key: 'availability' }).then((v) => setA(normalizeAvailability(v)));
+  }, []);
+  const save = (next: AvailabilityPrefs) => {
+    setA(next);
+    void api.command('settings:set', { key: 'availability', value: next });
+  };
+  const toggleDay = (d: number) => {
+    const days = a.weekdays.includes(d) ? a.weekdays.filter((x) => x !== d) : [...a.weekdays, d];
+    if (!days.length) return void toast('Keep at least one day for suggested times.');
+    save({ ...a, weekdays: days.sort((x, y) => x - y) });
+  };
+  return (
+    <>
+      <p className="text-ink-muted mt-5 mb-1 text-[11px] font-semibold tracking-wide uppercase">
+        Suggested meeting times
+      </p>
+      <Row label="Earliest start">
+        <select
+          className={inputCls}
+          value={a.startMinutes}
+          onChange={(e) => save({ ...a, startMinutes: Number(e.target.value) })}
+        >
+          {HALF_HOURS.filter((m) => m < a.endMinutes).map((m) => (
+            <option key={m} value={m}>
+              {minutesLabel(m)}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="Latest end">
+        <select
+          className={inputCls}
+          value={a.endMinutes}
+          onChange={(e) => save({ ...a, endMinutes: Number(e.target.value) })}
+        >
+          {HALF_HOURS.filter((m) => m > a.startMinutes).map((m) => (
+            <option key={m} value={m}>
+              {minutesLabel(m)}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Field label="Days" hint="Times are offered on the next of each chosen day.">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Days for suggested times">
+          {WEEK.map(([d, name]) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={a.weekdays.includes(d)}
+              onClick={() => toggleDay(d)}
+              className={cn(
+                'rounded-full border px-2.5 py-0.5 text-[12px] font-medium',
+                a.weekdays.includes(d)
+                  ? 'border-accent bg-accent-soft text-accent'
+                  : 'border-hairline text-ink-muted hover:text-ink',
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </Field>
+    </>
+  );
+}
+
+/** Time zones the user set for people whose calendar doesn't show one. */
+function PeopleZones() {
+  const version = useZonePrompt((s) => s.version);
+  const [zones, setZones] = useState<[string, string][]>([]);
+  useEffect(() => {
+    void loadContactZones().then((z) => setZones(Object.entries(z).sort()));
+  }, [version]);
+  if (!zones.length) return null;
+  return (
+    <Field
+      label="People’s time zones"
+      hint="Set when you first offered them times. Used when their calendar doesn’t show a zone."
+    >
+      <ul className="space-y-1">
+        {zones.map(([email, tz]) => (
+          <li key={email} className="flex items-center gap-2 text-[12px]">
+            <span className="flex-1 truncate">{email}</span>
+            <span className="text-ink-muted">{tz.replace(/_/g, ' ')}</span>
+            <button
+              type="button"
+              onClick={() => void saveContactZones({ [email]: null })}
+              className="text-ink-faint hover:text-ink text-[11.5px] font-semibold"
+            >
+              Forget
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Field>
   );
 }
 

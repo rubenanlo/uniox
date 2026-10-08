@@ -13,11 +13,6 @@ export interface Slot {
 
 const DAY_MS = 86_400_000;
 
-/** Weekdays slots are offered on (Date#getDay: 2 = Tue, 3 = Wed, 4 = Thu). */
-export const MEETING_WEEKDAYS = [2, 3, 4] as const;
-/** Working hours slots must fit inside, local time (9:30–17:30). */
-export const WORK_START_HOUR = 9.5;
-export const WORK_END_HOUR = 17.5;
 export const SLOT_COUNT = 3;
 export const DEFAULT_DURATION_MIN = 30;
 
@@ -48,7 +43,7 @@ function localMidnight(ms: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function addLocalDays(midnight: number, n: number): number {
+export function addLocalDays(midnight: number, n: number): number {
   const d = new Date(midnight);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime();
 }
@@ -57,7 +52,30 @@ function addLocalDays(midnight: number, n: number): number {
  * Local midnights of the next occurrence of each weekday, strictly after
  * today (so the sender has time to answer), in date order.
  */
-export function nextMeetingDays(now: number, weekdays: readonly number[] = MEETING_WEEKDAYS): number[] {
+/** "9:30" from minutes after midnight. */
+export function minutesLabel(m: number): string {
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Tuesday, Wednesday and Thursday, 9:30–17:30" for explanations and empty states. */
+export function describeWindow(p: {
+  startMinutes: number;
+  endMinutes: number;
+  weekdays: number[];
+}): string {
+  const order = [1, 2, 3, 4, 5, 6, 0]
+    .filter((d) => p.weekdays.includes(d))
+    .map((d) => DAY_NAMES[d]!);
+  const days =
+    order.length > 1
+      ? `${order.slice(0, -1).join(', ')} and ${order[order.length - 1]}`
+      : (order[0] ?? '');
+  return `${days}, ${minutesLabel(p.startMinutes)}–${minutesLabel(p.endMinutes)}`;
+}
+
+export function nextMeetingDays(now: number, weekdays: readonly number[]): number[] {
   const today = localMidnight(now);
   const days: number[] = [];
   for (let i = 1; i <= 7 && days.length < weekdays.length; i++) {
@@ -69,10 +87,16 @@ export function nextMeetingDays(now: number, weekdays: readonly number[] = MEETI
 
 /** Busy intervals, merged and sorted. Free ('transparent') events never block. */
 export function busyIntervals(events: CalendarEvent[]): Slot[] {
-  const raw = events
-    .filter((e) => e.transparency !== 'transparent' && e.endMs > e.startMs)
-    .map((e) => ({ startMs: e.startMs, endMs: e.endMs }))
-    .sort((a, b) => a.startMs - b.startMs);
+  return mergeIntervals(
+    events
+      .filter((e) => e.transparency !== 'transparent')
+      .map((e) => ({ startMs: e.startMs, endMs: e.endMs })),
+  );
+}
+
+/** Sort and merge overlapping intervals; empty ones drop out. */
+export function mergeIntervals(intervals: Slot[]): Slot[] {
+  const raw = intervals.filter((i) => i.endMs > i.startMs).sort((a, b) => a.startMs - b.startMs);
   const merged: Slot[] = [];
   for (const iv of raw) {
     const last = merged[merged.length - 1];
@@ -99,6 +123,12 @@ export interface SlotOptions {
   stepMin?: number;
   /** Nothing before this instant (defaults to no limit). */
   notBefore?: number;
+  /** Extra test a candidate must pass (e.g. inside everyone's working day). */
+  accept?: (slot: Slot) => boolean;
+  /** At most this many picks on one day (default 2, so never three in a day). */
+  maxPerDay?: number;
+  /** Randomness for varying the spread; tests pass a fixed one. */
+  random?: () => number;
 }
 
 /** Times of day (hours) each successive pick aims for, so offers vary. */
@@ -115,32 +145,57 @@ export function findFreeSlots(opts: SlotOptions): Slot[] {
   const candidatesByDay = opts.days.map((day) => {
     const d = new Date(day);
     const at = (h: number) =>
-      new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), Math.round((h % 1) * 60)).getTime();
+      new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+        Math.floor(h),
+        Math.round((h % 1) * 60),
+      ).getTime();
     const open = at(opts.startHour);
     const close = at(opts.endHour);
     const out: Slot[] = [];
     for (let s = open; s + dur <= close; s += step) {
       const slot = { startMs: s, endMs: s + dur };
       if (opts.notBefore !== undefined && s < opts.notBefore) continue;
-      if (!overlaps(slot, opts.busy)) out.push(slot);
+      if (!overlaps(slot, opts.busy) && (opts.accept?.(slot) ?? true)) out.push(slot);
     }
     return { day, at, out };
   });
 
   const picked: Slot[] = [];
-  const conflicts = (s: Slot) => picked.some((p) => p.startMs < s.endMs + dur && p.endMs + dur > s.startMs);
+  const perDay = new Map<number, number>();
+  const maxPerDay = opts.maxPerDay ?? 2;
+  const conflicts = (s: Slot) =>
+    picked.some((p) => p.startMs < s.endMs + dur && p.endMs + dur > s.startMs);
   let target = 0;
+  const pickOn = (c: (typeof candidatesByDay)[number]): boolean => {
+    if (picked.length >= count || (perDay.get(c.day) ?? 0) >= maxPerDay) return false;
+    const aim = c.at(TARGET_HOURS[target % TARGET_HOURS.length]!);
+    const best = c.out
+      .filter((s) => !conflicts(s))
+      .sort((a, b) => Math.abs(a.startMs - aim) - Math.abs(b.startMs - aim))[0];
+    if (!best) return false;
+    picked.push(best);
+    perDay.set(c.day, (perDay.get(c.day) ?? 0) + 1);
+    target++;
+    return true;
+  };
+
+  // Vary the spread: about half the time two of the first three open days,
+  // one of them with two times; otherwise one time per day.
+  const random = opts.random ?? Math.random;
+  const open = candidatesByDay.filter((c) => c.out.length);
+  if (count === 3 && maxPerDay >= 2 && open.length >= 2 && random() < 0.5) {
+    const first = open.slice(0, 3);
+    const a = first.splice(Math.floor(random() * first.length), 1)[0]!;
+    const b = first[Math.floor(random() * first.length)]!;
+    const [x, y] = a.day < b.day ? [a, b] : [b, a];
+    for (const c of random() < 0.5 ? [x, y, x] : [x, y, y]) pickOn(c);
+  }
+  // One per day, round after round, until there are enough.
   for (let round = 0; picked.length < count && round < count; round++) {
-    for (const c of candidatesByDay) {
-      if (picked.length >= count) break;
-      const aim = c.at(TARGET_HOURS[target % TARGET_HOURS.length]!);
-      const best = c.out
-        .filter((s) => !conflicts(s))
-        .sort((a, b) => Math.abs(a.startMs - aim) - Math.abs(b.startMs - aim))[0];
-      if (!best) continue;
-      picked.push(best);
-      target++;
-    }
+    for (const c of candidatesByDay) pickOn(c);
   }
   return picked.sort((a, b) => a.startMs - b.startMs);
 }
@@ -210,10 +265,15 @@ export function isValidZone(tz: string): boolean {
 }
 
 /** Plain-text reply used when the assistant isn't configured or fails. */
-export function templateReply(slots: Slot[], senderTimeZone?: string | null, firstName?: string): string {
+export function templateReply(
+  slots: Slot[],
+  senderTimeZone?: string | null,
+  firstName?: string,
+): string {
   const hi = firstName ? `Hi ${firstName},` : 'Hi,';
   const lines = slots.map((s) => formatSlotLong(s, senderTimeZone));
-  if (lines.length === 1) return `${hi}\n\nI'm available on ${lines[0]}. Let me know if that works for you.`;
+  if (lines.length === 1)
+    return `${hi}\n\nI'm available on ${lines[0]}. Let me know if that works for you.`;
   return `${hi}\n\nI'm available at any of these times:\n${lines.map((l) => `• ${l}`).join('\n')}\n\nLet me know which works best for you.`;
 }
 
@@ -229,19 +289,288 @@ export interface AvailabilityAsk {
  * fence). Anything unparseable reads as "doesn't ask".
  */
 export function parseAvailabilityAsk(raw: string): AvailabilityAsk {
-  const none: AvailabilityAsk = { asks: false, durationMinutes: DEFAULT_DURATION_MIN, senderTimeZone: null };
+  const none: AvailabilityAsk = {
+    asks: false,
+    durationMinutes: DEFAULT_DURATION_MIN,
+    senderTimeZone: null,
+  };
   const json = raw.match(/\{[\s\S]*\}/)?.[0];
   if (!json) return none;
   try {
     const v = JSON.parse(json) as Record<string, unknown>;
     const dur = Number(v.durationMinutes);
-    const tz = typeof v.senderTimeZone === 'string' && isValidZone(v.senderTimeZone) ? v.senderTimeZone : null;
+    const tz =
+      typeof v.senderTimeZone === 'string' && isValidZone(v.senderTimeZone)
+        ? v.senderTimeZone
+        : null;
     return {
       asks: v.asks === true,
-      durationMinutes: Number.isFinite(dur) && dur >= 15 && dur <= 240 ? Math.round(dur / 15) * 15 : DEFAULT_DURATION_MIN,
+      durationMinutes:
+        Number.isFinite(dur) && dur >= 15 && dur <= 240
+          ? Math.round(dur / 15) * 15
+          : DEFAULT_DURATION_MIN,
       senderTimeZone: tz,
     };
   } catch {
     return none;
   }
+}
+
+/* ── Group availability: everyone in To ─────────────────────────────── */
+
+/** Someone else the meeting is with, as far as the user can see. */
+export interface Participant {
+  email: string;
+  name?: string;
+  /** IANA zone: what the user saved, else their calendar's, else read from the thread. */
+  timeZone: string | null;
+  /** Where `timeZone` came from; only 'saved' counts as confirmed by the user. */
+  zoneSource?: 'saved' | 'google' | 'thread';
+  /** Busy blocks when their calendar is visible, else null (unknown). */
+  busy: Slot[] | null;
+}
+
+/** A time that suits everyone, and whether it stretches the user's own hours. */
+export interface GroupSlot extends Slot {
+  /** Outside the user's own Settings hours (only offered when nothing inside fits everyone). */
+  outsideMine: boolean;
+}
+
+/** How far past their Settings hours the user may be stretched for a group. */
+export const MY_STRETCH_MIN = 120;
+
+/** Everyone else's working day, in their own zone. */
+export const THEIR_DAY_START_MIN = 9 * 60;
+export const THEIR_DAY_END_MIN = 18 * 60;
+
+/** Minutes after midnight of an instant in a zone. */
+export function minutesIn(ms: number, timeZone?: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(ms);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return get('hour') * 60 + get('minute');
+}
+
+/**
+ * How many minutes `slot` falls outside 9:00–18:00 in `timeZone` (0 when it
+ * fits). Unknown or invalid zones never count as outside.
+ */
+export function minutesOutsideDay(slot: Slot, timeZone: string | null): number {
+  if (!timeZone || !isValidZone(timeZone)) return 0;
+  const start = minutesIn(slot.startMs, timeZone);
+  const end = start + Math.round((slot.endMs - slot.startMs) / 60_000);
+  return Math.max(0, THEIR_DAY_START_MIN - start) + Math.max(0, end - THEIR_DAY_END_MIN);
+}
+
+export interface GroupSlotOptions extends Omit<SlotOptions, 'accept'> {
+  participants: Participant[];
+  /** Fallback days (e.g. the same weekdays a week later) when `days` has too few fits. */
+  laterDays?: number[];
+}
+
+/**
+ * Times free on the user's calendars and on every visible calendar of the
+ * others, and always inside each other person's 9:00–18:00 in their own zone
+ * (when known). The user's side gives way in this order:
+ * 1. the user's Settings window on the next chosen days;
+ * 2. the same window on the chosen days a week later;
+ * 3. up to two hours either side of the window, closest first.
+ * Fewer (or no) times come back when nothing fits everyone.
+ */
+export function findGroupSlots(opts: GroupSlotOptions): GroupSlot[] {
+  const count = opts.count ?? SLOT_COUNT;
+  const dur = opts.durationMin * 60_000;
+  const busy = mergeIntervals([...opts.busy, ...opts.participants.flatMap((p) => p.busy ?? [])]);
+  const fitsThem = (s: Slot) =>
+    opts.participants.every((p) => minutesOutsideDay(s, p.timeZone) === 0);
+  const mine = (s: Slot) => {
+    const start = minutesIn(s.startMs);
+    const end = start + opts.durationMin;
+    return Math.max(0, opts.startHour * 60 - start) + Math.max(0, end - opts.endHour * 60);
+  };
+  const later = opts.laterDays ?? [];
+
+  const picked: Slot[] = findFreeSlots({ ...opts, busy, accept: fitsThem });
+  if (picked.length < count && later.length) {
+    picked.push(
+      ...findFreeSlots({
+        ...opts,
+        days: later,
+        busy,
+        accept: fitsThem,
+        count: count - picked.length,
+      }),
+    );
+  }
+  if (picked.length < count) {
+    const near = (a: Slot, b: Slot) => a.startMs < b.endMs + dur && a.endMs + dur > b.startMs;
+    const stretched = findFreeSlots({
+      ...opts,
+      days: [...opts.days, ...later],
+      busy,
+      startHour: Math.max(6, opts.startHour - MY_STRETCH_MIN / 60),
+      endHour: Math.min(22, opts.endHour + MY_STRETCH_MIN / 60),
+      count: 1000,
+      maxPerDay: 1000,
+      accept: (s) => fitsThem(s) && mine(s) > 0,
+    }).sort((a, b) => mine(a) - mine(b) || a.startMs - b.startMs);
+    const day = (ms: number) => new Date(ms).toDateString();
+    for (const s of stretched) {
+      if (picked.length >= count) break;
+      const sameDay = picked.filter((p) => day(p.startMs) === day(s.startMs)).length;
+      if (sameDay < 2 && !picked.some((p) => near(p, s))) picked.push(s);
+    }
+  }
+  return picked
+    .sort((a, b) => a.startMs - b.startMs)
+    .map((s) => ({ ...s, outsideMine: mine(s) > 0 }));
+}
+
+function firstName(p: { name?: string; email: string }): string {
+  return (p.name || '').trim().split(/\s+/)[0] || p.email.split('@')[0]!;
+}
+
+/**
+ * "Tuesday, October 13, 15:00–15:30 (CEST) / 9:00–9:30 (EDT) Alex, Sam":
+ * the user's time, then each other zone once with the people in it.
+ */
+export function formatSlotForPeople(slot: Slot, people: Participant[]): string {
+  const mine = formatSlotLong(slot);
+  const myRange = timeRange(slot);
+  const myDay = fmt(slot.startMs, { weekday: 'long' });
+  const byZone = new Map<string, string[]>();
+  for (const p of people) {
+    if (!p.timeZone || !isValidZone(p.timeZone)) continue;
+    const range = timeRange(slot, p.timeZone);
+    if (range === myRange) continue;
+    const day = fmt(slot.startMs, { weekday: 'long' }, p.timeZone);
+    const key = `${day !== myDay ? `${day} ` : ''}${range}`;
+    byZone.set(key, [...(byZone.get(key) ?? []), firstName(p)]);
+  }
+  return [mine, ...[...byZone].map(([when, names]) => `${when} ${names.join(', ')}`)].join(' / ');
+}
+
+/** "early for you" / "late for you" when a time stretches the user's own hours. */
+export function offHoursNote(slot: GroupSlot): string {
+  if (!slot.outsideMine) return '';
+  return `${minutesIn(slot.startMs) < 12 * 60 ? 'early' : 'late'} for you`;
+}
+
+/** Plain-text group offer, used when the assistant isn't configured or fails. */
+export function templateGroupReply(
+  slots: Slot[],
+  people: Participant[],
+  greeting?: string,
+): string {
+  const hi = greeting ? `Hi ${greeting},` : 'Hi all,';
+  const lines = slots.map((s) => `• ${formatSlotForPeople(s, people)}`).join('\n');
+  return `${hi}\n\nThese times work on my side:\n${lines}\n\nLet me know which works best for everyone.`;
+}
+
+/**
+ * Parse the model's guess of each person's zone ({"email": "Zone/Name"}),
+ * keeping only valid IANA names.
+ */
+export function parseZoneGuesses(raw: string): Record<string, string> {
+  const json = raw.match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return {};
+  try {
+    const v = JSON.parse(json) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [email, tz] of Object.entries(v)) {
+      if (typeof tz === 'string' && isValidZone(tz)) out[email.toLowerCase()] = tz;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/* ── Calendar picker ────────────────────────────────────────────────── */
+
+/** What a calendar cell means for a meeting at that time. */
+export interface CellStatus {
+  /** Free for the user and every visible calendar, and in everyone's working day. */
+  ok: boolean;
+  /** Inside the user's Settings hours. */
+  inWindow: boolean;
+  /** Why it isn't ok: "You're busy", "Tara is busy", "6:00 for Guilherme". */
+  issues: string[];
+}
+
+export function cellStatus(
+  slot: Slot,
+  ctx: { myBusy: Slot[]; participants: Participant[]; startHour: number; endHour: number },
+): CellStatus {
+  const issues: string[] = [];
+  if (overlaps(slot, ctx.myBusy)) issues.push('You’re busy');
+  for (const p of ctx.participants) {
+    if (p.busy && overlaps(slot, p.busy)) issues.push(`${firstName(p)} is busy`);
+    else if (p.timeZone && minutesOutsideDay(slot, p.timeZone) > 0) {
+      issues.push(`${fmt(slot.startMs, TIME, p.timeZone)} for ${firstName(p)}`);
+    }
+  }
+  const start = minutesIn(slot.startMs);
+  const end = start + Math.round((slot.endMs - slot.startMs) / 60_000);
+  return {
+    ok: issues.length === 0,
+    inWindow: start >= ctx.startHour * 60 && end <= ctx.endHour * 60,
+    issues,
+  };
+}
+
+/**
+ * Add a picked time, replacing any picks it overlaps (dragging over an old
+ * pick reshapes it rather than stacking a second one).
+ */
+export function addPick(picks: Slot[], slot: Slot): Slot[] {
+  return [...picks.filter((p) => p.endMs <= slot.startMs || p.startMs >= slot.endMs), slot].sort(
+    (a, b) => a.startMs - b.startMs,
+  );
+}
+
+/** The picks with the one covering `ms` removed. */
+export function removePickAt(picks: Slot[], ms: number): Slot[] {
+  return picks.filter((p) => !(p.startMs <= ms && ms < p.endMs));
+}
+
+/** The text block ⌘⇧A writes into a draft; its first line finds it again later. */
+export function timesBlock(header: string, slots: Slot[], people: Participant[]): string {
+  return `${header}\n${slots.map((s) => `• ${formatSlotForPeople(s, people)}`).join('\n')}`;
+}
+
+/** Another time zone column for the picker: who is there and its short label. */
+export interface ZoneColumn {
+  timeZone: string;
+  /** "EDT", "GMT-3". */
+  label: string;
+  names: string[];
+}
+
+/** The distinct zones of `people` that differ from the user's at `ms`. */
+export function zoneColumns(people: Participant[], ms: number): ZoneColumn[] {
+  const mine = zoneLabel(ms);
+  const cols = new Map<string, ZoneColumn>();
+  for (const p of people) {
+    if (!p.timeZone || !isValidZone(p.timeZone)) continue;
+    const label = zoneLabel(ms, p.timeZone);
+    if (label === mine && minutesIn(ms, p.timeZone) === minutesIn(ms)) continue;
+    const col = cols.get(label) ?? { timeZone: p.timeZone, label, names: [] };
+    col.names.push(firstName(p));
+    cols.set(label, col);
+  }
+  return [...cols.values()];
+}
+
+/** "9:00" style local time of `ms` in a zone, and whether it's in 9:00–18:00 there. */
+export function localHour(ms: number, timeZone: string): { text: string; working: boolean } {
+  const m = minutesIn(ms, timeZone);
+  return {
+    text: `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`,
+    working: m >= THEIR_DAY_START_MIN && m < THEIR_DAY_END_MIN,
+  };
 }

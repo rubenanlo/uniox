@@ -203,6 +203,49 @@ export const DEFAULT_SCHEDULING: SchedulingPresets = {
   notify: true,
 };
 
+/**
+ * When availability suggestions may offer times: a daily window in local
+ * minutes after midnight, on these weekdays (Date#getDay: 0 = Sunday).
+ */
+/**
+ * Another person's calendar as Google shows it to the user: busy blocks when
+ * their free/busy is visible (same Workspace, or shared), else null.
+ */
+export interface PersonFreeBusy {
+  busy: { startMs: number; endMs: number }[] | null;
+  /** Their calendar's IANA zone, when the user can read the calendar. */
+  timeZone: string | null;
+}
+
+export interface AvailabilityPrefs {
+  startMinutes: number;
+  endMinutes: number;
+  weekdays: number[];
+}
+
+export const DEFAULT_AVAILABILITY: AvailabilityPrefs = {
+  startMinutes: 9 * 60 + 30,
+  endMinutes: 17 * 60 + 30,
+  weekdays: [2, 3, 4],
+};
+
+/** Stored prefs merged over the defaults; anything unusable falls back to them. */
+export function normalizeAvailability(stored: unknown): AvailabilityPrefs {
+  const s = (stored ?? {}) as Partial<AvailabilityPrefs>;
+  const mins = (v: unknown, d: number) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24 * 60 ? v : d;
+  let startMinutes = mins(s.startMinutes, DEFAULT_AVAILABILITY.startMinutes);
+  let endMinutes = mins(s.endMinutes, DEFAULT_AVAILABILITY.endMinutes);
+  if (endMinutes <= startMinutes) {
+    startMinutes = DEFAULT_AVAILABILITY.startMinutes;
+    endMinutes = DEFAULT_AVAILABILITY.endMinutes;
+  }
+  const days = Array.isArray(s.weekdays)
+    ? [...new Set(s.weekdays.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b)
+    : [];
+  return { startMinutes, endMinutes, weekdays: days.length ? days : DEFAULT_AVAILABILITY.weekdays };
+}
+
 export interface ThreadQuery {
   view: MailView;
   /** undefined = unified across all accounts */
