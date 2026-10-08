@@ -20,6 +20,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { focusList } from '../lib/panels';
 import { cn, defaultAccountColor } from '../lib/utils';
+import { assistantOwnsEscape } from '../state/assistant';
 import { kanbanNewCount, openSprintBoard, useKanban } from '../state/kanban';
 import { useAccounts, useSyncStatuses, useThreads } from '../state/queries';
 import { useUi } from '../state/store';
@@ -109,7 +110,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
   useEffect(() => {
     if (!autoHide || !open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || assistantOwnsEscape()) return;
       e.preventDefault();
       e.stopPropagation();
       setHover(false);

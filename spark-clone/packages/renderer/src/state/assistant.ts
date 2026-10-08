@@ -17,12 +17,15 @@ const BASE_SYSTEM =
 
 interface AssistantState {
   open: boolean;
+  /** The ⌘I palette of suggested actions for the current page. */
+  paletteOpen: boolean;
   configured: boolean;
   model: string;
   messages: ChatMessage[];
   /** The assistant message id currently streaming, or null when idle. */
   streamingId: string | null;
   setOpen(open: boolean): void;
+  setPaletteOpen(open: boolean): void;
   refreshStatus(): void;
   /** Stream a user turn into the visible conversation. */
   send(text: string, system?: string): void;
@@ -43,6 +46,7 @@ function newId(): string {
 
 export const useAssistant = create<AssistantState>((set, get) => ({
   open: false,
+  paletteOpen: false,
   configured: false,
   model: 'claude-opus-4-8',
   messages: [],
@@ -51,6 +55,11 @@ export const useAssistant = create<AssistantState>((set, get) => ({
   setOpen: (open) => {
     set({ open });
     if (open) get().refreshStatus();
+  },
+
+  setPaletteOpen: (paletteOpen) => {
+    set({ paletteOpen });
+    if (paletteOpen) get().refreshStatus();
   },
 
   refreshStatus: () => {
@@ -144,6 +153,15 @@ export const useAssistant = create<AssistantState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * True while the assistant's chat panel or ⌘I palette is up. Esc closes those
+ * first, so every "Esc steps back / goes Home" handler must stand down.
+ */
+export function assistantOwnsEscape(): boolean {
+  const a = useAssistant.getState();
+  return a.open || a.paletteOpen;
+}
 
 /** Wire the streaming push channel once, app-level (call from App effect). */
 export function wireAssistant(): () => void {

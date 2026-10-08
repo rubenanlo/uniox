@@ -65,3 +65,22 @@ describe('fields keep their own ⌘-keys', () => {
     expect(fieldOwnsKey(cmdR, refresh, { editable: true, inComposer: true })).toBe(false);
   });
 });
+
+describe('⌘I opens the assistant', () => {
+  const assistant = ACTIONS.find((a) => a.id === 'assistant')!;
+  const cmdI = ev({ key: 'i', code: 'KeyI', metaKey: true });
+
+  it('is bound to ⌘I', () => {
+    expect(matchCombo(cmdI, assistant.combo)).toBe(true);
+  });
+
+  it('keeps ⌘I as italic in rich text (the composer body)', () => {
+    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: true, richText: true })).toBe(true);
+  });
+
+  it('opens the assistant from plain inputs and the composer’s other fields', () => {
+    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: true, richText: false })).toBe(false);
+    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: false })).toBe(false);
+    expect(fieldOwnsKey(cmdI, assistant, { editable: false, inComposer: false })).toBe(false);
+  });
+});

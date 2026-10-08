@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, PanelRight } from 'lucide-react
 import { useEffect, useMemo } from 'react';
 import { rangeForView, viewTitle, type CalView } from '../../lib/calendarMonth';
 import { cn } from '../../lib/utils';
+import { assistantOwnsEscape } from '../../state/assistant';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useUi } from '../../state/store';
 import { CalendarSidebar } from './CalendarSidebar';
@@ -44,6 +45,7 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (useUi.getState().view !== 'calendar') return;
+      if (e.key === 'Escape' && assistantOwnsEscape()) return; // it closes the assistant first
       const st = useCalendar.getState();
       const meta = e.metaKey || e.ctrlKey;
       const stop = () => {
