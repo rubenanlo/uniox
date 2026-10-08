@@ -17,7 +17,7 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { focusList } from '../lib/panels';
 import { cn, defaultAccountColor } from '../lib/utils';
 import { kanbanNewCount, openSprintBoard, useKanban } from '../state/kanban';
@@ -41,6 +41,33 @@ export const NAV: { view: MailView; label: string; icon: typeof Inbox; keys?: st
   { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'trash', label: 'Trash', icon: Trash2 },
 ];
+
+// Expand/collapse motion: the rail's width, the label fade and the FLIP glide
+// of everything that changes place all share one curve.
+const SLIDE_MS = 220;
+const SLIDE_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+
+type FlipRects = Map<Element, { x: number; y: number }>;
+
+/** Positions of the rail's [data-flip] elements, relative to the rail itself. */
+function measureFlip(root: HTMLElement | null): FlipRects {
+  const rects: FlipRects = new Map();
+  if (!root) return rects;
+  const base = root.getBoundingClientRect();
+  root.querySelectorAll('[data-flip]').forEach((el) => {
+    const r = el.getBoundingClientRect();
+    rects.set(el, { x: r.left - base.left, y: r.top - base.top });
+  });
+  return rects;
+}
+
+/** Fades a row's label in once the rail starts opening, and out right away. */
+function labelFade(expanded: boolean): string {
+  return cn(
+    'flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden transition-opacity',
+    expanded ? 'opacity-100 delay-75 duration-200' : 'pointer-events-none opacity-0 duration-100',
+  );
+}
 
 export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
   const { view, setView, sidebarExpanded, toggleSidebar, accountFilter, setAccountFilter } = useUi(
@@ -94,6 +121,41 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
   }, [autoHide, open]);
 
   const navRef = useRef<HTMLDivElement>(null);
+
+  // Expanding switches the account switcher from a column to wrapped rows and
+  // the footer from stacked to inline, so things change place, not just size.
+  // FLIP them: note where they sit in the outgoing layout, then glide each one
+  // from there to its new spot.
+  const railRef = useRef<HTMLElement>(null);
+  const flipFrom = useRef<FlipRects | null>(null);
+  useEffect(
+    () =>
+      // The store notifies synchronously on toggle, before React re-renders,
+      // so the DOM still shows the outgoing layout here.
+      useUi.subscribe((s, prev) => {
+        if (s.sidebarExpanded !== prev.sidebarExpanded) {
+          flipFrom.current = measureFlip(railRef.current);
+        }
+      }),
+    [],
+  );
+  useLayoutEffect(() => {
+    const from = flipFrom.current;
+    flipFrom.current = null;
+    if (!from || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    for (const [el, to] of measureFlip(railRef.current)) {
+      const start = from.get(el);
+      if (!start) continue;
+      const dx = start.x - to.x;
+      const dy = start.y - to.y;
+      el.getAnimations().forEach((a) => a.cancel());
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+        duration: SLIDE_MS,
+        easing: SLIDE_EASE,
+      });
+    }
+  }, [sidebarExpanded]);
   const wasExpanded = useRef(sidebarExpanded);
   useEffect(() => {
     if (sidebarExpanded && !wasExpanded.current) {
@@ -148,6 +210,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
         </div>
       )}
       <nav
+        ref={railRef}
         onMouseEnter={autoHide ? () => setHover(true) : undefined}
         onMouseLeave={autoHide ? () => setHover(false) : undefined}
         onFocus={autoHide ? () => setFocusWithin(true) : undefined}
@@ -159,7 +222,8 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
             : undefined
         }
         className={cn(
-          'border-hairline flex h-full flex-col border-r',
+          'border-hairline flex h-full flex-col overflow-hidden border-r',
+          'transition-[width,translate] duration-[220ms] ease-[cubic-bezier(0.2,0,0,1)]',
           sidebarExpanded ? 'w-52' : 'w-[52px]',
           // The rail is transparent everywhere so the shell backdrop runs
           // through it — Home's auto-hide drawer included (it must look like
@@ -167,22 +231,26 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
           // legible when the drawer happens to slide over kanban content.
           autoHide
             ? cn(
-                'absolute top-0 left-0 z-40 bg-transparent backdrop-blur-md transition-transform',
+                'absolute top-0 left-0 z-40 bg-transparent backdrop-blur-md',
                 open ? 'translate-x-0' : '-translate-x-full',
               )
             : 'shrink-0 bg-transparent',
         )}
         aria-label="Mailboxes"
       >
-        <div ref={navRef} onKeyDown={onNavKeyDown} className="flex-1 overflow-y-auto px-2 pt-2.5">
+        <div ref={navRef} onKeyDown={onNavKeyDown} className="flex-1 overflow-x-hidden overflow-y-auto px-2 pt-2.5">
         {/* account switcher */}
         <div
           className={cn(
             'mb-3 flex gap-1.5',
-            sidebarExpanded ? 'flex-row flex-wrap' : 'flex-col items-center',
+            // Expanded rows get the open rail's inner width up front, so they
+            // wrap into their final layout at once instead of re-wrapping
+            // frame by frame while the rail widens.
+            sidebarExpanded ? 'w-48 flex-row flex-wrap' : 'flex-col items-center',
           )}
         >
           <button
+            data-flip
             onClick={(e) => {
               setAccountFilter(undefined);
               if (autoHide) (e.currentTarget as HTMLButtonElement).blur();
@@ -202,6 +270,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
             return (
               <button
                 key={a.id}
+                data-flip
                 onClick={(e) => {
                   setAccountFilter(a.id);
                   if (autoHide) (e.currentTarget as HTMLButtonElement).blur();
@@ -234,6 +303,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
           <button
             key={v}
             data-nav
+            data-flip
             data-active={view === v || undefined}
             onClick={(e) => {
               setView(v);
@@ -250,15 +320,15 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
             )}
           >
             <Icon size={16} strokeWidth={2.2} className="shrink-0" />
-            {sidebarExpanded && (
-              <>
-                <span className="flex-1 truncate text-[12.5px]">{label}</span>
-                {v === 'inbox' && unread > 0 && (
-                  <span className="text-accent text-[11px] font-bold tabular-nums">{unread}</span>
-                )}
-                {keys && <Keycaps keys={keys} />}
-              </>
-            )}
+            <span className={labelFade(sidebarExpanded)} aria-hidden={!sidebarExpanded}>
+              <span className="flex-1 overflow-hidden text-[12.5px] whitespace-nowrap">
+                {label}
+              </span>
+              {v === 'inbox' && unread > 0 && (
+                <span className="text-accent text-[11px] font-bold tabular-nums">{unread}</span>
+              )}
+              {keys && <Keycaps keys={keys} />}
+            </span>
             {!sidebarExpanded && v === 'inbox' && unread > 0 && (
               <span className="bg-accent absolute ml-5 mt-[-10px] h-1.5 w-1.5 rounded-full" />
             )}
@@ -270,6 +340,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
         {kanbanConfigured && (
           <button
             data-nav
+            data-flip
             data-active={(view === 'home' && kanbanOpen) || undefined}
             onClick={(e) => {
               openSprintBoard();
@@ -284,16 +355,16 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
             )}
           >
             <KanbanSquare size={16} strokeWidth={2.2} className="shrink-0" />
-            {sidebarExpanded && (
-              <>
-                <span className="flex-1 truncate text-[12.5px]">Sprint board</span>
-                {newRequests > 0 && (
-                  <span className="text-danger text-[11px] font-bold tabular-nums">
-                    {newRequests}
-                  </span>
-                )}
-              </>
-            )}
+            <span className={labelFade(sidebarExpanded)} aria-hidden={!sidebarExpanded}>
+              <span className="flex-1 overflow-hidden text-[12.5px] whitespace-nowrap">
+                Sprint board
+              </span>
+              {newRequests > 0 && (
+                <span className="text-danger text-[11px] font-bold tabular-nums">
+                  {newRequests}
+                </span>
+              )}
+            </span>
             {!sidebarExpanded && newRequests > 0 && (
               <span className="bg-danger absolute ml-5 mt-[-10px] h-1.5 w-1.5 rounded-full" />
             )}
@@ -308,17 +379,21 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
         )}
       >
         <button
+          data-flip
           onClick={onAddAccount}
           title={sidebarExpanded ? undefined : 'Add account'}
           className={cn(
             'text-ink-muted hover:bg-sunken hover:text-ink flex items-center gap-2.5 rounded-lg',
-            sidebarExpanded ? 'flex-1 px-2 py-1.5 text-left' : 'h-7 w-7 justify-center',
+            sidebarExpanded ? 'flex-1 px-2 py-1.5 text-left' : 'h-7 w-7 overflow-hidden px-1.5',
           )}
         >
           <Plus size={16} strokeWidth={2.2} className="shrink-0" />
-          {sidebarExpanded && <span className="truncate text-[12.5px]">Add account</span>}
+          <span className={labelFade(sidebarExpanded)} aria-hidden={!sidebarExpanded}>
+            <span className="overflow-hidden text-[12.5px] whitespace-nowrap">Add account</span>
+          </span>
         </button>
         <button
+          data-flip
           onClick={toggleSidebar}
           title={sidebarExpanded ? 'Collapse to icons' : 'Expand with labels'}
           aria-expanded={sidebarExpanded}
