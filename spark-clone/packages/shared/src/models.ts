@@ -91,6 +91,8 @@ export interface ThreadSummary {
   category: Category;
   /** Snooze wake time when the thread is snoozed; null = Someday. */
   snoozeWakeAt?: number | null;
+  /** Custom labels (Gmail label folder paths), sorted. */
+  labels?: string[];
 }
 
 export interface MessageMeta {

@@ -944,6 +944,28 @@ export class AccountSync {
     return this.db.getFolderByPath(this.account.id, name)!;
   }
 
+  /** Create (if needed) and register one of the user's own labels, e.g. "Travel". */
+  async ensureUserFolder(path: string): Promise<Folder> {
+    const existing = this.db.getFolderByPath(this.account.id, path);
+    if (existing) return existing;
+    const client = this.client;
+    if (!client) throw new Error('not connected');
+    try {
+      await client.mailboxCreate(path);
+    } catch {
+      /* exists */
+    }
+    this.repark();
+    this.db.upsertFolder({
+      id: newId(),
+      accountId: this.account.id,
+      path,
+      role: 'other',
+      delimiter: this.db.listFolders(this.account.id).find((f) => f.delimiter)?.delimiter ?? '/',
+    });
+    return this.db.getFolderByPath(this.account.id, path)!;
+  }
+
   /** Create (if needed) and register an app-managed folder like Uniox/Snoozed. */
   async ensureAppFolder(name: string, role: FolderRole): Promise<Folder> {
     const existingByPath = this.db

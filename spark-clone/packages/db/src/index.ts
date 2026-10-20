@@ -105,6 +105,27 @@ function rowToFolder(r: Row): Folder {
   };
 }
 
+/**
+ * Folders that are the user's own labels: not a system role, not the app's
+ * Uniox/ namespace (state labels) and not Gmail's [Gmail]/ system folders.
+ */
+const USER_LABEL_FOLDER = `f.role = 'other'
+  AND f.path NOT IN ('Uniox', 'SparkClone')
+  AND f.path NOT LIKE 'Uniox/%' AND f.path NOT LIKE 'Uniox.%'
+  AND f.path NOT LIKE 'SparkClone/%' AND f.path NOT LIKE 'SparkClone.%'
+  AND f.path NOT LIKE '[Gmail]%' AND f.path NOT LIKE '[Google Mail]%'`;
+
+/** A thread's custom labels: folder membership, adjusted by pending local changes. */
+const THREAD_LABELS = `(SELECT json_group_array(label) FROM (
+    SELECT f.path AS label FROM messages m JOIN folders f ON f.id = m.folder_id
+     WHERE m.thread_id = t.id AND ${USER_LABEL_FOLDER}
+    UNION
+    SELECT o.label FROM thread_label_overrides o WHERE o.thread_id = t.id AND o.present = 1
+    EXCEPT
+    SELECT o.label FROM thread_label_overrides o WHERE o.thread_id = t.id AND o.present = 0
+    ORDER BY 1
+  )) AS labels_json`;
+
 function rowToThreadSummary(r: Row): ThreadSummary {
   const senders = p<Address[]>(r.senders_json, []).filter((s) => !!s?.email);
   return {
@@ -126,6 +147,7 @@ function rowToThreadSummary(r: Row): ThreadSummary {
     pinned: !!r.pinned,
     category: (r.category ?? 'personal') as Category,
     snoozeWakeAt: r.snooze_wake_at === undefined ? undefined : r.snooze_wake_at,
+    labels: p<string[]>(r.labels_json ?? null, []),
   };
 }
 
@@ -780,7 +802,7 @@ export class MailDb {
         // has_draft / from_emails_json are denormalized columns maintained by
         // refreshThreadAggregates; they used to be correlated subqueries run
         // once per returned row.
-        `SELECT t.*, s.wake_at AS snooze_wake_at
+        `SELECT t.*, s.wake_at AS snooze_wake_at, ${THREAD_LABELS}
          FROM threads t
          LEFT JOIN snoozes s ON s.thread_id = t.id
          WHERE ${where}
@@ -797,7 +819,7 @@ export class MailDb {
    */
   getThreadSummary(threadId: string): ThreadSummary | null {
     const r = this.stmt(
-        `SELECT t.*, s.wake_at AS snooze_wake_at
+        `SELECT t.*, s.wake_at AS snooze_wake_at, ${THREAD_LABELS}
            FROM threads t
            LEFT JOIN snoozes s ON s.thread_id = t.id
           WHERE t.id = ?`,
@@ -810,6 +832,61 @@ export class MailDb {
 
   setPlacement(threadId: string, placement: Placement) {
     this.stmt(`UPDATE threads SET placement = ? WHERE id = ?`).run(placement, threadId);
+  }
+
+  /** The account's custom label folders (Gmail labels), by path. */
+  listUserLabels(accountId: string): string[] {
+    return (
+      this.stmt(
+        `SELECT f.path FROM folders f WHERE f.account_id = ? AND ${USER_LABEL_FOLDER} ORDER BY lower(f.path)`,
+      ).all(accountId) as Row[]
+    ).map((r) => r.path as string);
+  }
+
+  /** Show a label change on the thread before its IMAP copy/delete lands. */
+  setLabelOverride(threadId: string, label: string, present: boolean) {
+    this.stmt(
+      `INSERT INTO thread_label_overrides (thread_id, label, present, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(thread_id, label) DO UPDATE SET present = excluded.present, updated_at = excluded.updated_at`,
+    ).run(threadId, label, present ? 1 : 0, Date.now());
+  }
+
+  clearLabelOverride(threadId: string, label: string) {
+    this.stmt(`DELETE FROM thread_label_overrides WHERE thread_id = ? AND label = ?`).run(threadId, label);
+  }
+
+  /**
+   * One copy of each of the thread's messages (drafts, Trash and Spam aside)
+   * that the folder doesn't hold yet: what labelling the thread must COPY.
+   */
+  threadCopiesMissingFrom(threadId: string, folderId: string): { folderId: string; uid: number }[] {
+    return (
+      this.stmt(
+        `SELECT folder_id, uid FROM (
+           SELECT m.folder_id, m.uid, ROW_NUMBER() OVER (
+             PARTITION BY coalesce(nullif(m.message_id_hdr, ''), m.id) ORDER BY m.uid
+           ) AS rn
+           FROM messages m JOIN folders f ON f.id = m.folder_id
+           WHERE m.thread_id = ? AND m.draft = 0 AND m.folder_id != ?
+             AND f.role NOT IN ('trash', 'spam')
+             AND NOT EXISTS (
+               SELECT 1 FROM messages x
+                WHERE x.folder_id = ? AND x.message_id_hdr = m.message_id_hdr
+                  AND coalesce(m.message_id_hdr, '') != ''
+             )
+         ) WHERE rn = 1`,
+      ).all(threadId, folderId, folderId) as Row[]
+    ).map((r) => ({ folderId: r.folder_id as string, uid: r.uid as number }));
+  }
+
+  /** The thread's message rows stored in one folder. */
+  threadMessagesInFolder(threadId: string, folderId: string): { id: string; uid: number }[] {
+    return (
+      this.stmt(`SELECT id, uid FROM messages WHERE thread_id = ? AND folder_id = ?`).all(
+        threadId,
+        folderId,
+      ) as Row[]
+    ).map((r) => ({ id: r.id as string, uid: r.uid as number }));
   }
 
   setThreadPinned(threadId: string, pinned: boolean) {

@@ -708,6 +708,13 @@ export class SyncService {
         return this.db.listGatekeeperPending();
       case 'templates:list':
         return this.db.listTemplates();
+      case 'labels:list': {
+        const { accountId } = args as { accountId: string };
+        const account = this.db.getAccount(accountId);
+        return account && isGmailAccount(account)
+          ? { supported: true, labels: this.db.listUserLabels(accountId) }
+          : { supported: false, labels: [] };
+      }
       case 'templates:save':
         this.db.saveTemplate(args as Template);
         return { ok: true };
@@ -781,6 +788,10 @@ export class SyncService {
       case 'set-pinned':
         // The server star follows in the background.
         this.db.setThreadPinned(task.threadId, task.pinned);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-label':
+        this.db.setLabelOverride(task.threadId, task.label, task.add);
         this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
         break;
       case 'set-category':
@@ -1350,6 +1361,43 @@ export class SyncService {
             await this.unlabelSender(sync, label, pattern);
           }
         }
+        this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
+        break;
+      }
+      case 'set-label': {
+        // Gmail labels are folders: COPY adds one, deleting the label folder's
+        // copy removes it (the message stays in All Mail / its other labels).
+        // Plain IMAP would duplicate on add and really delete on remove.
+        const account = this.db.getAccount(t.accountId);
+        if (!account || !isGmailAccount(account)) {
+          this.db.clearLabelOverride(t.threadId, t.label);
+          this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
+          break;
+        }
+        const sync = await this.waitForAccount(t.accountId);
+        if (t.add) {
+          const label = await sync.ensureUserFolder(t.label);
+          const byFolder = new Map<string, { path: string; uids: number[] }>();
+          for (const m of this.db.threadCopiesMissingFrom(t.threadId, label.id)) {
+            const folder = this.db.getFolder(m.folderId);
+            if (!folder) continue;
+            const entry = byFolder.get(folder.id) ?? { path: folder.path, uids: [] };
+            entry.uids.push(m.uid);
+            byFolder.set(folder.id, entry);
+          }
+          for (const { path, uids } of byFolder.values()) await sync.copyMessages(path, uids, label.path);
+          await sync.syncFolder(label);
+        } else {
+          const label = this.db.getFolderByPath(t.accountId, t.label);
+          if (label) {
+            const rows = this.db.threadMessagesInFolder(t.threadId, label.id);
+            await sync.deleteMessages(label.path, rows.map((r) => r.uid));
+            for (const tid of this.db.deleteMessagesByUids(label.id, rows.map((r) => r.uid))) {
+              this.db.refreshThreadAggregates(tid);
+            }
+          }
+        }
+        this.db.clearLabelOverride(t.threadId, t.label);
         this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
         break;
       }

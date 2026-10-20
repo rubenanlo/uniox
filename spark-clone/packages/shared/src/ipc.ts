@@ -43,6 +43,8 @@ export interface Queries {
   'outbox:list': { args: undefined; result: ScheduledSend[] };
   'gatekeeper:pending': { args: undefined; result: GatekeeperPending[] };
   'templates:list': { args: undefined; result: Template[] };
+  /** Custom label folders of one account; labels are only offered on Gmail. */
+  'labels:list': { args: { accountId: string }; result: { supported: boolean; labels: string[] } };
   'signatures:list': { args: undefined; result: Signature[] };
   'priority:list': {
     args: undefined;
