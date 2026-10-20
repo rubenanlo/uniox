@@ -534,12 +534,24 @@ export class AccountSync {
   async syncFolder(folder: Folder): Promise<boolean> {
     const client = this.client;
     if (!client) return false;
+    // Re-locking the already-selected mailbox (the parked inbox) issues no
+    // SELECT, so its HIGHESTMODSEQ is the one from when it was selected and a
+    // flag change made by another client would look like "nothing changed".
+    const wasSelected = !!client.mailbox && client.mailbox.path === folder.path;
     const lock = await client.getMailboxLock(folder.path);
     const touchedThreads = new Set<string>();
     const notifications: { threadId: string; messageId: string }[] = [];
     try {
       const mailbox = client.mailbox;
       if (!mailbox || typeof mailbox === 'boolean') return false;
+      let freshModseq: bigint | undefined;
+      if (wasSelected && mailbox.highestModseq) {
+        // NOOP first: the server reports a selected mailbox's state as this
+        // session last saw it until pending changes are delivered.
+        await client.noop().catch(() => undefined);
+        const st = await client.status(folder.path, { highestModseq: true }).catch(() => null);
+        freshModseq = st?.highestModseq;
+      }
       const cursor = this.db.getFolderCursor(folder.id);
       const uidValidity = Number(mailbox.uidValidity ?? 0);
       if (cursor.uidvalidity !== null && cursor.uidvalidity !== uidValidity) {
@@ -552,7 +564,7 @@ export class AccountSync {
         uidValidity,
         uidNext: Number(mailbox.uidNext ?? 0),
         exists: mailbox.exists ?? 0,
-        modseq: mailbox.highestModseq ? String(mailbox.highestModseq) : null,
+        modseq: (freshModseq ?? mailbox.highestModseq) ? String(freshModseq ?? mailbox.highestModseq) : null,
       };
       const hasCondstore = !!client.capabilities?.has('CONDSTORE');
       if (
@@ -606,6 +618,8 @@ export class AccountSync {
           }
           if (!result) continue;
           touchedThreads.add(result.threadId);
+          // Starred elsewhere (Gmail star, Apple Mail flag) arrives pinned.
+          if ((msg.flags ?? new Set<string>()).has('\\Flagged')) this.db.setThreadPinned(result.threadId, true);
           const seen = (msg.flags ?? new Set<string>()).has('\\Seen');
           const hook = runNewMessageHook(this.db, {
             accountId: this.account.id,
@@ -635,15 +649,19 @@ export class AccountSync {
           const chunk = known.slice(i, i + FETCH_CHUNK * 5);
           for await (const msg of client.fetch(chunk.join(','), { uid: true, flags: true }, fetchOpts)) {
             const flags = msg.flags ?? new Set<string>();
+            const row = this.db.raw
+              .prepare(`SELECT thread_id, flagged FROM messages WHERE folder_id = ? AND uid = ?`)
+              .get(folder.id, msg.uid) as { thread_id: string; flagged: number } | undefined;
             this.db.updateFlagsByUid(folder.id, msg.uid, {
               seen: flags.has('\\Seen'),
               flagged: flags.has('\\Flagged'),
               answered: flags.has('\\Answered'),
             });
-            const row = this.db.raw
-              .prepare(`SELECT thread_id FROM messages WHERE folder_id = ? AND uid = ?`)
-              .get(folder.id, msg.uid) as { thread_id: string } | undefined;
-            if (row) touchedThreads.add(row.thread_id);
+            if (row) {
+              touchedThreads.add(row.thread_id);
+              // (Un)starred in another client: follow it with the pin.
+              if (!!row.flagged !== flags.has('\\Flagged')) this.db.syncPinnedFromFlags(row.thread_id);
+            }
           }
         }
       }

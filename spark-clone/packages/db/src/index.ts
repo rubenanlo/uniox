@@ -812,6 +812,32 @@ export class MailDb {
     this.stmt(`UPDATE threads SET placement = ? WHERE id = ?`).run(placement, threadId);
   }
 
+  setThreadPinned(threadId: string, pinned: boolean) {
+    this.stmt(`UPDATE threads SET pinned = ? WHERE id = ?`).run(pinned ? 1 : 0, threadId);
+  }
+
+  /**
+   * Pin ⇄ server star (IMAP \Flagged, Spark's mapping): a thread is pinned
+   * while any of its messages is flagged. Called only when a flag actually
+   * changed, so pins made before pins synced are left alone.
+   */
+  syncPinnedFromFlags(threadId: string) {
+    this.stmt(
+      `UPDATE threads SET pinned = EXISTS (
+         SELECT 1 FROM messages WHERE thread_id = ? AND flagged = 1
+       ) WHERE id = ?`,
+    ).run(threadId, threadId);
+  }
+
+  /** Flagged message rows of a thread, every folder copy included (unpin clears them all). */
+  flaggedMessages(threadId: string): { id: string; folderId: string; uid: number }[] {
+    return (
+      this.stmt(`SELECT id, folder_id, uid FROM messages WHERE thread_id = ? AND flagged = 1`).all(
+        threadId,
+      ) as Row[]
+    ).map((r) => ({ id: r.id as string, folderId: r.folder_id as string, uid: r.uid as number }));
+  }
+
   getPlacement(threadId: string): Placement | null {
     const r = this.stmt(`SELECT placement FROM threads WHERE id = ?`).get(threadId) as
       | Row

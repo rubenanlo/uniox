@@ -63,6 +63,53 @@ async function appendMail(subject: string, msgId: string, refs?: string[]) {
   await client.logout();
 }
 
+/** Server-side flags of the INBOX message with this subject, or null when absent. */
+async function serverFlags(subject: string): Promise<Set<string> | null> {
+  const client = new ImapFlow({
+    host: HOST,
+    port: IMAP_PORT,
+    secure: false,
+    auth: { user: USER, pass: 'pass' },
+    tls: { rejectUnauthorized: false },
+    logger: false,
+  });
+  await client.connect();
+  const lock = await client.getMailboxLock('INBOX');
+  try {
+    for await (const m of client.fetch('1:*', { flags: true, envelope: true })) {
+      if (m.envelope?.subject === subject) return m.flags ?? new Set();
+    }
+    return null;
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+}
+
+/** Star a message from "another client". */
+async function setServerFlag(subject: string, flagged: boolean) {
+  const client = new ImapFlow({
+    host: HOST,
+    port: IMAP_PORT,
+    secure: false,
+    auth: { user: USER, pass: 'pass' },
+    tls: { rejectUnauthorized: false },
+    logger: false,
+  });
+  await client.connect();
+  const lock = await client.getMailboxLock('INBOX');
+  try {
+    const uids = await client.search({ subject }, { uid: true });
+    if (uids && uids.length) {
+      if (flagged) await client.messageFlagsAdd(uids, ['\\Flagged'], { uid: true });
+      else await client.messageFlagsRemove(uids, ['\\Flagged'], { uid: true });
+    }
+  } finally {
+    lock.release();
+    await client.logout();
+  }
+}
+
 const up = (await serverUp(IMAP_PORT)) && (await serverUp(1025));
 
 describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
@@ -78,6 +125,7 @@ describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
     await appendMail('Snooze target', '<svc-1@x>');
     await appendMail('Reminder target', '<svc-2@x>');
     await appendMail('Block target', '<svc-3@x>');
+    await appendMail('Pin target', '<svc-4@x>');
 
     service = new SyncService((msg: SyncToMain) => {
       if (msg.kind === 'delta') deltas.push(msg.event);
@@ -94,7 +142,9 @@ describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
     })) as { ok: boolean; accountId: string };
     expect(result.ok).toBe(true);
     accountId = result.accountId;
-    await waitFor(() => inbox().length === 3, 45_000);
+    // A first-time sender waits in Gatekeeper and stays out of the inbox list.
+    db().setReputation(accountId, 'ext@ext.example', 'address', 'accepted');
+    await waitFor(() => inbox().length === 4, 45_000);
   }, 60_000);
 
   afterAll(async () => {
@@ -104,15 +154,15 @@ describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
   it('snoozes a thread (IMAP-encoded) and wakes it unread with an alert', async () => {
     const thread = inbox().find((t) => t.subject === 'Snooze target')!;
     enqueue({ type: 'snooze-thread', accountId, threadId: thread.id, wakeAt: Date.now() + 2_500, alert: true });
+    // local-first: out of the inbox before the IMAP move runs
+    expect(db().getPlacement(thread.id)).toBe('snoozed');
 
     await waitFor(() => db().getPlacement(thread.id) === 'snoozed', 20_000);
     expect(inbox().some((t) => t.id === thread.id)).toBe(false);
     const snoozedView = db().listThreads({ view: 'snoozed', limit: 10, offset: 0 });
     expect(snoozedView.some((t) => t.id === thread.id)).toBe(true);
-    // messages actually left the inbox folder
-    const folders = db().listFolders(accountId);
-    const snoozedFolder = folders.find((f) => f.path.includes('Uniox'));
-    expect(snoozedFolder).toBeDefined();
+    // messages actually left the inbox folder (the IMAP move trails the local flip)
+    await waitFor(() => db().listFolders(accountId).find((f) => f.path.includes('Uniox')), 20_000);
 
     // the scheduler wakes it
     await waitFor(() => db().getPlacement(thread.id) === 'inbox', 25_000);
@@ -313,6 +363,33 @@ describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
     await waitFor(() => !inDrafts().some((t) => t.subject === stale), 20_000);
     expect(inDrafts().some((t) => t.subject === fresh)).toBe(true);
   }, 60_000);
+
+  it('pin stars the newest message on the server, unpin clears it, a star elsewhere pins', async () => {
+    const thread = inbox().find((t) => t.subject === 'Pin target')!;
+    enqueue({ type: 'set-pinned', accountId, threadId: thread.id, pinned: true });
+    expect(db().getThreadSummary(thread.id)?.pinned).toBe(true);
+    await waitFor(async () => (await serverFlags('Pin target'))?.has('\\Flagged'), 20_000);
+
+    enqueue({ type: 'set-pinned', accountId, threadId: thread.id, pinned: false });
+    expect(db().getThreadSummary(thread.id)?.pinned).toBe(false);
+    await waitFor(async () => (await serverFlags('Pin target'))?.has('\\Flagged') === false, 20_000);
+
+    await setServerFlag('Pin target', true);
+    enqueue({ type: 'sync-now', accountId });
+    await waitFor(() => db().getThreadSummary(thread.id)?.pinned, 30_000);
+
+    await setServerFlag('Pin target', false);
+    enqueue({ type: 'sync-now', accountId });
+    await waitFor(() => db().getThreadSummary(thread.id)?.pinned === false, 30_000);
+  }, 90_000);
+
+  it('recategorizing a sender re-routes their threads at enqueue', () => {
+    const thread = inbox().find((t) => t.subject === 'Pin target')!;
+    enqueue({ type: 'set-category', accountId, key: 'ext@ext.example', kind: 'address', category: 'newsletters' });
+    expect(db().getThreadSummary(thread.id)?.category).toBe('newsletters');
+    enqueue({ type: 'set-category', accountId, key: 'ext@ext.example', kind: 'address', category: 'personal' });
+    expect(db().getThreadSummary(thread.id)?.category).toBe('personal');
+  });
 
   it('gatekeeper block sweeps existing inbox threads to archive', async () => {
     const thread = inbox().find((t) => t.subject === 'Block target');

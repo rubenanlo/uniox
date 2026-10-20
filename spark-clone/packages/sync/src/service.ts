@@ -771,6 +771,25 @@ export class SyncService {
         this.db.refreshThreadAggregates(task.threadId);
         this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
         break;
+      case 'snooze-thread':
+        // Out of the inbox now; the move into the Snoozed folder follows.
+        this.db.upsertSnooze(task.threadId, task.wakeAt, task.alert);
+        this.db.setPlacement(task.threadId, 'snoozed');
+        this.scheduler?.reschedule();
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-pinned':
+        // The server star follows in the background.
+        this.db.setThreadPinned(task.threadId, task.pinned);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-category':
+        // Re-route the sender locally right away; Gmail's Uniox/<Category>
+        // labels (which wait for the account to connect) follow.
+        this.db.setSenderCategory(task.accountId, task.key, task.kind, task.category, 'user');
+        this.db.reclassifyThreadsForSender(task.accountId, task.key, task.kind, task.category);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
       case 'delete-draft':
         // The draft leaves the Drafts view instantly; the server-side move to
         // Trash follows in the background (Trash re-syncs it into that view).
@@ -1196,6 +1215,8 @@ export class SyncService {
         break;
       }
       case 'set-category': {
+        // applyLocalEffect already re-routed locally; repeat (idempotent) so
+        // a retried task still lands after a restart.
         this.db.setSenderCategory(t.accountId, t.key, t.kind, t.category, 'user');
         this.db.reclassifyThreadsForSender(t.accountId, t.key, t.kind, t.category);
         // User overrides (never heuristics) mirror to Uniox/<Category> labels
@@ -1280,9 +1301,32 @@ export class SyncService {
         break;
       }
       case 'set-pinned': {
-        this.db.raw
-          .prepare(`UPDATE threads SET pinned = ? WHERE id = ?`)
-          .run(t.pinned ? 1 : 0, t.threadId);
+        // Pin = star on the server (Spark's mapping): pinning flags the newest
+        // message, unpinning clears every flagged copy. The server goes first
+        // so a sync racing this task never reads the old flag as a change.
+        this.db.setThreadPinned(t.threadId, t.pinned);
+        const targets = t.pinned
+          ? this.db
+              .getThreadMessagesForDisplay(t.threadId)
+              .filter((m) => !m.draft && !m.flagged)
+              .slice(-1)
+          : this.db.flaggedMessages(t.threadId);
+        const byFolder = new Map<string, { path: string; uids: number[]; ids: string[] }>();
+        for (const m of targets) {
+          const folder = this.db.getFolder(m.folderId);
+          if (!folder) continue;
+          const entry = byFolder.get(folder.id) ?? { path: folder.path, uids: [], ids: [] };
+          entry.uids.push(m.uid);
+          entry.ids.push(m.id);
+          byFolder.set(folder.id, entry);
+        }
+        if (byFolder.size) {
+          const sync = this.sync(t.accountId);
+          for (const { path, uids, ids } of byFolder.values()) {
+            await sync.storeFlags(path, uids, '\\Flagged', t.pinned);
+            for (const id of ids) this.db.setFlagsById(id, { flagged: t.pinned });
+          }
+        }
         this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
         break;
       }

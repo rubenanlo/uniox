@@ -13,6 +13,7 @@ import {
   Pencil,
   Percent,
   Pin,
+  PinOff,
   Tags,
   Trash2,
   Zap,
@@ -544,7 +545,13 @@ function CardActions({ threads }: { threads: ThreadSummary[] }) {
 }
 
 /** Sticky per-sender recategorization (report §2.3): correcting one email re-routes the sender. */
-function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
+function RecategorizeMenu({
+  thread,
+  onOpenChange,
+}: {
+  thread: ThreadSummary;
+  onOpenChange: (open: boolean) => void;
+}) {
   const sender = thread.participants[0]?.email;
   if (!sender) return null;
   const domain = sender.slice(sender.indexOf('@') + 1);
@@ -557,7 +564,7 @@ function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
       category,
     });
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>
         <button
           className="border-hairline bg-surface text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded-md border shadow-sm"
@@ -608,9 +615,19 @@ function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
   );
 }
 
-function HoverActions({ thread }: { thread: ThreadSummary }) {
+function HoverActions({
+  thread,
+  onMenuOpenChange,
+}: {
+  thread: ThreadSummary;
+  onMenuOpenChange: (open: boolean) => void;
+}) {
   const run = (id: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
+    // A row's own buttons act on that row. Only when it is part of a ⇧/⌘
+    // pick do they act on the whole pick, like the keyboard shortcuts.
+    const ui = useUi.getState();
+    if (ui.multiSelected.length && !ui.multiSelected.includes(thread.id)) ui.clearMultiSelect();
     ACTIONS.find((a) => a.id === id)?.perform(thread.id);
   };
   const btn =
@@ -627,12 +644,12 @@ function HoverActions({ thread }: { thread: ThreadSummary }) {
           <AlarmClock size={12.5} />
         </button>
       </Tip>
-      <Tip label="Pin" keys={keysFor('pin')}>
+      <Tip label={thread.pinned ? 'Unpin' : 'Pin'} keys={keysFor('pin')}>
         <button className={btn} onClick={run('pin')}>
-          <Pin size={12.5} />
+          {thread.pinned ? <PinOff size={12.5} /> : <Pin size={12.5} />}
         </button>
       </Tip>
-      <RecategorizeMenu thread={thread} />
+      <RecategorizeMenu thread={thread} onOpenChange={onMenuOpenChange} />
       <Tip label="Delete" keys={keysFor('delete')} align="end">
         <button className={btn} onClick={run('delete')}>
           <Trash2 size={12.5} />
@@ -670,6 +687,10 @@ function RowShell({
   );
   const isHovered = useUi((s) => s.hoveredThreadId === thread.id);
   const anyHovered = useUi((s) => s.hoveredThreadId !== null);
+  // The sender menu portals out of the row and its modal layer makes the row
+  // lose hover the moment it opens; keep the actions (and so the menu) mounted
+  // until it closes, or it unmounts before it can be used.
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
       role="button"
@@ -697,7 +718,7 @@ function RowShell({
       )}
     >
       {children}
-      {isHovered && <HoverActions thread={thread} />}
+      {(isHovered || menuOpen) && <HoverActions thread={thread} onMenuOpenChange={setMenuOpen} />}
     </div>
   );
 }

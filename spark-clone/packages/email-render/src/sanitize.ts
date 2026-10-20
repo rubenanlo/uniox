@@ -12,6 +12,8 @@ export interface SanitizeOptions {
    * `windowtext` replies), so the theme's light foreground applies instead.
    */
   darkMode?: boolean;
+  /** Collapse trailing quoted history into a <details>. Default true; print keeps it expanded. */
+  foldQuotes?: boolean;
 }
 
 export interface SanitizeResult {
@@ -156,7 +158,7 @@ export function sanitizeEmailHtml(dirty: string, opts: SanitizeOptions = {}): Sa
   }
 
   // Quote folding: collapse trailing quoted history into a native <details>.
-  foldQuotes(root);
+  if (opts.foldQuotes !== false) foldQuotes(root);
 
   return { html: root.innerHTML, blockedImages, inlineCids: [...inlineCids] };
 }

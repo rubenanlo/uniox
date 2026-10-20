@@ -5,6 +5,7 @@ import { useAssistant } from '../state/assistant';
 import { shareAvailability } from '../state/availability';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
 import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
+import { printThread } from '../lib/print';
 import { focusGatekeeper, openSelectedThread, toggleSidebarReveal } from '../lib/panels';
 import { toastWithUndo, handleTriageUndo } from '../lib/undo';
 import { bundleByRowId, keyboardTargetId, navRowId, PRIORITY_TOGGLE_ID, useUi } from '../state/store';
@@ -365,6 +366,21 @@ export const ACTIONS: AppAction[] = [
     context: 'thread',
     section: 'Respond',
     perform: replyAction('forward'),
+  },
+  {
+    id: 'print',
+    label: 'Print',
+    combo: { key: 'p', meta: true },
+    // 'thread' so the composer keeps ⌘P away from the email behind it.
+    context: 'thread',
+    section: 'Respond',
+    // The open email, not the hovered row: ⌘P prints what you're reading.
+    perform: (id) => {
+      const ui = useUi.getState();
+      const open = ui.selectedThreadId ?? id;
+      if (!open || open.startsWith('bundle:') || open === PRIORITY_TOGGLE_ID) return;
+      void printThread(open);
+    },
   },
   {
     id: 'share-availability',
