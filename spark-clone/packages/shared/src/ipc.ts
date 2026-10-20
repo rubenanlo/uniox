@@ -43,6 +43,8 @@ export interface Queries {
   'outbox:list': { args: undefined; result: ScheduledSend[] };
   'gatekeeper:pending': { args: undefined; result: GatekeeperPending[] };
   'templates:list': { args: undefined; result: Template[] };
+  /** Custom label folders of one account; labels are only offered on Gmail. */
+  'labels:list': { args: { accountId: string }; result: { supported: boolean; labels: string[] } };
   'signatures:list': { args: undefined; result: Signature[] };
   'priority:list': {
     args: undefined;
@@ -141,6 +143,8 @@ export interface Commands {
     args: { url: string };
     result: { ok: boolean; dataUri?: string; error?: string };
   };
+  /** ⌘P: print a conversation from a hidden window via the system print dialog. */
+  'print:thread': { args: { html: string; title: string }; result: { ok: boolean; error?: string } };
   /** Quick Look (macOS) / default-app preview of a downloaded attachment. */
   'attachment:preview': { args: { localPath: string }; result: { ok: boolean } };
   /** Save dialog defaulting to ~/Downloads/<filename>, then copy the file. */

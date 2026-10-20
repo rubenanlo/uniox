@@ -45,6 +45,7 @@ const builtInGoogleClient = defaultGoogleClient({
 });
 import { fetchBoard, fetchPageBlocks, setPageStatus, validateToken } from './notion';
 import { authorizeNotion } from './notion-auth';
+import { printHtml } from './print';
 import { SyncBridge } from './sync-bridge';
 
 // Only an unpackaged build may load a dev-server URL: a packaged app must never
@@ -664,6 +665,10 @@ function registerIpc(): void {
       }
       case 'signature:fetch-image':
         return fetchSignatureImage((args as { url: string }).url);
+      case 'print:thread': {
+        const { html, title } = args as { html: string; title: string };
+        return printHtml(html, title);
+      }
       case 'attachment:preview': {
         const { localPath } = args as { localPath: string };
         const full = resolveAttachmentPath(localPath);

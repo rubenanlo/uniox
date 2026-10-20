@@ -847,3 +847,27 @@ describe('review fixes', () => {
     expect(db.reconcilePlacements('acc1')).toBe(true);
   });
 });
+
+describe('pin follows server flags', () => {
+  it('pins while any message is flagged and lists the flagged copies', () => {
+    const db = makeDb();
+    setup(db);
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1', uid: 1 }));
+    db.insertMessage(msg({ id: 'm2', uid: 2, messageIdHdr: '<m2@x>', date: 2000 }));
+    db.refreshThreadAggregates('t1');
+    expect(db.getThreadSummary('t1')?.pinned).toBe(false);
+
+    db.setFlagsById('m2', { flagged: true });
+    db.syncPinnedFromFlags('t1');
+    expect(db.getThreadSummary('t1')?.pinned).toBe(true);
+    expect(db.flaggedMessages('t1')).toEqual([{ id: 'm2', folderId: 'f-inbox', uid: 2 }]);
+
+    db.setFlagsById('m2', { flagged: false });
+    db.syncPinnedFromFlags('t1');
+    expect(db.getThreadSummary('t1')?.pinned).toBe(false);
+
+    db.setThreadPinned('t1', true);
+    expect(db.getThreadSummary('t1')?.pinned).toBe(true);
+  });
+});

@@ -1,11 +1,12 @@
 import type { Address, MessageMeta, ThreadSummary } from '@app/shared';
 import { textToHtml } from '@app/email-render';
-import { AlarmClock, Bell, Forward, Layers, Reply, ReplyAll } from 'lucide-react';
+import { AlarmClock, Bell, Forward, Layers, Printer, Reply, ReplyAll } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ACTIONS, keysFor, markThreadRead } from '../../actions/registry';
 import { api } from '../../lib/api';
 import { focusPanelLeft } from '../../lib/panels';
+import { printThread } from '../../lib/print';
 import { cn, formatFullDate, initials, senderLabel } from '../../lib/utils';
 import { useThreadMessages } from '../../state/queries';
 import { useUi } from '../../state/store';
@@ -311,6 +312,14 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
               className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
             >
               <Bell size={15} />
+            </button>
+          </Tip>
+          <Tip label="Print" keys={keysFor('print')}>
+            <button
+              onClick={() => void printThread(thread.id)}
+              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
+            >
+              <Printer size={15} />
             </button>
           </Tip>
           <span className="bg-hairline mx-1 h-4 w-px" />

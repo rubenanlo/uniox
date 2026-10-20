@@ -708,6 +708,13 @@ export class SyncService {
         return this.db.listGatekeeperPending();
       case 'templates:list':
         return this.db.listTemplates();
+      case 'labels:list': {
+        const { accountId } = args as { accountId: string };
+        const account = this.db.getAccount(accountId);
+        return account && isGmailAccount(account)
+          ? { supported: true, labels: this.db.listUserLabels(accountId) }
+          : { supported: false, labels: [] };
+      }
       case 'templates:save':
         this.db.saveTemplate(args as Template);
         return { ok: true };
@@ -769,6 +776,29 @@ export class SyncService {
       case 'move-thread':
         this.db.setPlacement(task.threadId, task.toRole === 'inbox' ? 'inbox' : 'done');
         this.db.refreshThreadAggregates(task.threadId);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'snooze-thread':
+        // Out of the inbox now; the move into the Snoozed folder follows.
+        this.db.upsertSnooze(task.threadId, task.wakeAt, task.alert);
+        this.db.setPlacement(task.threadId, 'snoozed');
+        this.scheduler?.reschedule();
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-pinned':
+        // The server star follows in the background.
+        this.db.setThreadPinned(task.threadId, task.pinned);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-label':
+        this.db.setLabelOverride(task.threadId, task.label, task.add);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
+      case 'set-category':
+        // Re-route the sender locally right away; Gmail's Uniox/<Category>
+        // labels (which wait for the account to connect) follow.
+        this.db.setSenderCategory(task.accountId, task.key, task.kind, task.category, 'user');
+        this.db.reclassifyThreadsForSender(task.accountId, task.key, task.kind, task.category);
         this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
         break;
       case 'delete-draft':
@@ -1196,6 +1226,8 @@ export class SyncService {
         break;
       }
       case 'set-category': {
+        // applyLocalEffect already re-routed locally; repeat (idempotent) so
+        // a retried task still lands after a restart.
         this.db.setSenderCategory(t.accountId, t.key, t.kind, t.category, 'user');
         this.db.reclassifyThreadsForSender(t.accountId, t.key, t.kind, t.category);
         // User overrides (never heuristics) mirror to Uniox/<Category> labels
@@ -1280,9 +1312,32 @@ export class SyncService {
         break;
       }
       case 'set-pinned': {
-        this.db.raw
-          .prepare(`UPDATE threads SET pinned = ? WHERE id = ?`)
-          .run(t.pinned ? 1 : 0, t.threadId);
+        // Pin = star on the server (Spark's mapping): pinning flags the newest
+        // message, unpinning clears every flagged copy. The server goes first
+        // so a sync racing this task never reads the old flag as a change.
+        this.db.setThreadPinned(t.threadId, t.pinned);
+        const targets = t.pinned
+          ? this.db
+              .getThreadMessagesForDisplay(t.threadId)
+              .filter((m) => !m.draft && !m.flagged)
+              .slice(-1)
+          : this.db.flaggedMessages(t.threadId);
+        const byFolder = new Map<string, { path: string; uids: number[]; ids: string[] }>();
+        for (const m of targets) {
+          const folder = this.db.getFolder(m.folderId);
+          if (!folder) continue;
+          const entry = byFolder.get(folder.id) ?? { path: folder.path, uids: [], ids: [] };
+          entry.uids.push(m.uid);
+          entry.ids.push(m.id);
+          byFolder.set(folder.id, entry);
+        }
+        if (byFolder.size) {
+          const sync = this.sync(t.accountId);
+          for (const { path, uids, ids } of byFolder.values()) {
+            await sync.storeFlags(path, uids, '\\Flagged', t.pinned);
+            for (const id of ids) this.db.setFlagsById(id, { flagged: t.pinned });
+          }
+        }
         this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
         break;
       }
@@ -1306,6 +1361,43 @@ export class SyncService {
             await this.unlabelSender(sync, label, pattern);
           }
         }
+        this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
+        break;
+      }
+      case 'set-label': {
+        // Gmail labels are folders: COPY adds one, deleting the label folder's
+        // copy removes it (the message stays in All Mail / its other labels).
+        // Plain IMAP would duplicate on add and really delete on remove.
+        const account = this.db.getAccount(t.accountId);
+        if (!account || !isGmailAccount(account)) {
+          this.db.clearLabelOverride(t.threadId, t.label);
+          this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
+          break;
+        }
+        const sync = await this.waitForAccount(t.accountId);
+        if (t.add) {
+          const label = await sync.ensureUserFolder(t.label);
+          const byFolder = new Map<string, { path: string; uids: number[] }>();
+          for (const m of this.db.threadCopiesMissingFrom(t.threadId, label.id)) {
+            const folder = this.db.getFolder(m.folderId);
+            if (!folder) continue;
+            const entry = byFolder.get(folder.id) ?? { path: folder.path, uids: [] };
+            entry.uids.push(m.uid);
+            byFolder.set(folder.id, entry);
+          }
+          for (const { path, uids } of byFolder.values()) await sync.copyMessages(path, uids, label.path);
+          await sync.syncFolder(label);
+        } else {
+          const label = this.db.getFolderByPath(t.accountId, t.label);
+          if (label) {
+            const rows = this.db.threadMessagesInFolder(t.threadId, label.id);
+            await sync.deleteMessages(label.path, rows.map((r) => r.uid));
+            for (const tid of this.db.deleteMessagesByUids(label.id, rows.map((r) => r.uid))) {
+              this.db.refreshThreadAggregates(tid);
+            }
+          }
+        }
+        this.db.clearLabelOverride(t.threadId, t.label);
         this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
         break;
       }

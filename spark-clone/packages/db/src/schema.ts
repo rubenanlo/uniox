@@ -332,6 +332,17 @@ END;
 -- thread; this lets them walk newest-first and stop at LIMIT.
 CREATE INDEX IF NOT EXISTS threads_date ON threads(last_message_date DESC);
 `,
+  `
+-- Custom (Gmail) labels are folder membership; this holds a label change made
+-- here until its IMAP copy/delete lands, so the row updates instantly.
+CREATE TABLE IF NOT EXISTS thread_label_overrides (
+  thread_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  present INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (thread_id, label)
+);
+`,
 ];
 
 /** Crossing this version triggers the JS backfills in migrate() (idempotent). */

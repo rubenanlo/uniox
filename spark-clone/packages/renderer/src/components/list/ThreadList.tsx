@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowLeft,
   Bell,
+  Check,
   CheckCheck,
   ChevronRight,
   Newspaper,
@@ -13,6 +14,8 @@ import {
   Pencil,
   Percent,
   Pin,
+  PinOff,
+  Plus,
   Tags,
   Trash2,
   Zap,
@@ -543,8 +546,22 @@ function CardActions({ threads }: { threads: ThreadSummary[] }) {
   );
 }
 
-/** Sticky per-sender recategorization (report §2.3): correcting one email re-routes the sender. */
-function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
+const menuItem =
+  'data-highlighted:bg-accent-soft data-highlighted:text-accent cursor-default rounded-lg px-2 py-1.5 outline-none';
+
+/**
+ * Custom labels for this email (Gmail labels, created on first use), then the
+ * sticky per-sender category (report §2.3) and blocking.
+ */
+function RecategorizeMenu({
+  thread,
+  onOpenChange,
+}: {
+  thread: ThreadSummary;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [labels, setLabels] = useState<{ supported: boolean; labels: string[] } | null>(null);
+  const [draft, setDraft] = useState('');
   const sender = thread.participants[0]?.email;
   if (!sender) return null;
   const domain = sender.slice(sender.indexOf('@') + 1);
@@ -556,12 +573,45 @@ function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
       kind,
       category,
     });
+  const current = new Set(thread.labels ?? []);
+  const setLabel = (label: string, add: boolean) =>
+    void api.command('task:enqueue', {
+      type: 'set-label',
+      accountId: thread.accountId,
+      threadId: thread.id,
+      label,
+      add,
+    });
+  const createLabel = () => {
+    const name = cleanLabelName(draft);
+    if (!name) return;
+    const existing = labels?.labels.find((l) => l.toLowerCase() === name.toLowerCase());
+    if (!current.has(existing ?? name)) setLabel(existing ?? name, true);
+    setDraft('');
+    if (!existing) setLabels((l) => l && { ...l, labels: [...l.labels, name].sort() });
+  };
+  // Existing labels first (all of them, plus any shown on the row), filtered by the input.
+  const all = [...new Set([...(labels?.labels ?? []), ...current])].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  );
+  const query = draft.trim().toLowerCase();
+  const shown = query ? all.filter((l) => l.toLowerCase().includes(query)) : all;
+  const newName = cleanLabelName(draft);
+  const canCreate = !!newName && !all.some((l) => l.toLowerCase() === newName.toLowerCase());
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      onOpenChange={(open) => {
+        onOpenChange(open);
+        if (open) {
+          setDraft('');
+          void api.query('labels:list', { accountId: thread.accountId }).then(setLabels);
+        }
+      }}
+    >
       <DropdownMenu.Trigger asChild>
         <button
           className="border-hairline bg-surface text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded-md border shadow-sm"
-          title="Recategorize sender"
+          title="Labels and category"
           onClick={(e) => e.stopPropagation()}
         >
           <Tags size={12.5} />
@@ -569,24 +619,86 @@ function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="border-hairline bg-surface z-50 min-w-44 rounded-xl border p-1 text-[12px] shadow-xl"
+          className="border-hairline bg-surface z-50 w-56 rounded-xl border p-1 text-[12px] shadow-xl"
           sideOffset={4}
         >
           <DropdownMenu.Label className="text-ink-faint px-2 py-1 text-[10.5px]">
-            Mail from {sender}
+            Category for mail from {sender}
           </DropdownMenu.Label>
           {CATEGORY_ORDER.map(({ id, label }) => (
             <DropdownMenu.Item
               key={id}
               onSelect={() => setCat(id, 'address')}
-              className={cn(
-                'data-highlighted:bg-accent-soft data-highlighted:text-accent cursor-default rounded-lg px-2 py-1.5 outline-none',
-                thread.category === id && 'text-accent font-semibold',
-              )}
+              className={cn(menuItem, thread.category === id && 'text-accent font-semibold')}
             >
               {label}
             </DropdownMenu.Item>
           ))}
+          {labels?.supported && (
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger
+                className={cn(menuItem, 'flex items-center justify-between gap-2')}
+              >
+                Existing tags
+                <ChevronRight size={12} className="text-ink-faint" />
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.SubContent
+                  className="border-hairline bg-surface z-50 w-56 rounded-xl border p-1 text-[12px] shadow-xl"
+                  sideOffset={6}
+                  alignOffset={-4}
+                >
+                  <DropdownMenu.Label className="text-ink-faint px-2 py-1 text-[10.5px]">
+                    Gmail labels on this email
+                  </DropdownMenu.Label>
+                  <div className="max-h-48 overflow-y-auto">
+                    {shown.map((label) => (
+                      <DropdownMenu.CheckboxItem
+                        key={label}
+                        checked={current.has(label)}
+                        // Keep the menu open so several labels can be toggled.
+                        onSelect={(e) => e.preventDefault()}
+                        onCheckedChange={(on) => setLabel(label, on)}
+                        className={cn(menuItem, 'flex items-center gap-2')}
+                      >
+                        <span className="flex w-3 justify-center">
+                          <DropdownMenu.ItemIndicator>
+                            <Check size={12} />
+                          </DropdownMenu.ItemIndicator>
+                        </span>
+                        <span className="truncate">{label}</span>
+                      </DropdownMenu.CheckboxItem>
+                    ))}
+                  </div>
+                  <div className="px-1 pt-1 pb-0.5">
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      // The menu's typeahead and arrow handling must not eat typing.
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          createLabel();
+                        }
+                      }}
+                      placeholder={all.length ? 'Find or create label…' : 'Create a label…'}
+                      aria-label="Find or create label"
+                      className="border-hairline bg-sunken placeholder:text-ink-faint w-full rounded-md border px-2 py-1 text-[12px] outline-none focus:border-accent"
+                    />
+                    {canCreate && (
+                      <button
+                        onClick={createLabel}
+                        className="text-accent hover:bg-accent-soft mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left"
+                      >
+                        <Plus size={12} /> Create “{newName}”
+                      </button>
+                    )}
+                  </div>
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+          )}
           <DropdownMenu.Separator className="bg-hairline my-1 h-px" />
           <DropdownMenu.Item
             onSelect={() =>
@@ -608,9 +720,34 @@ function RecategorizeMenu({ thread }: { thread: ThreadSummary }) {
   );
 }
 
-function HoverActions({ thread }: { thread: ThreadSummary }) {
+/**
+ * A usable Gmail label name, or null: trimmed, no empty path segments, and
+ * none of the names Gmail or the app reserve (system folders, Uniox/ state).
+ */
+function cleanLabelName(raw: string): string | null {
+  const name = raw
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^\/+|\/+$/g, '');
+  if (!name || name.length > 100 || name.includes('//')) return null;
+  const top = name.split('/')[0]!.toLowerCase();
+  if (['inbox', 'uniox', 'sparkclone', '[gmail]', '[google mail]'].includes(top)) return null;
+  return name;
+}
+
+function HoverActions({
+  thread,
+  onMenuOpenChange,
+}: {
+  thread: ThreadSummary;
+  onMenuOpenChange: (open: boolean) => void;
+}) {
   const run = (id: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
+    // A row's own buttons act on that row. Only when it is part of a ⇧/⌘
+    // pick do they act on the whole pick, like the keyboard shortcuts.
+    const ui = useUi.getState();
+    if (ui.multiSelected.length && !ui.multiSelected.includes(thread.id)) ui.clearMultiSelect();
     ACTIONS.find((a) => a.id === id)?.perform(thread.id);
   };
   const btn =
@@ -627,12 +764,12 @@ function HoverActions({ thread }: { thread: ThreadSummary }) {
           <AlarmClock size={12.5} />
         </button>
       </Tip>
-      <Tip label="Pin" keys={keysFor('pin')}>
+      <Tip label={thread.pinned ? 'Unpin' : 'Pin'} keys={keysFor('pin')}>
         <button className={btn} onClick={run('pin')}>
-          <Pin size={12.5} />
+          {thread.pinned ? <PinOff size={12.5} /> : <Pin size={12.5} />}
         </button>
       </Tip>
-      <RecategorizeMenu thread={thread} />
+      <RecategorizeMenu thread={thread} onOpenChange={onMenuOpenChange} />
       <Tip label="Delete" keys={keysFor('delete')} align="end">
         <button className={btn} onClick={run('delete')}>
           <Trash2 size={12.5} />
@@ -670,6 +807,10 @@ function RowShell({
   );
   const isHovered = useUi((s) => s.hoveredThreadId === thread.id);
   const anyHovered = useUi((s) => s.hoveredThreadId !== null);
+  // The sender menu portals out of the row and its modal layer makes the row
+  // lose hover the moment it opens; keep the actions (and so the menu) mounted
+  // until it closes, or it unmounts before it can be used.
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div
       role="button"
@@ -697,8 +838,29 @@ function RowShell({
       )}
     >
       {children}
-      {isHovered && <HoverActions thread={thread} />}
+      {(isHovered || menuOpen) && <HoverActions thread={thread} onMenuOpenChange={setMenuOpen} />}
     </div>
+  );
+}
+
+/** Custom-label chips: the leaf name, two at most plus a count. */
+function LabelChips({ labels }: { labels?: string[] }) {
+  if (!labels?.length) return null;
+  const leaf = (l: string) => l.split('/').pop() || l;
+  return (
+    <span className="flex shrink-0 items-center gap-1" title={labels.join(', ')}>
+      {labels.slice(0, 2).map((l) => (
+        <span
+          key={l}
+          className="bg-sunken text-ink-muted max-w-24 truncate rounded px-1.5 py-px text-[10.5px] font-medium"
+        >
+          {leaf(l)}
+        </span>
+      ))}
+      {labels.length > 2 && (
+        <span className="text-ink-faint text-[10.5px]">+{labels.length - 2}</span>
+      )}
+    </span>
   );
 }
 
@@ -777,10 +939,16 @@ function FocusedRowBody({
             {formatListDate(thread.lastMessageDate)}
           </span>
         </div>
-        <div
-          className={cn('truncate text-[12.5px]', unread ? 'text-ink font-semibold' : 'text-ink')}
-        >
-          {thread.subject || '(no subject)'}
+        <div className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate text-[12.5px]',
+              unread ? 'text-ink font-semibold' : 'text-ink',
+            )}
+          >
+            {thread.subject || '(no subject)'}
+          </span>
+          <LabelChips labels={thread.labels} />
         </div>
         <div className="text-ink-muted truncate text-[12px]">{thread.snippet}</div>
       </div>
@@ -809,6 +977,7 @@ function SimpleRow({ thread, color }: { thread: ThreadSummary; color: string }) 
         {thread.subject || '(no subject)'}
         <span className="text-ink-faint font-normal"> — {thread.snippet}</span>
       </span>
+      <LabelChips labels={thread.labels} />
       {thread.pinned && <Pin size={11} className="text-accent shrink-0" />}
       {thread.hasAttachments && <Paperclip size={11} className="text-ink-faint shrink-0" />}
       <span className="text-ink-faint shrink-0 text-[11px] tabular-nums">
@@ -843,8 +1012,11 @@ function CardRow({ thread, color }: { thread: ThreadSummary; color: string }) {
             {formatListDate(thread.lastMessageDate)}
           </span>
         </div>
-        <div className={cn('truncate text-[12.5px]', unread && 'font-semibold')}>
-          {thread.subject || '(no subject)'}
+        <div className="flex items-center gap-1.5">
+          <span className={cn('min-w-0 flex-1 truncate text-[12.5px]', unread && 'font-semibold')}>
+            {thread.subject || '(no subject)'}
+          </span>
+          <LabelChips labels={thread.labels} />
         </div>
         {unread && <div className="text-ink-muted truncate text-[12px]">{thread.snippet}</div>}
       </RowShell>

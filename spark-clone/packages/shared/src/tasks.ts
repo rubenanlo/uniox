@@ -45,6 +45,8 @@ export type Task =
   | { type: 'schedule-send'; draft: OutgoingDraft; sendAt: number }
   | { type: 'send-scheduled-now'; scheduledId: string }
   | { type: 'cancel-scheduled'; scheduledId: string }
+  /** Add or remove a custom label (a Gmail label; created when missing). */
+  | { type: 'set-label'; accountId: string; threadId: string; label: string; add: boolean }
   | { type: 'set-category'; accountId: string; key: string; kind: 'address' | 'domain'; category: Category }
   /** Priority senders sync as the Uniox/Priority Gmail label so every client agrees. */
   | { type: 'set-priority-sender'; accountId: string; email: string; priority: boolean }
