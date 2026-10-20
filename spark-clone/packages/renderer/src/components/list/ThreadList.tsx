@@ -596,6 +596,8 @@ function RecategorizeMenu({
   );
   const query = draft.trim().toLowerCase();
   const shown = query ? all.filter((l) => l.toLowerCase().includes(query)) : all;
+  const newName = cleanLabelName(draft);
+  const canCreate = !!newName && !all.some((l) => l.toLowerCase() === newName.toLowerCase());
   return (
     <DropdownMenu.Root
       onOpenChange={(open) => {
@@ -620,59 +622,6 @@ function RecategorizeMenu({
           className="border-hairline bg-surface z-50 w-56 rounded-xl border p-1 text-[12px] shadow-xl"
           sideOffset={4}
         >
-          {labels?.supported && (
-            <>
-              <DropdownMenu.Label className="text-ink-faint px-2 py-1 text-[10.5px]">
-                Labels
-              </DropdownMenu.Label>
-              <div className="max-h-48 overflow-y-auto">
-                {shown.map((label) => (
-                  <DropdownMenu.CheckboxItem
-                    key={label}
-                    checked={current.has(label)}
-                    // Keep the menu open so several labels can be toggled.
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={(on) => setLabel(label, on)}
-                    className={cn(menuItem, 'flex items-center gap-2')}
-                  >
-                    <span className="flex w-3 justify-center">
-                      <DropdownMenu.ItemIndicator>
-                        <Check size={12} />
-                      </DropdownMenu.ItemIndicator>
-                    </span>
-                    <span className="truncate">{label}</span>
-                  </DropdownMenu.CheckboxItem>
-                ))}
-              </div>
-              <div className="px-1 pt-1 pb-0.5">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  // The menu's typeahead and arrow handling must not eat typing.
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      createLabel();
-                    }
-                  }}
-                  placeholder={all.length ? 'Find or create label…' : 'Create a label…'}
-                  aria-label="Find or create label"
-                  className="border-hairline bg-sunken placeholder:text-ink-faint w-full rounded-md border px-2 py-1 text-[12px] outline-none focus:border-accent"
-                />
-                {cleanLabelName(draft) &&
-                  !all.some((l) => l.toLowerCase() === cleanLabelName(draft)!.toLowerCase()) && (
-                    <button
-                      onClick={createLabel}
-                      className="text-accent hover:bg-accent-soft mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left"
-                    >
-                      <Plus size={12} /> Create “{cleanLabelName(draft)}”
-                    </button>
-                  )}
-              </div>
-              <DropdownMenu.Separator className="bg-hairline my-1 h-px" />
-            </>
-          )}
           <DropdownMenu.Label className="text-ink-faint px-2 py-1 text-[10.5px]">
             Category for mail from {sender}
           </DropdownMenu.Label>
@@ -685,6 +634,71 @@ function RecategorizeMenu({
               {label}
             </DropdownMenu.Item>
           ))}
+          {labels?.supported && (
+            <DropdownMenu.Sub>
+              <DropdownMenu.SubTrigger
+                className={cn(menuItem, 'flex items-center justify-between gap-2')}
+              >
+                Existing tags
+                <ChevronRight size={12} className="text-ink-faint" />
+              </DropdownMenu.SubTrigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.SubContent
+                  className="border-hairline bg-surface z-50 w-56 rounded-xl border p-1 text-[12px] shadow-xl"
+                  sideOffset={6}
+                  alignOffset={-4}
+                >
+                  <DropdownMenu.Label className="text-ink-faint px-2 py-1 text-[10.5px]">
+                    Gmail labels on this email
+                  </DropdownMenu.Label>
+                  <div className="max-h-48 overflow-y-auto">
+                    {shown.map((label) => (
+                      <DropdownMenu.CheckboxItem
+                        key={label}
+                        checked={current.has(label)}
+                        // Keep the menu open so several labels can be toggled.
+                        onSelect={(e) => e.preventDefault()}
+                        onCheckedChange={(on) => setLabel(label, on)}
+                        className={cn(menuItem, 'flex items-center gap-2')}
+                      >
+                        <span className="flex w-3 justify-center">
+                          <DropdownMenu.ItemIndicator>
+                            <Check size={12} />
+                          </DropdownMenu.ItemIndicator>
+                        </span>
+                        <span className="truncate">{label}</span>
+                      </DropdownMenu.CheckboxItem>
+                    ))}
+                  </div>
+                  <div className="px-1 pt-1 pb-0.5">
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      // The menu's typeahead and arrow handling must not eat typing.
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          createLabel();
+                        }
+                      }}
+                      placeholder={all.length ? 'Find or create label…' : 'Create a label…'}
+                      aria-label="Find or create label"
+                      className="border-hairline bg-sunken placeholder:text-ink-faint w-full rounded-md border px-2 py-1 text-[12px] outline-none focus:border-accent"
+                    />
+                    {canCreate && (
+                      <button
+                        onClick={createLabel}
+                        className="text-accent hover:bg-accent-soft mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left"
+                      >
+                        <Plus size={12} /> Create “{newName}”
+                      </button>
+                    )}
+                  </div>
+                </DropdownMenu.SubContent>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Sub>
+          )}
           <DropdownMenu.Separator className="bg-hairline my-1 h-px" />
           <DropdownMenu.Item
             onSelect={() =>
@@ -711,7 +725,10 @@ function RecategorizeMenu({
  * none of the names Gmail or the app reserve (system folders, Uniox/ state).
  */
 function cleanLabelName(raw: string): string | null {
-  const name = raw.trim().replace(/\s+/g, ' ').replace(/^\/+|\/+$/g, '');
+  const name = raw
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/^\/+|\/+$/g, '');
   if (!name || name.length > 100 || name.includes('//')) return null;
   const top = name.split('/')[0]!.toLowerCase();
   if (['inbox', 'uniox', 'sparkclone', '[gmail]', '[google mail]'].includes(top)) return null;
