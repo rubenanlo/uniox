@@ -41,11 +41,20 @@ export async function printHtml(
     cleanup();
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+  const done = (success: boolean, reason: string) => {
+    cleanup();
+    // Cancelling the dialog is not an error worth surfacing.
+    return success || reason === 'cancelled' ? { ok: true } : { ok: false, error: reason };
+  };
   return new Promise((resolve) => {
     win.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
-      cleanup();
-      // Cancelling the dialog is not an error worth surfacing.
-      resolve(success || reason === 'cancelled' ? { ok: true } : { ok: false, error: reason });
+      // Electron 43.0–43.1 rejected any options with "Invalid printer
+      // settings" (electron#52367); retry with the dialog's defaults.
+      if (!success && /invalid printer settings/i.test(reason) && !win.isDestroyed()) {
+        win.webContents.print({}, (ok, why) => resolve(done(ok, why)));
+        return;
+      }
+      resolve(done(success, reason));
     });
   });
 }
