@@ -177,6 +177,41 @@ export interface Signature {
   bodyHtml: string;
 }
 
+/** Out-of-office auto reply for one account. Times are epoch ms; null = open-ended. */
+export interface AutoReply {
+  enabled: boolean;
+  subject: string;
+  /** Plain text; line breaks are kept. */
+  message: string;
+  startMs: number | null;
+  /** Exclusive: midnight after the last day away. */
+  endMs: number | null;
+  /** Gmail: only people in Google Contacts. Uniox: only people you have emailed. */
+  contactsOnly: boolean;
+}
+
+export const EMPTY_AUTO_REPLY: AutoReply = {
+  enabled: false,
+  subject: '',
+  message: '',
+  startMs: null,
+  endMs: null,
+  contactsOnly: false,
+};
+
+/**
+ * Where an account's auto reply runs. 'gmail' is Gmail's own vacation
+ * responder, which answers even while Uniox is closed; 'local' is Uniox
+ * replying to new mail as it syncs, so only while the app is running.
+ */
+export interface AutoReplyState {
+  mode: 'gmail' | 'local';
+  reply: AutoReply;
+  error?: string;
+  /** The Google grant predates the Gmail settings scope: reconnect to fix. */
+  needsReconnect?: boolean;
+}
+
 export interface GatekeeperPending {
   key: string; // sender address
   kind: 'address' | 'domain';

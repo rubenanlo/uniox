@@ -8,12 +8,14 @@ import { shell } from 'electron';
  * app; Google's "Desktop app" client type expects its (non-confidential)
  * client_secret in the token exchange anyway. Scope `https://mail.google.com/`
  * is what IMAP/SMTP XOAUTH2 requires; openid+email identifies the account.
+ * gmail.settings.basic lets Settings → Auto reply drive Gmail's vacation
+ * responder (the mail scope does not cover settings writes).
  */
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const GOOGLE_SCOPES =
-  'https://mail.google.com/ https://www.googleapis.com/auth/calendar openid email profile';
+  'https://mail.google.com/ https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/calendar openid email profile';
 
 export interface GoogleClient {
   clientId: string;

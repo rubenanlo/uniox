@@ -19,6 +19,8 @@ export interface OutgoingDraft {
   /** Sending an edited draft: remove this draft message once the send succeeds. */
   deleteDraftMessageId?: string;
   attachments: OutgoingAttachment[];
+  /** Out-of-office reply: stamped `Auto-Submitted: auto-replied` (RFC 3834). */
+  autoReply?: boolean;
 }
 
 /**

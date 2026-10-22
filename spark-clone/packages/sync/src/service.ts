@@ -4,6 +4,8 @@ import { openDatabase, type MailDb } from '@app/db';
 import type {
   Account,
   AccountConfig,
+  AutoReply,
+  AutoReplyState,
   CalendarEventInput,
   Commands,
   DeltaEvent,
@@ -19,8 +21,15 @@ import type {
   Template,
   ThreadQuery,
 } from '@app/shared';
-import { parseSearchQuery } from '@app/shared';
+import { EMPTY_AUTO_REPLY, parseSearchQuery } from '@app/shared';
 import { AccountSync } from './account-sync';
+import {
+  getGmailAutoReply,
+  getLocalAutoReply,
+  GmailSettingsError,
+  putGmailAutoReply,
+  saveLocalAutoReply,
+} from './auto-reply';
 import { dueAlerts, nextAlertDeadline, START_GRACE_MS } from './event-alerts';
 import {
   categoryLabelName,
@@ -728,6 +737,54 @@ export class SyncService {
       case 'signatures:save':
         this.db.saveSignature(args as Signature);
         return { ok: true };
+      case 'autoreply:get': {
+        const { accountId } = args as { accountId: string };
+        const account = this.db.getAccount(accountId);
+        if (account?.authType === 'oauth-google') {
+          try {
+            const reply = await getGmailAutoReply(await this.freshSecret(accountId));
+            return { mode: 'gmail', reply } satisfies AutoReplyState;
+          } catch (err) {
+            return {
+              mode: 'gmail',
+              reply: EMPTY_AUTO_REPLY,
+              error: err instanceof Error ? err.message : String(err),
+              needsReconnect: err instanceof GmailSettingsError && err.needsReconnect,
+            } satisfies AutoReplyState;
+          }
+        }
+        const stored = getLocalAutoReply(this.db, accountId);
+        const reply: AutoReply = stored
+          ? {
+              enabled: stored.enabled,
+              subject: stored.subject,
+              message: stored.message,
+              startMs: stored.startMs,
+              endMs: stored.endMs,
+              contactsOnly: stored.contactsOnly,
+            }
+          : EMPTY_AUTO_REPLY;
+        return { mode: 'local', reply } satisfies AutoReplyState;
+      }
+      case 'autoreply:save': {
+        const { accountId, reply } = args as Commands['autoreply:save']['args'];
+        const account = this.db.getAccount(accountId);
+        if (!account) return { ok: false, error: 'Account not found.' };
+        if (account.authType === 'oauth-google') {
+          try {
+            await putGmailAutoReply(await this.freshSecret(accountId), reply);
+          } catch (err) {
+            return {
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+              needsReconnect: err instanceof GmailSettingsError && err.needsReconnect,
+            };
+          }
+          return { ok: true };
+        }
+        saveLocalAutoReply(this.db, accountId, reply);
+        return { ok: true };
+      }
       default:
         throw new Error(`unknown query channel: ${channel}`);
     }

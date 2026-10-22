@@ -77,6 +77,7 @@ export async function composeRaw(
     html: inline.html,
     inReplyTo,
     references,
+    headers: draft.autoReply ? { 'Auto-Submitted': 'auto-replied' } : undefined,
     attachments: [
       ...draft.attachments.map((a) => ({
         filename: a.filename,
