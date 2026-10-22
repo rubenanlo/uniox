@@ -2,6 +2,8 @@ import type {
   Account,
   AccountConfig,
   Address,
+  AutoReply,
+  AutoReplyState,
   Folder,
   GatekeeperPending,
   MessageBodyPayload,
@@ -46,6 +48,8 @@ export interface Queries {
   /** Custom label folders of one account; labels are only offered on Gmail. */
   'labels:list': { args: { accountId: string }; result: { supported: boolean; labels: string[] } };
   'signatures:list': { args: undefined; result: Signature[] };
+  /** Gmail OAuth accounts read Gmail's vacation responder; others the local setting. */
+  'autoreply:get': { args: { accountId: string }; result: AutoReplyState };
   'priority:list': {
     args: undefined;
     result: { accountId: string; email: string; updatedAt: number }[];
@@ -135,6 +139,10 @@ export interface Commands {
   'templates:save': { args: Template; result: { ok: boolean } };
   'templates:delete': { args: { id: string }; result: { ok: boolean } };
   'signatures:save': { args: Signature & { accountId?: string }; result: { ok: boolean } };
+  'autoreply:save': {
+    args: { accountId: string; reply: AutoReply };
+    result: { ok: boolean; error?: string; needsReconnect?: boolean };
+  };
   /**
    * Download a remote image pasted into a signature (main process) so it is
    * stored with the signature and sent inline instead of hotlinked.

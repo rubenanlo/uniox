@@ -728,6 +728,7 @@ function registerIpc(): void {
       case 'templates:save':
       case 'templates:delete':
       case 'signatures:save':
+      case 'autoreply:save':
       case 'calendar:event:save':
       case 'calendar:event:patch':
       case 'calendar:setVisible':

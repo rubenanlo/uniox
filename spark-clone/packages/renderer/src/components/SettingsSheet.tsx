@@ -14,6 +14,7 @@ import {
   Info,
   KanbanSquare,
   PenLine,
+  Plane,
   Plus,
   Sparkles,
   Star,
@@ -46,6 +47,7 @@ import { useUi, type ThemePref } from '../state/store';
 import { AccountIcon } from './ui/AccountIcon';
 import { ColorPicker } from './ui/ColorPicker';
 import { SignatureEditor } from './SignatureEditor';
+import { AutoReplyTab } from './AutoReplySettings';
 import { useShallow } from 'zustand/react/shallow';
 
 type Tab =
@@ -54,6 +56,7 @@ type Tab =
   | 'priority'
   | 'scheduling'
   | 'signatures'
+  | 'autoreply'
   | 'templates'
   | 'integrations'
   | 'assistant';
@@ -88,6 +91,12 @@ const SECTIONS: { id: Tab; label: string; icon: typeof SunMoon; blurb: string }[
     label: 'Signatures',
     icon: PenLine,
     blurb: 'Added to the end of new emails from each account. Leave empty for none.',
+  },
+  {
+    id: 'autoreply',
+    label: 'Auto reply',
+    icon: Plane,
+    blurb: 'Out-of-office replies for each account while you are away.',
   },
   {
     id: 'templates',
@@ -1493,6 +1502,7 @@ export function SettingsSheet() {
             {tab === 'priority' && <PriorityTab />}
             {tab === 'scheduling' && <SchedulingTab />}
             {tab === 'signatures' && <SignaturesTab />}
+            {tab === 'autoreply' && <AutoReplyTab />}
             {tab === 'templates' && <TemplatesTab />}
             {tab === 'integrations' && <IntegrationsTab />}
             {tab === 'assistant' && <AssistantTab />}

@@ -1,5 +1,6 @@
 import type { MailDb, MessageInsert } from '@app/db';
 import type { Address, Category, FolderRole } from '@app/shared';
+import { queueLocalAutoReply } from './auto-reply';
 import { categorize, domainOf, sameOrgDomain } from './categorize';
 import { categoryLabelName } from './folders';
 import { makeSnippet, newId, threadReferenceIds } from './util';
@@ -324,6 +325,18 @@ export function runNewMessageHook(db: MailDb, opts: HookInput): HookOutcome {
         label: labelName,
       });
     }
+  }
+
+  // (d4) Out-of-office: answer new inbox mail on accounts using the local
+  // responder (Gmail OAuth accounts reply server-side and are skipped).
+  if (incoming && opts.fromAddress && out.gatekeeper !== 'blocked') {
+    queueLocalAutoReply(db, {
+      accountId: opts.accountId,
+      messageId: opts.messageId,
+      fromAddress: opts.fromAddress,
+      subject: opts.subject,
+      headers: opts.headers,
+    });
   }
 
   // (e) notifications. 'all' (default) notifies for every fresh unseen inbox
