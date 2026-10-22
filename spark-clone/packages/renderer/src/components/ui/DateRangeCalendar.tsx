@@ -36,7 +36,8 @@ export function DateRangeCalendar({
   // Gmail may hand back times that aren't midnight: compare by local day.
   const firstDay = startMs == null ? null : startOfDay(startMs);
   const lastDay = endMs == null ? null : startOfDay(endMs - 1);
-  const [picking, setPicking] = useState<'start' | 'end'>(startMs == null ? 'start' : 'end');
+  // Which end the calendar is picking; null = calendar closed.
+  const [picking, setPicking] = useState<'start' | 'end' | null>(null);
   const [month, setMonth] = useState(() => startOfMonth(startMs ?? Date.now()));
   const { days } = monthGrid(month);
 
@@ -51,7 +52,16 @@ export function DateRangeCalendar({
       onChange({ startMs: dayMs, endMs });
     } else {
       onChange({ startMs, endMs: addDays(dayMs, 1) });
+      setPicking(null); // range complete
     }
+  };
+
+  // A chip opens the calendar on its own date; clicking it again closes it.
+  const toggle = (which: 'start' | 'end') => {
+    if (picking === which) return setPicking(null);
+    const at = which === 'start' ? firstDay : (lastDay ?? firstDay);
+    if (at != null) setMonth(startOfMonth(at));
+    setPicking(which);
   };
 
   const chip = (which: 'start' | 'end', label: string, value: number | null, empty: string) => (
@@ -61,7 +71,12 @@ export function DateRangeCalendar({
         picking === which ? 'border-accent ring-accent/30 ring-2' : 'border-hairline',
       )}
     >
-      <button type="button" onClick={() => setPicking(which)} className="min-w-0 flex-1 text-left">
+      <button
+        type="button"
+        onClick={() => toggle(which)}
+        aria-expanded={picking === which}
+        className="min-w-0 flex-1 text-left"
+      >
         <span className="text-ink-muted block text-[11px]">{label}</span>
         <span
           className={cn(
@@ -88,83 +103,102 @@ export function DateRangeCalendar({
   );
 
   return (
-    <div className={cn('flex flex-col gap-2.5', disabled && 'pointer-events-none')}>
+    <div className={cn('flex flex-col', disabled && 'pointer-events-none')}>
       <div className="flex gap-2.5">
         {chip('start', 'First day', startMs, 'Starts now')}
         {chip('end', 'Last day', lastDay, 'No end date')}
       </div>
-      <div className="border-hairline rounded-lg border px-3 pt-2.5 pb-2">
-        <div className="mb-1.5 flex items-center justify-between">
-          <p className="text-ink ml-1 text-[12px] font-semibold">{monthLabel(month)}</p>
-          <div className="flex items-center">
-            <button
-              type="button"
-              onClick={() => setMonth((m) => addMonths(m, -1))}
-              aria-label="Previous month"
-              className="text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded"
-            >
-              <ChevronUp size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setMonth((m) => addMonths(m, 1))}
-              aria-label="Next month"
-              className="text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded"
-            >
-              <ChevronDown size={13} />
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-7 gap-y-0.5 text-center">
-          {MINI_DAYS.map((d) => (
-            <span key={d} className="text-ink-faint text-[10px] font-semibold">
-              {d}
-            </span>
-          ))}
-          {days.map((dayMs) => {
-            const day = startOfDay(dayMs);
-            const isStart = firstDay != null && day === firstDay;
-            const isEnd = lastDay != null && day === lastDay;
-            const inRange = firstDay != null && lastDay != null && day > firstDay && day < lastDay;
-            return (
-              <div
-                key={dayMs}
-                className={cn(
-                  'flex justify-center',
-                  inRange && 'bg-accent-soft',
-                  isStart &&
-                    lastDay != null &&
-                    lastDay > firstDay! &&
-                    'bg-accent-soft rounded-l-full',
-                  isEnd &&
-                    firstDay != null &&
-                    lastDay! > firstDay &&
-                    'bg-accent-soft rounded-r-full',
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => pick(day)}
-                  aria-label={dayLabel(day)}
-                  aria-pressed={isStart || isEnd}
-                  className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded-full text-[11px] tabular-nums',
-                    isStart || isEnd
-                      ? 'bg-accent font-bold text-white'
-                      : isToday(day)
-                        ? 'text-danger hover:bg-sunken font-bold'
-                        : inRange
-                          ? 'text-ink hover:bg-sunken'
-                          : isSameMonth(day, month)
-                            ? 'text-ink-muted hover:bg-sunken'
-                            : 'text-ink-faint/50 hover:bg-sunken',
-                  )}
-                >
-                  {new Date(day).getDate()}
-                </button>
+      {/* Same 0fr → 1fr reveal as the account cards; inert while hidden. */}
+      <div
+        inert={picking == null}
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+          picking != null ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className={cn(
+              'pt-2.5 transition-transform duration-200 ease-out motion-reduce:transition-none',
+              picking == null && '-translate-y-1.5',
+            )}
+          >
+            <div className="border-hairline rounded-lg border px-3 pt-2.5 pb-2">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-ink ml-1 text-[12px] font-semibold">{monthLabel(month)}</p>
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => setMonth((m) => addMonths(m, -1))}
+                    aria-label="Previous month"
+                    className="text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded"
+                  >
+                    <ChevronUp size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMonth((m) => addMonths(m, 1))}
+                    aria-label="Next month"
+                    className="text-ink-muted hover:text-ink flex h-6 w-6 items-center justify-center rounded"
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
               </div>
-            );
-          })}
+              <div className="grid grid-cols-7 gap-y-0.5 text-center">
+                {MINI_DAYS.map((d) => (
+                  <span key={d} className="text-ink-faint text-[10px] font-semibold">
+                    {d}
+                  </span>
+                ))}
+                {days.map((dayMs) => {
+                  const day = startOfDay(dayMs);
+                  const isStart = firstDay != null && day === firstDay;
+                  const isEnd = lastDay != null && day === lastDay;
+                  const inRange =
+                    firstDay != null && lastDay != null && day > firstDay && day < lastDay;
+                  return (
+                    <div
+                      key={dayMs}
+                      className={cn(
+                        'flex justify-center',
+                        inRange && 'bg-accent-soft',
+                        isStart &&
+                          lastDay != null &&
+                          lastDay > firstDay! &&
+                          'bg-accent-soft rounded-l-full',
+                        isEnd &&
+                          firstDay != null &&
+                          lastDay! > firstDay &&
+                          'bg-accent-soft rounded-r-full',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => pick(day)}
+                        aria-label={dayLabel(day)}
+                        aria-pressed={isStart || isEnd}
+                        className={cn(
+                          'flex h-6 w-6 items-center justify-center rounded-full text-[11px] tabular-nums',
+                          isStart || isEnd
+                            ? 'bg-accent font-bold text-white'
+                            : isToday(day)
+                              ? 'text-danger hover:bg-sunken font-bold'
+                              : inRange
+                                ? 'text-ink hover:bg-sunken'
+                                : isSameMonth(day, month)
+                                  ? 'text-ink-muted hover:bg-sunken'
+                                  : 'text-ink-faint/50 hover:bg-sunken',
+                        )}
+                      >
+                        {new Date(day).getDate()}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
