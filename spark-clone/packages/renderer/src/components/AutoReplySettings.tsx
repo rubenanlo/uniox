@@ -5,35 +5,12 @@ import { toast } from 'sonner';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useAccounts } from '../state/queries';
+import { DateRangeCalendar } from './ui/DateRangeCalendar';
 
 const inputCls =
   'rounded-lg border border-hairline bg-sunken px-2.5 py-1.5 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-accent';
 
 const DAY_MS = 86_400_000;
-
-/** Local midnight ↔ <input type="date"> value. */
-function toDateInput(ms: number | null): string {
-  if (ms == null) return '';
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function fromDateInput(value: string): number | null {
-  if (!value) return null;
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(y!, m! - 1, d!).getTime();
-}
-
-/** endMs is the midnight after the last day away; the picker shows that last day. */
-const lastDayInput = (endMs: number | null) => toDateInput(endMs == null ? null : endMs - DAY_MS);
-function endFromLastDay(value: string): number | null {
-  const ms = fromDateInput(value);
-  if (ms == null) return null;
-  const next = new Date(ms);
-  next.setDate(next.getDate() + 1); // calendar day, so DST changes don't shift it
-  return next.getTime();
-}
 
 /** One-line state for the collapsed header: "On · until Nov 2", "Off". */
 function summary(r: AutoReply): string {
@@ -188,26 +165,12 @@ function AutoReplyCard({
             )}
 
             <fieldset disabled={blocked} className="mt-3 flex flex-col gap-2.5 disabled:opacity-50">
-              <div className="grid grid-cols-2 gap-2.5">
-                <label className="flex flex-col gap-1 text-[12px]">
-                  <span className="text-ink-muted">First day</span>
-                  <input
-                    type="date"
-                    value={toDateInput(draft.startMs)}
-                    onChange={(e) => edit({ startMs: fromDateInput(e.target.value) })}
-                    className={inputCls}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-[12px]">
-                  <span className="text-ink-muted">Last day (optional)</span>
-                  <input
-                    type="date"
-                    value={lastDayInput(draft.endMs)}
-                    onChange={(e) => edit({ endMs: endFromLastDay(e.target.value) })}
-                    className={inputCls}
-                  />
-                </label>
-              </div>
+              <DateRangeCalendar
+                startMs={draft.startMs}
+                endMs={draft.endMs}
+                disabled={blocked}
+                onChange={(range) => edit(range)}
+              />
               <input
                 value={draft.subject}
                 onChange={(e) => edit({ subject: e.target.value })}
