@@ -15,6 +15,8 @@ const SHORTCUTS: [string, string][] = [
   ['New event', 'C'],
   ['Month / Week / Day', 'M W D'],
   ['Move around', '← → ↑ ↓'],
+  ['Earlier / later days', 'Swipe'],
+  ['Go to date', '⌘ ⇧ G'],
   ['Create on focused day', '↩'],
   ['Pick event account', '⌥ ↓'],
   ['Show mail sidebar', '/'],

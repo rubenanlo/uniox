@@ -73,6 +73,8 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
       { label: 'New event on the focused day', keys: [['↩']] },
       { label: 'Month / Week / Day', keys: [['M'], ['W'], ['D']] },
       { label: 'Previous / next day (pages weeks)', keys: [['←'], ['→']] },
+      { label: 'Roll the week by days', keys: [['swipe'], ['⇧', 'scroll']] },
+      { label: 'Go to a typed date', keys: [['⌘', '⇧', 'G']] },
       { label: 'Week up / down, or scroll hours', keys: [['↑'], ['↓']] },
       { label: 'Open the event Account menu', keys: [['⌥', '↓']] },
       { label: 'Calendar sidebar', keys: [['⌘', '\\']] },
