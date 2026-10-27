@@ -74,10 +74,20 @@ export function rangeForView(
     const { days, gridStart, gridEnd } = monthGrid(anchorMs);
     return { start: gridStart, end: gridEnd, days };
   }
-  const first = view === 'week' ? startOfWeek(anchorMs) : startOfDay(anchorMs);
+  // The week anchor is its first visible day: Sunday after paging or Today,
+  // any weekday once a horizontal swipe has rolled the window by days.
+  const first = startOfDay(anchorMs);
   const count = view === 'week' ? 7 : 1;
   const days = Array.from({ length: count }, (_, i) => addDays(first, i));
   return { start: days[0]!, end: addDays(days[count - 1]!, 1), days };
+}
+
+/** Span to load events for: the visible range plus a week either side in
+ *  Week/Day, so a horizontal swipe has the next days' events ready. */
+export function fetchRange(view: CalView, anchorMs: number): { start: number; end: number } {
+  const { start, end } = rangeForView(view, anchorMs);
+  if (view === 'month') return { start, end };
+  return { start: addDays(start, -7), end: addDays(end, 7) };
 }
 
 export function pageAnchor(view: CalView, anchorMs: number, dir: 1 | -1): number {

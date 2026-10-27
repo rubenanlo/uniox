@@ -7,6 +7,7 @@ import { canEditEvent } from '../../lib/eventEdit';
 import { isAllDayLike, layoutColumns, packLanes } from '../../lib/eventLayout';
 import { cn } from '../../lib/utils';
 import { newDraft, useCalendar } from '../../state/calendar';
+import { useDaySwipe } from './useDaySwipe';
 import { useVisibleEvents } from './useNotionEvents';
 
 const HOUR_PX = 48;
@@ -16,7 +17,9 @@ const HOUR_MS = 3_600_000;
 
 /** Chip color: explicit override → calendar color → accent. */
 function chipColor(event: CalendarEvent, calendars: Calendar[]): string {
-  return event.color ?? calendars.find((c) => c.id === event.calendarId)?.color ?? 'var(--color-accent)';
+  return (
+    event.color ?? calendars.find((c) => c.id === event.calendarId)?.color ?? 'var(--color-accent)'
+  );
 }
 
 /** Soft translucent fill for a chip background (hex → +alpha, else color-mix). */
@@ -50,9 +53,16 @@ export function TimeGrid({ days }: { days: number[] }) {
   const openDetails = useCalendar((s) => s.openDetails);
   const openForm = useCalendar((s) => s.openForm);
   const beginReschedule = useCalendar((s) => s.beginReschedule);
+  const shiftDays = useCalendar((s) => s.shiftDays);
 
-  const rangeStart = days[0]!;
-  const rangeEnd = addDays(days[days.length - 1]!, 1);
+  // One hidden buffer day either side of the visible range, revealed while a
+  // horizontal swipe drags the columns (see useDaySwipe).
+  const ext = useMemo(
+    () => [addDays(days[0]!, -1), ...days, addDays(days[days.length - 1]!, 1)],
+    [days],
+  );
+  const rangeStart = ext[0]!;
+  const rangeEnd = addDays(ext[ext.length - 1]!, 1);
   const events = useVisibleEvents(rangeStart, rangeEnd);
 
   const { allDay, timed } = useMemo(() => {
@@ -62,13 +72,16 @@ export function TimeGrid({ days }: { days: number[] }) {
     return { allDay, timed };
   }, [events]);
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const dragAbort = useRef<AbortController | null>(null);
   // A finished chip drag must swallow the click the browser fires right after mouseup.
   const suppressClick = useRef(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [draft, setDraft] = useState<{ dayIndex: number; top: number; height: number } | null>(null);
+  const [draft, setDraft] = useState<{ dayIndex: number; top: number; height: number } | null>(
+    null,
+  );
   const [ghost, setGhost] = useState<{
     dayIndex: number;
     top: number;
@@ -92,8 +105,17 @@ export function TimeGrid({ days }: { days: number[] }) {
   }, []);
 
   const cols = days.length;
-  const gridCols = `${GUTTER}px repeat(${cols}, minmax(0, 1fr))`;
-  const todayIndex = days.findIndex((d) => isToday(d));
+  useDaySwipe(rootRef, cols, rangeStart, shiftDays);
+  // Each section is the gutter plus a clipped track of cols + 2 day columns,
+  // shifted left one column so the buffer days sit just off either edge.
+  const trackStyle = {
+    width: `calc(100% * ${cols + 2} / ${cols})`,
+    marginLeft: `calc(-100% / ${cols})`,
+    gridTemplateColumns: `repeat(${cols + 2}, minmax(0, 1fr))`,
+  };
+  /** Index in the extended track of today (or -1); the now-line draws there. */
+  const todayIndex = ext.findIndex((d) => isToday(d));
+  const todayVisible = todayIndex >= 1 && todayIndex <= cols;
 
   const allDayPlacements = useMemo(
     () => packLanes(allDay, rangeStart, rangeEnd),
@@ -175,7 +197,13 @@ export function TimeGrid({ days }: { days: number[] }) {
     const move = (ev: MouseEvent) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) <= 4) return;
       moved = true;
-      const t = dragTarget(geo, ev.clientX - rect.left, ev.clientY - rect.top, grabOffsetY, duration);
+      const t = dragTarget(
+        geo,
+        ev.clientX - rect.left,
+        ev.clientY - rect.top,
+        grabOffsetY,
+        duration,
+      );
       setGhost({ dayIndex: t.dayIndex, top: t.top, height: chipHeight, event });
     };
     const up = (ev: MouseEvent) => {
@@ -187,7 +215,13 @@ export function TimeGrid({ days }: { days: number[] }) {
       // The browser's post-drag click (if any) fires synchronously after this
       // mouseup; clear the flag right after so it can't swallow a later click.
       setTimeout(() => (suppressClick.current = false), 0);
-      const t = dragTarget(geo, ev.clientX - rect.left, ev.clientY - rect.top, grabOffsetY, duration);
+      const t = dragTarget(
+        geo,
+        ev.clientX - rect.left,
+        ev.clientY - rect.top,
+        grabOffsetY,
+        duration,
+      );
       if (t.startMs !== event.startMs) beginReschedule(event, t.startMs, t.endMs);
     };
     window.addEventListener('mousemove', move, { signal });
@@ -203,48 +237,52 @@ export function TimeGrid({ days }: { days: number[] }) {
   };
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col">
+    <div ref={rootRef} className="flex h-full min-w-0 flex-1 flex-col">
       {/* Header: GMT gutter + per-day columns */}
-      <div className="border-hairline grid border-b" style={{ gridTemplateColumns: gridCols }}>
-        <div className="text-ink-faint flex items-end justify-end px-1.5 pb-1 text-[10px] font-medium">
+      <div className="border-hairline flex border-b">
+        <div
+          className="text-ink-faint flex shrink-0 items-end justify-end px-1.5 pb-1 text-[10px] font-medium"
+          style={{ width: GUTTER }}
+        >
           {gmtLabel()}
         </div>
-        {days.map((day) => {
-          const today = isToday(day);
-          const focused = day === cursor && !today;
-          return (
-            <div
-              key={day}
-              className={cn(
-                'flex items-center gap-1.5 px-2 py-1.5',
-                focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
-              )}
-            >
-              <span className="text-ink-muted text-[11px] font-semibold uppercase">
-                {dayHeader(day)}
-              </span>
-              <span
-                className={cn(
-                  'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold tabular-nums',
-                  today ? 'bg-danger text-white' : 'text-ink',
-                )}
-              >
-                {new Date(day).getDate()}
-              </span>
-            </div>
-          );
-        })}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div data-day-track className="grid" style={trackStyle}>
+            {ext.map((day) => {
+              const today = isToday(day);
+              const focused = day === cursor && !today;
+              return (
+                <div
+                  key={day}
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1.5',
+                    focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
+                  )}
+                >
+                  <span className="text-ink-muted text-[11px] font-semibold uppercase">
+                    {dayHeader(day)}
+                  </span>
+                  <span
+                    className={cn(
+                      'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold tabular-nums',
+                      today ? 'bg-danger text-white' : 'text-ink',
+                    )}
+                  >
+                    {new Date(day).getDate()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* All-day lane (pinned, collapsible) */}
       {maxLane >= 0 && (
-        <div
-          className="border-hairline grid border-b"
-          style={{ gridTemplateColumns: gridCols, gridAutoRows: '22px' }}
-        >
+        <div className="border-hairline flex border-b">
           <div
-            className="flex items-start justify-end gap-1 px-1.5 py-1"
-            style={{ gridColumn: '1', gridRow: `1 / span ${Math.max(1, visibleLanes)}` }}
+            className="flex shrink-0 items-start justify-end gap-1 px-1.5 py-1"
+            style={{ width: GUTTER }}
           >
             {maxLane >= 1 && (
               <button
@@ -256,49 +294,49 @@ export function TimeGrid({ days }: { days: number[] }) {
               </button>
             )}
           </div>
-          {shownAllDay.map((p) => {
-            const ooo = p.event.eventType === 'outOfOffice';
-            return (
-              <button
-                key={p.event.id}
-                onClick={() => openDetails(p.event)}
-                title={p.event.title}
-                style={{
-                  gridColumn: `${p.startCol + 2} / span ${p.span}`,
-                  gridRow: `${p.lane + 1}`,
-                  backgroundColor: ooo ? undefined : chipColor(p.event, calendars),
-                }}
-                className={cn(
-                  'mx-0.5 my-0.5 flex items-center gap-1 truncate rounded px-1.5 text-left text-[11px] font-medium',
-                  ooo ? 'bg-sunken text-ink-muted' : 'text-white',
-                )}
-              >
-                {ooo && <span aria-hidden>⊗</span>}
-                <span className="truncate">{p.event.title || '(untitled)'}</span>
-              </button>
-            );
-          })}
-          {collapsed && hiddenAllDay > 0 && (
-            <button
-              onClick={() => setCollapsed(false)}
-              style={{ gridColumn: `2 / span ${cols}`, gridRow: '1' }}
-              className="text-ink-faint hover:text-ink justify-self-end px-1.5 text-[10.5px] font-medium"
-            >
-              +{hiddenAllDay}
-            </button>
-          )}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div data-day-track className="grid" style={{ ...trackStyle, gridAutoRows: '22px' }}>
+              {shownAllDay.map((p) => {
+                const ooo = p.event.eventType === 'outOfOffice';
+                return (
+                  <button
+                    key={p.event.id}
+                    onClick={() => openDetails(p.event)}
+                    title={p.event.title}
+                    style={{
+                      gridColumn: `${p.startCol + 1} / span ${p.span}`,
+                      gridRow: `${p.lane + 1}`,
+                      backgroundColor: ooo ? undefined : chipColor(p.event, calendars),
+                    }}
+                    className={cn(
+                      'mx-0.5 my-0.5 flex items-center gap-1 truncate rounded px-1.5 text-left text-[11px] font-medium',
+                      ooo ? 'bg-sunken text-ink-muted' : 'text-white',
+                    )}
+                  >
+                    {ooo && <span aria-hidden>⊗</span>}
+                    <span className="truncate">{p.event.title || '(untitled)'}</span>
+                  </button>
+                );
+              })}
+              {collapsed && hiddenAllDay > 0 && (
+                <button
+                  onClick={() => setCollapsed(false)}
+                  style={{ gridColumn: `2 / span ${cols}`, gridRow: '1' }}
+                  className="text-ink-faint hover:text-ink justify-self-end px-1.5 text-[10.5px] font-medium"
+                >
+                  +{hiddenAllDay}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Scrollable hour body */}
       <div ref={bodyRef} data-timegrid className="relative min-h-0 flex-1 overflow-y-auto">
-        <div
-          ref={gridRef}
-          className="relative grid"
-          style={{ gridTemplateColumns: gridCols, height: 24 * HOUR_PX }}
-        >
+        <div ref={gridRef} className="relative flex" style={{ height: 24 * HOUR_PX }}>
           {/* Gutter with hour labels */}
-          <div className="border-hairline relative border-r">
+          <div className="border-hairline relative shrink-0 border-r" style={{ width: GUTTER }}>
             {Array.from({ length: 24 }, (_, h) => (
               <div
                 key={h}
@@ -308,7 +346,7 @@ export function TimeGrid({ days }: { days: number[] }) {
                 {h > 0 ? hourLabel(h) : ''}
               </div>
             ))}
-            {todayIndex >= 0 && (
+            {todayVisible && (
               <div
                 className="bg-danger absolute right-1 -translate-y-1/2 rounded px-1 text-[9.5px] font-semibold text-white"
                 style={{ top: ((now - startOfDay(now)) / HOUR_MS) * HOUR_PX }}
@@ -319,107 +357,117 @@ export function TimeGrid({ days }: { days: number[] }) {
           </div>
 
           {/* Day columns */}
-          {days.map((day, dayIndex) => {
-            const dayTimed = timed.filter((e) => e.startMs < day + DAY_MS && e.endMs > day);
-            const placed = layoutColumns(dayTimed);
-            return (
-              <div
-                key={day}
-                onMouseDown={(e) => startDrag(e, dayIndex, day)}
-                onDoubleClick={(e) => dblClickCreate(e, day)}
-                className={cn(
-                  'border-hairline relative border-r',
-                  day === cursor && 'bg-sunken/30',
-                )}
-              >
-                {/* Hour gridlines */}
-                {Array.from({ length: 24 }, (_, h) => (
+          <div className="relative min-w-0 flex-1 overflow-hidden">
+            <div data-day-track className="grid h-full" style={trackStyle}>
+              {ext.map((day, i) => {
+                const dayIndex = i - 1; // visible-range index; the buffers are -1 and cols
+                const dayTimed = timed.filter((e) => e.startMs < day + DAY_MS && e.endMs > day);
+                const placed = layoutColumns(dayTimed);
+                return (
                   <div
-                    key={h}
-                    className="border-hairline/50 absolute inset-x-0 border-t"
-                    style={{ top: h * HOUR_PX }}
-                  />
-                ))}
-
-                {/* Timed chips */}
-                {placed.map(({ event, col, cols: n }) => {
-                  const ooo = event.eventType === 'outOfOffice';
-                  const color = chipColor(event, calendars);
-                  const top = Math.max(0, ((event.startMs - day) / HOUR_MS) * HOUR_PX);
-                  const height = Math.max(20, ((event.endMs - event.startMs) / HOUR_MS) * HOUR_PX);
-                  return (
-                    <button
-                      key={event.id}
-                      onMouseDown={(e) => startChipDrag(e, event, top, height)}
-                      onDoubleClick={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (suppressClick.current) {
-                          suppressClick.current = false;
-                          return;
-                        }
-                        openDetails(event);
-                      }}
-                      title={event.title}
-                      style={{
-                        top,
-                        height,
-                        left: `${(col / n) * 100}%`,
-                        width: `${100 / n}%`,
-                        borderLeft: `3px solid ${ooo ? 'var(--color-ink-faint)' : color}`,
-                        backgroundColor: ooo ? 'var(--color-sunken)' : softFill(color),
-                      }}
-                      className={cn(
-                        'absolute flex flex-col overflow-hidden rounded-sm px-1.5 py-0.5 text-left text-[11px] leading-tight',
-                        ooo ? 'text-ink-muted' : 'text-ink',
-                        ghost?.event.id === event.id && 'opacity-40',
-                      )}
-                    >
-                      <span className="truncate font-medium">
-                        {ooo && <span aria-hidden>⊗ </span>}
-                        {event.title || '(untitled)'}
-                      </span>
-                      <span className="text-ink-faint truncate tabular-nums">
-                        {timeLabel(event.startMs)}
-                      </span>
-                    </button>
-                  );
-                })}
-
-                {/* Now line */}
-                {dayIndex === todayIndex && (
-                  <div
-                    className="pointer-events-none absolute inset-x-0 z-10"
-                    style={{ top: ((now - startOfDay(now)) / HOUR_MS) * HOUR_PX }}
+                    key={day}
+                    onMouseDown={(e) => startDrag(e, dayIndex, day)}
+                    onDoubleClick={(e) => dblClickCreate(e, day)}
+                    className={cn(
+                      'border-hairline relative border-r',
+                      day === cursor && 'bg-sunken/30',
+                    )}
                   >
-                    <div className="bg-danger h-0.5 w-full" />
-                    <div className="bg-danger absolute -top-1 -left-1 h-2 w-2 rounded-full" />
-                  </div>
-                )}
+                    {/* Hour gridlines */}
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <div
+                        key={h}
+                        className="border-hairline/50 absolute inset-x-0 border-t"
+                        style={{ top: h * HOUR_PX }}
+                      />
+                    ))}
 
-                {/* Drag-create draft */}
-                {draft && draft.dayIndex === dayIndex && (
-                  <div
-                    className="bg-accent/25 border-accent pointer-events-none absolute inset-x-1 rounded-sm border"
-                    style={{ top: draft.top, height: draft.height }}
-                  />
-                )}
+                    {/* Timed chips */}
+                    {placed.map(({ event, col, cols: n }) => {
+                      const ooo = event.eventType === 'outOfOffice';
+                      const color = chipColor(event, calendars);
+                      const top = Math.max(0, ((event.startMs - day) / HOUR_MS) * HOUR_PX);
+                      const height = Math.max(
+                        20,
+                        ((event.endMs - event.startMs) / HOUR_MS) * HOUR_PX,
+                      );
+                      return (
+                        <button
+                          key={event.id}
+                          onMouseDown={(e) => startChipDrag(e, event, top, height)}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (suppressClick.current) {
+                              suppressClick.current = false;
+                              return;
+                            }
+                            openDetails(event);
+                          }}
+                          title={event.title}
+                          style={{
+                            top,
+                            height,
+                            left: `${(col / n) * 100}%`,
+                            width: `${100 / n}%`,
+                            borderLeft: `3px solid ${ooo ? 'var(--color-ink-faint)' : color}`,
+                            backgroundColor: ooo ? 'var(--color-sunken)' : softFill(color),
+                          }}
+                          className={cn(
+                            'absolute flex flex-col overflow-hidden rounded-sm px-1.5 py-0.5 text-left text-[11px] leading-tight',
+                            ooo ? 'text-ink-muted' : 'text-ink',
+                            ghost?.event.id === event.id && 'opacity-40',
+                          )}
+                        >
+                          <span className="truncate font-medium">
+                            {ooo && <span aria-hidden>⊗ </span>}
+                            {event.title || '(untitled)'}
+                          </span>
+                          <span className="text-ink-faint truncate tabular-nums">
+                            {timeLabel(event.startMs)}
+                          </span>
+                        </button>
+                      );
+                    })}
 
-                {/* Chip-move ghost */}
-                {ghost && ghost.dayIndex === dayIndex && (
-                  <div
-                    className="border-accent bg-accent/20 text-ink pointer-events-none absolute inset-x-1 z-20 flex flex-col overflow-hidden rounded-sm border px-1.5 py-0.5 text-[11px] leading-tight"
-                    style={{ top: ghost.top, height: ghost.height }}
-                  >
-                    <span className="truncate font-medium">{ghost.event.title || '(untitled)'}</span>
-                    <span className="text-ink-faint truncate tabular-nums">
-                      {timeLabel(day + (ghost.top / HOUR_PX) * HOUR_MS)}
-                    </span>
+                    {/* Now line */}
+                    {i === todayIndex && (
+                      <div
+                        className="pointer-events-none absolute inset-x-0 z-10"
+                        style={{ top: ((now - startOfDay(now)) / HOUR_MS) * HOUR_PX }}
+                      >
+                        <div className="bg-danger h-0.5 w-full" />
+                        <div className="bg-danger absolute -top-1 -left-1 h-2 w-2 rounded-full" />
+                      </div>
+                    )}
+
+                    {/* Drag-create draft */}
+                    {draft && draft.dayIndex === dayIndex && (
+                      <div
+                        className="bg-accent/25 border-accent pointer-events-none absolute inset-x-1 rounded-sm border"
+                        style={{ top: draft.top, height: draft.height }}
+                      />
+                    )}
+
+                    {/* Chip-move ghost */}
+                    {ghost && ghost.dayIndex === dayIndex && (
+                      <div
+                        className="border-accent bg-accent/20 text-ink pointer-events-none absolute inset-x-1 z-20 flex flex-col overflow-hidden rounded-sm border px-1.5 py-0.5 text-[11px] leading-tight"
+                        style={{ top: ghost.top, height: ghost.height }}
+                      >
+                        <span className="truncate font-medium">
+                          {ghost.event.title || '(untitled)'}
+                        </span>
+                        <span className="text-ink-faint truncate tabular-nums">
+                          {timeLabel(day + (ghost.top / HOUR_PX) * HOUR_MS)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import type { Calendar, CalendarEvent, Commands } from '@app/shared';
 import { api } from '../lib/api';
 import {
+  addDays,
   type CalView,
+  fetchRange,
   moveCursor,
   pageAnchor,
   rangeForView,
@@ -38,6 +40,11 @@ export interface EventDraft {
 
 const HOUR = 3_600_000;
 
+/** Span covered by the latest events query; a swipe only re-queries past it. */
+let fetched = { start: 0, end: 0 };
+/** Drops replies that a newer query has overtaken (fast swipes fire several). */
+let refreshSeq = 0;
+
 /** Anchor appropriate for a view, centred on a day. */
 function anchorFor(view: CalView, dayMs: number): number {
   return view === 'month' ? startOfMonth(dayMs) : view === 'week' ? startOfWeek(dayMs) : startOfDay(dayMs);
@@ -58,6 +65,8 @@ interface CalendarState {
   setCursor(dayMs: number): void;
   moveCursorBy(deltaDays: number): void;
   page(dir: 1 | -1): void;
+  /** Roll the Week/Day window by whole days (horizontal swipe). */
+  shiftDays(n: number): void;
   goToday(): void;
   toggleSidebar(): void;
   toggleRightPane(): void;
@@ -94,7 +103,13 @@ export const useCalendar = create<CalendarState>((set, get) => ({
   },
   setCursor: (dayMs) => {
     const day = startOfDay(dayMs);
-    set((s) => ({ cursor: day, anchor: anchorFor(s.view, day) }));
+    // A day already on screen keeps the window where it is (a swiped week
+    // mustn't snap back to Sunday on click); anything else re-anchors.
+    set((s) => {
+      const { start, end } = rangeForView(s.view, s.anchor);
+      const visible = s.view !== 'month' && day >= start && day < end;
+      return { cursor: day, anchor: visible ? s.anchor : anchorFor(s.view, day) };
+    });
     get().refresh();
   },
   moveCursorBy: (deltaDays) => {
@@ -113,6 +128,18 @@ export const useCalendar = create<CalendarState>((set, get) => ({
     const cursor = s.cursor >= start && s.cursor < end ? s.cursor : fallback;
     set({ anchor, cursor });
     s.refresh();
+  },
+  shiftDays: (n) => {
+    const s = get();
+    if (!n || s.view === 'month') return;
+    const anchor = addDays(s.anchor, n);
+    const { start, end, days } = rangeForView(s.view, anchor);
+    // Keep the cursor on screen so the arrow keys carry on from what's visible.
+    const cursor = s.cursor < start ? start : s.cursor >= end ? days[days.length - 1]! : s.cursor;
+    set({ anchor, cursor });
+    // The swipe renders a day either side of the range; re-query only once
+    // that leaves the padded span already loaded.
+    if (addDays(start, -1) < fetched.start || addDays(end, 1) > fetched.end) s.refresh();
   },
   goToday: () => get().setCursor(Date.now()),
 
@@ -156,10 +183,14 @@ export const useCalendar = create<CalendarState>((set, get) => ({
 
   refresh: () => {
     const { view, anchor } = get();
-    const { start, end } = rangeForView(view, anchor);
+    const { start, end } = fetchRange(view, anchor);
+    fetched = { start, end };
+    const seq = ++refreshSeq;
     void api
       .query('calendar:events', { startMs: start, endMs: end })
-      .then((events) => set({ events }))
+      .then((events) => {
+        if (seq === refreshSeq) set({ events });
+      })
       .catch(() => {});
   },
   loadCalendars: async () => {

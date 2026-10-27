@@ -20,6 +20,7 @@ import { EmptyReadingPane, ThreadView } from './components/reading/ThreadView';
 import { SchedulePicker } from './components/SchedulePicker';
 import { SettingsSheet } from './components/SettingsSheet';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { GoToDateDialog } from './components/calendar/GoToDateDialog';
 import { TimeZonePrompt } from './components/reading/TimeZonePrompt';
 import { useTimesCalendarOpen } from './components/reading/TimesCalendar';
 import { useZonePrompt } from './state/contactZones';
@@ -410,6 +411,7 @@ export default function App() {
         )}
         <CommandCenter />
         <ShortcutsSheet />
+        <GoToDateDialog />
         <AssistantPalette />
         <SettingsSheet />
         <ThreadSchedulePicker />
