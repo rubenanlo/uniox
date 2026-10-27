@@ -3,6 +3,7 @@ import type { ThreadSummary } from '@app/shared';
 import { api } from '../lib/api';
 import { useAssistant } from '../state/assistant';
 import { shareAvailability } from '../state/availability';
+import { useGoToDate } from '../state/goToDate';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
 import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
 import { printThread } from '../lib/print';
@@ -480,6 +481,14 @@ export const ACTIONS: AppAction[] = [
     context: 'global',
     section: 'Navigate',
     perform: () => useUi.getState().setCommandOpen(true, 'goto'),
+  },
+  {
+    id: 'go-to-date',
+    label: 'Go to date',
+    combo: { key: 'g', meta: true, shift: true },
+    context: 'global',
+    section: 'Navigate',
+    perform: () => useGoToDate.getState().setOpen(true),
   },
   {
     id: 'select-down',

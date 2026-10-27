@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   DAY_MS,
+  fetchRange,
   moveCursor,
   pageAnchor,
   rangeForView,
@@ -16,11 +17,24 @@ describe('week/day ranges', () => {
     expect(new Date(startOfWeek(d(2026, 8, 20))).getDay()).toBe(0); // Thu → Sun 16
     expect(startOfWeek(d(2026, 8, 16))).toBe(d(2026, 8, 16)); // Sunday is itself
   });
-  it('week view = 7 days from Sunday', () => {
-    const r = rangeForView('week', d(2026, 8, 20));
+  it('week view = 7 days from its anchor', () => {
+    const r = rangeForView('week', d(2026, 8, 16));
     expect(r.days).toHaveLength(7);
     expect(r.days[0]).toBe(d(2026, 8, 16));
     expect(r.end - r.start).toBe(7 * DAY_MS);
+  });
+  it('a swiped week starts on whatever day it was rolled to', () => {
+    const r = rangeForView('week', d(2026, 8, 20)); // Thursday
+    expect(r.days[0]).toBe(d(2026, 8, 20));
+    expect(r.days[6]).toBe(d(2026, 8, 26));
+  });
+  it('fetches a week of padding around week/day ranges, none for month', () => {
+    expect(fetchRange('week', d(2026, 8, 16))).toEqual({
+      start: d(2026, 8, 9),
+      end: d(2026, 8, 30),
+    });
+    const m = rangeForView('month', d(2026, 8, 1));
+    expect(fetchRange('month', d(2026, 8, 1))).toEqual({ start: m.start, end: m.end });
   });
   it('day view = single day', () => {
     const r = rangeForView('day', d(2026, 8, 20));
