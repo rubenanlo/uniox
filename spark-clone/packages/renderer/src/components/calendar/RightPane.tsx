@@ -13,6 +13,7 @@ import { EventForm } from './EventForm';
 const SHORTCUTS: [string, string][] = [
   ['Go to today', 'T'],
   ['New event', 'C'],
+  ['Search events', '⌘ F'],
   ['Month / Week / Day', 'M W D'],
   ['Move around', '← → ↑ ↓'],
   ['Earlier / later days', 'Swipe'],

@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils';
 import { assistantOwnsEscape } from '../../state/assistant';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useUi } from '../../state/store';
+import { CalendarSearch } from './CalendarSearch';
 import { CalendarSidebar } from './CalendarSidebar';
 import { MonthView } from './MonthView';
 import { RightPane } from './RightPane';
@@ -211,6 +212,7 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
         {view === 'month' ? <MonthView /> : <TimeGrid days={days} />}
       </div>
       <RightPane />
+      <CalendarSearch />
     </div>
   );
 }

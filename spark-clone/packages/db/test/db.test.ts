@@ -402,6 +402,33 @@ describe('calendar events', () => {
     expect(ids).not.toContain('gev:free');
     expect(db.listBusyEvents(0, 10_000).some((e) => e.title === 'Local')).toBe(true);
   });
+
+  it('searches every stored event by all words, nearest to now first', () => {
+    const db = makeDb();
+    const day = 86_400_000;
+    const now = 1000 * day;
+    const mk = (title: string, at: number, extra: { location?: string; description?: string } = {}) =>
+      db.upsertEvent({ title, startMs: at, endMs: at + 3_600_000, allDay: false, ...extra });
+    const far = mk('Board review', now - 900 * day);
+    const soon = mk('Board meeting', now + 2 * day, { location: 'Room 4' });
+    const notes = mk('Sync', now - 5 * day, { description: 'Prep the BOARD deck' });
+    mk('Lunch', now + day);
+    mk('100%_done', now);
+    expect(db.searchEvents('board', 60, now).map((e) => e.id)).toEqual([soon, notes, far]);
+    expect(db.searchEvents('board room', 60, now).map((e) => e.id)).toEqual([soon]);
+    expect(db.searchEvents('%', 60, now).map((e) => e.title)).toEqual(['100%_done']);
+    expect(db.searchEvents('   ', 60, now)).toEqual([]);
+  });
+
+  it('leaves hidden calendars out of search', () => {
+    const db = makeDb();
+    db.insertAccount(account);
+    db.upsertGoogleCalendar({ ...gcal, visible: false });
+    db.upsertGoogleEvent(gevent);
+    expect(db.searchEvents('antibiotico')).toEqual([]);
+    db.setCalendarVisible(gcal.id, true);
+    expect(db.searchEvents('antibiotico').map((e) => e.id)).toEqual([gevent.id]);
+  });
 });
 
 describe('lastSentDisplayName', () => {

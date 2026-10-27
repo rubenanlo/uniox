@@ -6,6 +6,7 @@ import type {
   AccountConfig,
   AutoReply,
   AutoReplyState,
+  CalendarEvent,
   CalendarEventInput,
   Commands,
   DeltaEvent,
@@ -14,6 +15,7 @@ import type {
   MessageMeta,
   OutgoingDraft,
   PersonFreeBusy,
+  Queries,
   Signature,
   SyncToMain,
   Task,
@@ -47,11 +49,13 @@ import {
   mapGoogleEvent,
   patchGoogleEvent,
   queryFreeBusy,
+  searchGoogleEvents,
   subscribeGoogleCalendar,
   SyncTokenExpiredError,
   unsubscribeGoogleCalendar,
   SYNC_FUTURE_MS,
   SYNC_PAST_MS,
+  type MappedGoogleEvent,
 } from './google-calendar';
 import { fetchGoogleSenderName } from './google-profile';
 import { Scheduler } from './scheduler';
@@ -87,6 +91,8 @@ export class SyncService {
   private eventAlertTimer: NodeJS.Timeout | null = null;
   /** alertKey → event startMs, for pruning entries once long past. */
   private readonly firedEventAlerts = new Map<string, number>();
+  /** The last `calendar:search:remote` hits by event id, for `calendar:search:keep`. */
+  private remoteSearchHits = new Map<string, MappedGoogleEvent>();
 
   constructor(private readonly post: (msg: SyncToMain) => void) {}
 
@@ -665,6 +671,66 @@ export class SyncService {
       case 'calendar:events': {
         const { startMs, endMs } = args as { startMs: number; endMs: number };
         return this.db.listEvents(startMs, endMs);
+      }
+      case 'calendar:search': {
+        const { query, limit } = args as Queries['calendar:search']['args'];
+        return this.db.searchEvents(query, limit);
+      }
+      case 'calendar:search:remote': {
+        // Stored rows cover the synced window; ask Google only for the years
+        // either side of it. The future edge sits a month early because the
+        // window was fetched up to a sync-token lifetime ago.
+        const q = (args as Queries['calendar:search:remote']['args']).query.trim();
+        if (!q) return [];
+        const now = Date.now();
+        const before = now - SYNC_PAST_MS;
+        const after = now + SYNC_FUTURE_MS - SyncService.SYNC_TOKEN_MAX_AGE_MS;
+        const cals = this.db
+          .listCalendars()
+          .filter((c) => c.visible && c.source === 'google' && c.accountId);
+        const hits = new Map<string, MappedGoogleEvent>();
+        await Promise.all(
+          cals.map(async (c) => {
+            const remoteId = this.db.getCalendarSync(c.id)?.remoteId;
+            if (!remoteId) return;
+            try {
+              const token = await this.freshSecret(c.accountId!);
+              for (const item of await searchGoogleEvents(token, remoteId, q, before, after)) {
+                const mapped = mapGoogleEvent(item, c.id);
+                if (mapped) hits.set(mapped.id, mapped);
+              }
+            } catch {
+              // Offline or token trouble: the stored results still stand.
+            }
+          }),
+        );
+        this.remoteSearchHits = hits;
+        return [...hits.values()].map(
+          (m): CalendarEvent => ({
+            id: m.id,
+            calendarId: m.calendarId,
+            source: 'google',
+            title: m.title,
+            description: m.description || undefined,
+            location: m.location || undefined,
+            startMs: m.startMs,
+            endMs: m.endMs,
+            allDay: m.allDay,
+            eventType: m.eventType,
+            color: m.color,
+            meetingUrl: m.meetingUrl,
+            readOnly: true,
+            transparency: m.transparency,
+            accountId: cals.find((c) => c.id === m.calendarId)?.accountId,
+          }),
+        );
+      }
+      case 'calendar:search:keep': {
+        const hit = this.remoteSearchHits.get((args as { id: string }).id);
+        if (!hit) return { ok: false };
+        this.db.upsertGoogleEvent(hit);
+        this.delta({ kind: 'calendar-changed' });
+        return { ok: true };
       }
       case 'calendar:busy': {
         const { startMs, endMs } = args as { startMs: number; endMs: number };
