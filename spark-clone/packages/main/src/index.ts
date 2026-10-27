@@ -735,6 +735,7 @@ function registerIpc(): void {
       case 'calendar:event:delete':
       case 'calendar:subscribe':
       case 'calendar:unsubscribe':
+      case 'calendar:search:keep':
         return bridge!.query(channel, args);
       default:
         throw new Error(`unknown command: ${channel}`);

@@ -260,6 +260,37 @@ async function pageEvents(
   return { items: out, nextSyncToken };
 }
 
+/**
+ * Free-text search (`q` matches summary, description, location and attendees)
+ * over the years the windowed sync never stores: before `beforeMs` the most
+ * recent `max` matches, after `afterMs` the earliest. One page each — Google
+ * can only sort ascending, so the past page is trimmed from its end.
+ */
+export async function searchGoogleEvents(
+  token: string,
+  remoteCalendarId: string,
+  q: string,
+  beforeMs: number,
+  afterMs: number,
+  max = 15,
+): Promise<GEventItem[]> {
+  const path = `/calendars/${encodeURIComponent(remoteCalendarId)}/events`;
+  const base = { q, singleEvents: 'true', orderBy: 'startTime' };
+  const [past, future] = await Promise.all([
+    gget<{ items?: GEventItem[] }>(token, path, {
+      ...base,
+      timeMax: new Date(beforeMs).toISOString(),
+      maxResults: '250',
+    }),
+    gget<{ items?: GEventItem[] }>(token, path, {
+      ...base,
+      timeMin: new Date(afterMs).toISOString(),
+      maxResults: String(max),
+    }),
+  ]);
+  return [...(past.items ?? []).slice(-max), ...(future.items ?? [])];
+}
+
 export function listGoogleEvents(
   token: string,
   remoteCalendarId: string,

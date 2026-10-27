@@ -80,6 +80,12 @@ export interface Queries {
     args: { emails: string[]; startMs: number; endMs: number };
     result: Record<string, PersonFreeBusy>;
   };
+  /** ⌘F in the calendar: stored events on visible calendars whose title,
+   *  location or notes contain every word, nearest to now first. */
+  'calendar:search': { args: { query: string; limit?: number }; result: CalendarEvent[] };
+  /** The same search asked of Google for the years outside the synced window.
+   *  Hits are not stored until `calendar:search:keep` picks one. */
+  'calendar:search:remote': { args: { query: string }; result: CalendarEvent[] };
 }
 
 export type QueryChannel = keyof Queries;
@@ -205,6 +211,8 @@ export interface Commands {
   };
   /** Unsubscribe from a Google calendar (removes it from the account entirely). */
   'calendar:unsubscribe': { args: { id: string }; result: { ok: boolean; error?: string } };
+  /** Store a `calendar:search:remote` hit so the grid can show it once jumped to. */
+  'calendar:search:keep': { args: { id: string }; result: { ok: boolean } };
   /** Delete a local calendar event. */
   'calendar:event:delete': { args: { id: string }; result: { ok: boolean } };
   /**

@@ -1339,6 +1339,27 @@ export class MailDb {
     }));
   }
 
+  /** Events on visible calendars whose title, location or notes contain every
+   *  word of `query` (case-insensitive), nearest to `now` first. */
+  searchEvents(query: string, limit = 60, now = Date.now()): CalendarEvent[] {
+    const words = query.trim().split(/\s+/).filter(Boolean).slice(0, 8);
+    if (!words.length) return [];
+    const like = (w: string) => `%${w.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
+    const clause = `(e.title LIKE ? ESCAPE '\\' OR e.location LIKE ? ESCAPE '\\'
+      OR e.description LIKE ? ESCAPE '\\')`;
+    const rows = this.stmt(
+        `SELECT e.*, c.account_id AS cal_account_id FROM events e
+           JOIN calendars c ON c.id = e.calendar_id
+         WHERE c.visible = 1 AND ${words.map(() => clause).join(' AND ')}
+         ORDER BY ABS(e.start_ms - ?) LIMIT ?`,
+      )
+      .all(...words.flatMap((w) => [like(w), like(w), like(w)]), now, limit) as Row[];
+    return rows.map((r) => ({
+      ...rowToEvent(r),
+      accountId: (r.cal_account_id as string) || undefined,
+    }));
+  }
+
   /** Events that make the user busy in a range; see the `calendar:busy` query. */
   listBusyEvents(startMs: number, endMs: number): CalendarEvent[] {
     const ownEmails = this.listAccounts().map((a) => a.email);
