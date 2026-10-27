@@ -1,6 +1,6 @@
 import { DEFAULT_SCHEDULING, type SchedulingPresets, type ThreadSummary } from '@app/shared';
 import { KanbanSquare } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/homePriority';
@@ -43,122 +43,58 @@ function clockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-const ARC_W = 640;
-const ARC_H = 64;
-const ARC_PAD = 24;
-const ARC_Y = 32;
-
 /**
- * The day as a line (Daylight arc): hour ticks from the user's workday start
- * to its end, the lived stretch drawn in the aqua → azure → violet gradient,
- * a labelled marker for "now", and a dot per priority email at its arrival
- * minute — hover a dot for the time, sender, and subject.
+ * One hour of the day rail: the hour label in the gutter, then a stretch of
+ * rail (lit in the daylight gradient once lived) carrying whatever priority
+ * mail arrived in that hour.
  */
-function DaylightArc({
-  now,
-  start,
-  end,
-  marks,
+function RailRow({
+  label,
+  lit,
+  current,
+  children,
 }: {
-  now: Date;
-  start: number;
-  end: number;
-  marks: { at: number; unread: boolean; label: string }[];
+  label: string;
+  lit: boolean;
+  current?: boolean;
+  children?: React.ReactNode;
 }) {
-  const span = end - start;
-  const h = hourOf(now);
-  const pct = clamp01((h - start) / span);
-  const x = ARC_PAD + pct * (ARC_W - ARC_PAD * 2);
-  const posX = (hour: number) => ARC_PAD + clamp01((hour - start) / span) * (ARC_W - ARC_PAD * 2);
-  const hours: number[] = [];
-  for (let t = start; t <= end; t += 1) hours.push(t);
-  const nowLabel = now.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-
   return (
-    <div>
-      <div className="text-ink-faint flex items-baseline justify-between font-mono text-[10px] font-semibold tracking-[0.16em] uppercase">
-        <span>
-          Workday {hm(start)} – {hm(end)}
-        </span>
-        <span className="tabular-nums">{Math.round(pct * 100)}%</span>
-      </div>
-      <svg
-        viewBox={`0 0 ${ARC_W} ${ARC_H}`}
-        className="mt-3 w-full"
-        role="img"
-        aria-label={`Workday timeline from ${hm(start)} to ${hm(end)} with priority emails placed at their arrival time; it is ${nowLabel}.`}
+    <div className="grid min-h-11 grid-cols-[44px_1fr] gap-x-2">
+      <span
+        className={cn(
+          'pt-px text-right text-[11px] tabular-nums',
+          current ? 'text-ink font-semibold' : 'text-ink-faint',
+        )}
       >
-        <defs>
-          <linearGradient id="daylight-line" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="var(--color-aqua)" />
-            <stop offset="55%" stopColor="var(--color-azure)" />
-            <stop offset="100%" stopColor="var(--color-violet)" />
-          </linearGradient>
-        </defs>
-        <line
-          x1={ARC_PAD}
-          y1={ARC_Y}
-          x2={ARC_W - ARC_PAD}
-          y2={ARC_Y}
-          stroke="var(--color-hairline)"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-        <line
-          x1={ARC_PAD}
-          y1={ARC_Y}
-          x2={x}
-          y2={ARC_Y}
-          stroke="url(#daylight-line)"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        {hours.map((t) => (
-          <g key={t}>
-            <line
-              x1={posX(t)}
-              y1={ARC_Y - 4}
-              x2={posX(t)}
-              y2={ARC_Y + 4}
-              stroke="var(--color-hairline)"
-              strokeWidth="1.5"
-            />
-            <text
-              x={posX(t)}
-              y={ARC_Y + 18}
-              textAnchor="middle"
-              fontSize="10"
-              fill="var(--color-ink-faint)"
-            >
-              {t}
-            </text>
-          </g>
-        ))}
-        {marks.map((m, i) => (
-          <circle
-            key={i}
-            cx={posX(m.at)}
-            cy={ARC_Y}
-            r={m.unread ? 3.5 : 2.5}
-            fill={m.unread ? 'var(--color-azure)' : 'var(--color-ink-faint)'}
-          >
-            <title>{m.label}</title>
-          </circle>
-        ))}
-        <circle cx={x} cy={ARC_Y} r="4" fill="var(--color-ink)" />
-        <text x={x} y={ARC_Y - 12} textAnchor="middle" fontSize="11" fill="var(--color-ink)">
-          {nowLabel}
-        </text>
-      </svg>
+        {label}
+      </span>
+      <div
+        className={cn('border-l-2 pb-3 pl-5', !lit && 'border-hairline')}
+        style={
+          lit
+            ? { borderImage: 'linear-gradient(var(--color-aqua), var(--color-azure)) 1' }
+            : undefined
+        }
+      >
+        <div className="flex flex-col gap-2">{children}</div>
+      </div>
     </div>
   );
 }
 
-function PriorityRow({
+/** The "now" line across the rail, its dot sitting on the rail itself. */
+function NowLine({ label, ref }: { label: string; ref: React.Ref<HTMLDivElement> }) {
+  return (
+    <div ref={ref} className="-ml-[25px] flex items-center gap-2 py-1" aria-label={`Now, ${label}`}>
+      <span className="bg-ink h-2 w-2 shrink-0 rounded-full" />
+      <span className="bg-ink/60 h-px flex-1" />
+      <span className="text-ink text-[11px] font-semibold tabular-nums">Now · {label}</span>
+    </div>
+  );
+}
+
+function RailMail({
   thread,
   accountName,
   showAccount,
@@ -187,23 +123,25 @@ function PriorityRow({
     <button
       onClick={open}
       aria-label={`Open ${from}: ${subject}, ${clockTime(at)}`}
-      className="border-hairline hover:bg-surface focus-visible:bg-surface w-full border-b py-4 text-left transition-colors last:border-b-0 focus-visible:outline-none"
+      className="border-hairline bg-surface/60 hover:bg-surface focus-visible:ring-accent w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       <span className="flex items-center gap-2">
-        <span
-          className={cn('truncate text-[13.5px] text-ink', unread ? 'font-bold' : 'font-semibold')}
-        >
-          {from}
-        </span>
         {unread && (
           <span className="bg-azure h-1.5 w-1.5 shrink-0 rounded-full" aria-label="unread" />
         )}
-        <span className="text-ink-faint ml-auto shrink-0 text-[12px] tabular-nums">
+        <span
+          className={cn('text-ink truncate text-[13px]', unread ? 'font-bold' : 'font-semibold')}
+        >
+          {from}
+        </span>
+        <span className="text-ink-faint ml-auto shrink-0 text-[11px] tabular-nums">
           {clockTime(at)}
         </span>
       </span>
-      <span className="mt-1 flex items-baseline gap-1.5">
-        <span className={cn('truncate text-[13px]', unread ? 'text-ink-muted' : 'text-ink-faint')}>
+      <span className="mt-0.5 flex items-baseline gap-1.5">
+        <span
+          className={cn('truncate text-[12.5px]', unread ? 'text-ink-muted' : 'text-ink-faint')}
+        >
           {subject}
         </span>
         {showAccount && (
@@ -269,14 +207,32 @@ export function HomeView() {
   // an old thread, and rows name the person who really wrote.
   const fresh = freshPriorityThreads(threads, prio, baseline);
   const newCount = fresh.filter((t) => t.unreadCount > 0).length;
-  // The timeline maps today's hours, so only today's arrivals get a dot.
-  const marks = fresh
-    .filter((t) => arrivedAt(t) >= startOfToday)
-    .map((t) => ({
-      at: hourOf(new Date(arrivedAt(t))),
-      unread: t.unreadCount > 0,
-      label: `${clockTime(arrivedAt(t))} · ${inboundSenderLabel(t)} — ${t.subject || '(no subject)'}`,
-    }));
+  // Hang each email on the rail at the hour it arrived. Anything from before
+  // the workday (or an earlier day) collects under "Earlier", anything after it
+  // under the closing hour; those two rows only show when they hold something.
+  const railHour = (t: ThreadSummary) => {
+    const at = arrivedAt(t);
+    return at < startOfToday ? -Infinity : hourOf(new Date(at));
+  };
+  const rows: { key: string; label: string; from: number; to: number }[] = [
+    { key: 'earlier', label: 'Earlier', from: -Infinity, to: start },
+  ];
+  for (let t = start; t < end; t += 1)
+    rows.push({ key: String(t), label: hm(t), from: t, to: t + 1 });
+  rows.push({ key: 'later', label: hm(end), from: end, to: Infinity });
+  const railRows = rows
+    .map((r) => ({
+      ...r,
+      mail: fresh.filter((t) => railHour(t) >= r.from && railHour(t) < r.to),
+      current: h >= r.from && h < r.to,
+    }))
+    .filter((r) => (r.key !== 'earlier' && r.key !== 'later') || r.mail.length > 0 || r.current);
+  const nowLabel = now.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const pct = Math.round(clamp01((h - start) / (end - start)) * 100);
 
   const accountName = (id: string) => {
     const a = accounts.find((x) => x.id === id);
@@ -295,6 +251,17 @@ export function HomeView() {
         : `${Math.floor(minutesLeft / 60)}h ${minutesLeft % 60}m left in the workday`;
 
   const dateLine = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // In a short window the rail scrolls; keep "now" in view as rows arrive.
+  const railRef = useRef<HTMLElement>(null);
+  const nowRef = useRef<HTMLDivElement>(null);
+  const railSize = fresh.length;
+  useEffect(() => {
+    const rail = railRef.current;
+    const line = nowRef.current;
+    if (!rail || !line || rail.scrollHeight <= rail.clientHeight) return;
+    rail.scrollTop = line.offsetTop - rail.offsetTop - rail.clientHeight / 2;
+  }, [railSize, kanbanOpen]);
 
   if (kanbanOpen) {
     return <KanbanView board={kanban.board} onBack={() => setKanbanOpen(false)} />;
@@ -331,52 +298,70 @@ export function HomeView() {
           )}
         </button>
       )}
-      <div className="relative mx-auto my-auto flex h-[60%] w-full max-w-160 flex-col gap-y-14 px-8 pt-16 pb-6">
+      {/* Centred both ways: the summary on the left, the day rail on the
+          right. Only the rail scrolls when the day outgrows the window. */}
+      <div className="relative m-auto grid max-h-full w-full max-w-230 min-h-0 grid-cols-[minmax(0,320px)_minmax(0,1fr)] items-center gap-x-14 px-10 py-12">
         <header className="home-rise">
           <p className="text-ink-faint font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
             {dateLine}
           </p>
-          <h1 className="text-gradient mt-2 w-fit text-[34px] leading-tight font-bold tracking-tight">
+          <h1 className="text-ink-muted mt-2 text-[30px] leading-tight font-normal tracking-[-0.02em]">
             {greeting}
-            {userName && `, ${userName}`}
+            {userName && (
+              <>
+                , <span className="text-ink font-medium">{userName}</span>
+              </>
+            )}
           </h1>
           {!userName && <NameAsk />}
           <p className="text-ink-muted mt-1.5 text-[14px]">{subline}</p>
+          <div className="mt-12">
+            <div className="text-ink text-[56px] leading-none font-bold tracking-tight tabular-nums">
+              {pct}
+              <span className="text-ink-faint text-[24px]">%</span>
+            </div>
+            <p className="text-ink-faint mt-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
+              of {hm(start)} – {hm(end)}
+            </p>
+          </div>
+          <div className="mt-8 flex items-baseline gap-2">
+            <span className="text-ink text-[22px] font-bold tabular-nums">{newCount}</span>
+            <span className="text-ink-muted text-[13px]">unread priority</span>
+          </div>
         </header>
 
-        <div className="home-rise" style={{ animationDelay: '0.09s' }}>
-          <DaylightArc now={now} start={start} end={end} marks={marks} />
-        </div>
-
-        {/* Always mounted so the greeting and timeline never shift when the
-            list empties; the section keeps its slice of the page and only the
-            rows inside scroll. When empty it stays as invisible reserved
-            space — no header, no placeholder. */}
         <section
-          className={cn(
-            'home-rise flex min-h-0 flex-1 flex-col',
-            fresh.length === 0 && 'invisible',
-          )}
-          style={{ animationDelay: '0.16s' }}
-          aria-label="Priority mail"
-          aria-hidden={fresh.length === 0}
+          ref={railRef}
+          className="home-rise no-scrollbar max-h-[calc(100vh-6rem)] min-h-0 overflow-y-auto"
+          style={{ animationDelay: '0.09s' }}
+          aria-label="Workday and priority mail"
         >
-          <div className="flex shrink-0 items-baseline justify-between">
-            <h2 className="text-ink text-[17px] font-bold tracking-tight">Priority mail</h2>
-            {newCount > 0 && (
-              <span className="text-ink-muted text-[12.5px] tabular-nums">{newCount} new</span>
-            )}
-          </div>
-          <div className="no-scrollbar mt-2 min-h-0 flex-1 overflow-y-auto">
-            {fresh.map((t) => (
-              <PriorityRow
-                key={t.id}
-                thread={t}
-                accountName={accountName(t.accountId)}
-                showAccount={showAccount}
-              />
-            ))}
-          </div>
+          {railRows.map((r) => (
+            <RailRow key={r.key} label={r.label} lit={r.to <= h || r.current} current={r.current}>
+              {r.mail
+                .filter((t) => !r.current || railHour(t) <= h)
+                .map((t) => (
+                  <RailMail
+                    key={t.id}
+                    thread={t}
+                    accountName={accountName(t.accountId)}
+                    showAccount={showAccount}
+                  />
+                ))}
+              {r.current && <NowLine ref={nowRef} label={nowLabel} />}
+              {r.current &&
+                r.mail
+                  .filter((t) => railHour(t) > h)
+                  .map((t) => (
+                    <RailMail
+                      key={t.id}
+                      thread={t}
+                      accountName={accountName(t.accountId)}
+                      showAccount={showAccount}
+                    />
+                  ))}
+            </RailRow>
+          ))}
         </section>
       </div>
     </div>
