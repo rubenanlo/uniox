@@ -8,6 +8,7 @@ import { Composer } from './components/composer/Composer';
 import { GatekeeperCard } from './components/GatekeeperCard';
 import { CalendarView } from './components/calendar/CalendarView';
 import { HomeView } from './components/HomeView';
+import { HomeSun } from './components/DaySun';
 import { MultiSelectBar } from './components/list/MultiSelectBar';
 import { ThreadList } from './components/list/ThreadList';
 import { Onboarding } from './components/Onboarding';
@@ -378,9 +379,10 @@ export default function App() {
 
   return (
     <KeymapProvider>
-      {/* The daylight glow is the shell backdrop everywhere; bars, list, and
-          reading pane are transparent so it runs edge to edge. */}
-      <div className="home-glow relative flex h-full flex-col">
+      {/* The backdrop runs edge to edge: bars, list, and reading pane are
+          transparent. On Home the day sun rises behind everything. */}
+      <div className="app-backdrop relative flex h-full flex-col">
+        {view === 'home' && !searching && <HomeSun />}
         {view !== 'calendar' && <TopBar />}
         <div className="relative flex min-h-0 flex-1">
           <Sidebar onAddAccount={() => setAddingAccount(true)} />
@@ -419,7 +421,7 @@ export default function App() {
         <Toaster
           position="bottom-left"
           // Toasts wear the app's own surface tokens, so they sit naturally on
-          // the glow backdrop and flip with the light/dark theme.
+          // the backdrop and flip with the light/dark theme.
           toastOptions={{
             style: {
               fontSize: '12.5px',
