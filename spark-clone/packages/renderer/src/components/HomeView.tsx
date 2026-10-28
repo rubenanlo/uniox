@@ -1,6 +1,6 @@
 import type { ThreadSummary } from '@app/shared';
 import { KanbanSquare } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { hourOf, useNow, useScheduling } from '../lib/workday';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -8,8 +8,10 @@ import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/home
 import { kanbanNewCount, useKanban } from '../state/kanban';
 import { useAccounts, useThreads } from '../state/queries';
 import { useUi } from '../state/store';
+import { useWindowActive } from '../lib/useWindowActive';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
+import { RollingNumber } from './RollingNumber';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -22,22 +24,20 @@ function clockTime(ms: number): string {
 
 /**
  * One hour of the day rail: the hour label in the gutter, then a stretch of
- * rail (lit in the daylight gradient once lived) carrying whatever priority
- * mail arrived in that hour.
+ * the rail's track carrying whatever priority mail arrived in that hour. The
+ * lived part of the track is lit by RailNow's fill, drawn over all rows.
  */
 function RailRow({
   label,
-  lit,
   current,
   children,
 }: {
   label: string;
-  lit: boolean;
   current?: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-11 grid-cols-[44px_1fr] gap-x-2">
+    <div data-rail-row className="grid min-h-11 grid-cols-[44px_1fr] gap-x-2">
       <span
         className={cn(
           'pt-px text-right text-[11px] tabular-nums',
@@ -46,28 +46,66 @@ function RailRow({
       >
         {label}
       </span>
-      <div
-        className={cn('border-l-2 pb-3 pl-5', !lit && 'border-hairline')}
-        style={
-          lit
-            ? { borderImage: 'linear-gradient(var(--color-aqua), var(--color-azure)) 1' }
-            : undefined
-        }
-      >
+      <div className="border-hairline border-l-2 pb-3 pl-5">
         <div className="flex flex-col gap-2">{children}</div>
       </div>
     </div>
   );
 }
 
-/** The "now" line across the rail, its dot sitting on the rail itself. */
-function NowLine({ label, ref }: { label: string; ref: React.Ref<HTMLDivElement> }) {
+/** Height of the "now" line, and of the slot the current hour keeps for it. */
+const NOW_H = 20;
+/** Where the rail's track sits: past the 44px gutter and the 8px gap. */
+const TRACK_X = 52;
+
+/**
+ * The lit stretch of the rail plus the "now" line, drawn over the rows at
+ * `y` (the line's centre, in px from the top of the rail). Both move on
+ * transform only: the fill scales from the top and the line slides, so a
+ * tick costs one composited transition and nothing runs in between.
+ */
+function RailNow({
+  label,
+  y,
+  height,
+  glide,
+}: {
+  label: string;
+  y: number;
+  height: number;
+  glide: boolean;
+}) {
   return (
-    <div ref={ref} className="-ml-[25px] flex items-center gap-2 py-1" aria-label={`Now, ${label}`}>
-      <span className="bg-ink h-2 w-2 shrink-0 rounded-full" />
-      <span className="bg-ink/60 h-px flex-1" />
-      <span className="text-ink text-[11px] font-semibold tabular-nums">Now · {label}</span>
-    </div>
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute top-0 bottom-0 w-0.5 origin-top',
+          glide && 'home-glide',
+        )}
+        style={{
+          left: TRACK_X,
+          background: 'linear-gradient(var(--color-aqua), var(--color-azure))',
+          transform: `scaleY(${height > 0 ? y / height : 0})`,
+        }}
+      />
+      <div
+        className={cn(
+          'pointer-events-none absolute top-0 right-0 flex items-center gap-2',
+          glide && 'home-glide',
+        )}
+        style={{
+          left: TRACK_X - 3,
+          height: NOW_H,
+          transform: `translateY(${y - NOW_H / 2}px)`,
+        }}
+        aria-label={`Now, ${label}`}
+      >
+        <span className="bg-ink h-2 w-2 shrink-0 rounded-full" />
+        <span className="bg-ink/60 h-px flex-1" />
+        <span className="text-ink text-[11px] font-semibold tabular-nums">Now · {label}</span>
+      </div>
+    </>
   );
 }
 
@@ -210,6 +248,9 @@ export function HomeView() {
     hour12: false,
   });
   const pct = Math.round(clamp01((h - start) / (end - start)) * 100);
+  // How far through the current hour row the line sits; the rows before and
+  // after the workday hold it at their top.
+  const hourFrac = h >= start && h < end ? h - Math.floor(h) : 0;
 
   const accountName = (id: string) => {
     const a = accounts.find((x) => x.id === id);
@@ -229,15 +270,54 @@ export function HomeView() {
 
   const dateLine = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // In a short window the rail scrolls; keep "now" in view as rows arrive.
+  // The "now" line glides down the current hour's row: from the slot kept
+  // for it (after the mail that already arrived) to the next hour's label.
+  // Measured after each render and on resize; changes only animate while the
+  // window is active, and snap otherwise so a background tick costs nothing.
+  const active = useWindowActive();
   const railRef = useRef<HTMLElement>(null);
-  const nowRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const slotRef = useRef<HTMLDivElement>(null);
+  const [mark, setMark] = useState({ y: 0, height: 0 });
+  const [measured, setMeasured] = useState(false);
+  const measureRef = useRef(() => {});
+  useLayoutEffect(() => {
+    const measure = () => {
+      const track = trackRef.current;
+      const slot = slotRef.current;
+      const row = slot?.closest<HTMLElement>('[data-rail-row]');
+      if (!track || !slot || !row) return;
+      const from = slot.offsetTop + NOW_H / 2;
+      const to = row.offsetTop + row.offsetHeight + NOW_H / 2;
+      const y = Math.round(from + hourFrac * (to - from));
+      const height = track.offsetHeight;
+      setMark((m) => (m.y === y && m.height === height ? m : { y, height }));
+    };
+    measureRef.current = measure;
+    measure();
+  });
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const ro = new ResizeObserver(() => measureRef.current());
+    ro.observe(track);
+    // First position lands without a glide; later changes animate.
+    const id = requestAnimationFrame(() => setMeasured(true));
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(id);
+      setMeasured(false);
+    };
+  }, [kanbanOpen]);
+  const glide = active && measured;
+
+  // In a short window the rail scrolls; keep "now" in view as rows arrive.
   const railSize = fresh.length;
   useEffect(() => {
     const rail = railRef.current;
-    const line = nowRef.current;
-    if (!rail || !line || rail.scrollHeight <= rail.clientHeight) return;
-    rail.scrollTop = line.offsetTop - rail.offsetTop - rail.clientHeight / 2;
+    const slot = slotRef.current;
+    if (!rail || !slot || rail.scrollHeight <= rail.clientHeight) return;
+    rail.scrollTop = slot.offsetTop - rail.clientHeight / 2;
   }, [railSize, kanbanOpen]);
 
   if (kanbanOpen) {
@@ -294,7 +374,7 @@ export function HomeView() {
           <p className="text-ink-muted mt-1.5 text-[14px]">{subline}</p>
           <div className="mt-12">
             <div className="text-ink text-[56px] leading-none font-bold tracking-tight tabular-nums">
-              {pct}
+              <RollingNumber value={pct} glide={active} />
               <span className="text-ink-faint text-[24px]">%</span>
             </div>
             <p className="text-ink-faint mt-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
@@ -313,22 +393,11 @@ export function HomeView() {
           style={{ animationDelay: '0.09s' }}
           aria-label="Workday and priority mail"
         >
-          {railRows.map((r) => (
-            <RailRow key={r.key} label={r.label} lit={r.to <= h || r.current} current={r.current}>
-              {r.mail
-                .filter((t) => !r.current || railHour(t) <= h)
-                .map((t) => (
-                  <RailMail
-                    key={t.id}
-                    thread={t}
-                    accountName={accountName(t.accountId)}
-                    showAccount={showAccount}
-                  />
-                ))}
-              {r.current && <NowLine ref={nowRef} label={nowLabel} />}
-              {r.current &&
-                r.mail
-                  .filter((t) => railHour(t) > h)
+          <div ref={trackRef} className="relative">
+            {railRows.map((r) => (
+              <RailRow key={r.key} label={r.label} current={r.current}>
+                {r.mail
+                  .filter((t) => !r.current || railHour(t) <= h)
                   .map((t) => (
                     <RailMail
                       key={t.id}
@@ -337,8 +406,22 @@ export function HomeView() {
                       showAccount={showAccount}
                     />
                   ))}
-            </RailRow>
-          ))}
+                {r.current && <div ref={slotRef} style={{ height: NOW_H }} />}
+                {r.current &&
+                  r.mail
+                    .filter((t) => railHour(t) > h)
+                    .map((t) => (
+                      <RailMail
+                        key={t.id}
+                        thread={t}
+                        accountName={accountName(t.accountId)}
+                        showAccount={showAccount}
+                      />
+                    ))}
+              </RailRow>
+            ))}
+            <RailNow label={nowLabel} y={mark.y} height={mark.height} glide={glide} />
+          </div>
         </section>
       </div>
     </div>
