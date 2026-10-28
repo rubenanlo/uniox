@@ -1,6 +1,7 @@
-import { DEFAULT_SCHEDULING, type SchedulingPresets, type ThreadSummary } from '@app/shared';
+import type { ThreadSummary } from '@app/shared';
 import { KanbanSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { hourOf, useNow, useScheduling } from '../lib/workday';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
 import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/homePriority';
@@ -10,34 +11,10 @@ import { useUi } from '../state/store';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
 
-/** Re-render every 30s — the greeting, marker, and countdown are all
- *  minute-granular, and each tick re-renders the whole Home subtree. */
-function useNow(): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
-}
-
-function useScheduling(): SchedulingPresets {
-  const [p, setP] = useState<SchedulingPresets>(DEFAULT_SCHEDULING);
-  useEffect(() => {
-    void api.query('settings:get', { key: 'scheduling' }).then((stored) => {
-      if (stored) setP({ ...DEFAULT_SCHEDULING, ...(stored as Partial<SchedulingPresets>) });
-    });
-  }, []);
-  return p;
-}
-
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /** "9:00" — the workday bounds as shown in the timeline label. */
 const hm = (hour: number) => `${hour}:00`;
-
-/** Hours (fractional) since midnight. */
-const hourOf = (d: Date) => d.getHours() + d.getMinutes() / 60;
 
 function clockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
