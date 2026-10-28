@@ -239,6 +239,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: 'Panels',
     items: [
+      ['Calendars', 'P'],
       ['Sidebar', '⌘ \\'],
       ['This panel', '⌘ /'],
       ['Mail rail', '/'],

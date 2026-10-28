@@ -69,7 +69,12 @@ interface CalendarState {
   calendars: Calendar[];
   sidebarOpen: boolean;
   rightPaneOpen: boolean;
+  /** Pane state Month/Week/Day return to; Agenda opens with both panes tucked away. */
+  gridPanes: { sidebar: boolean; right: boolean };
   rightPane: RightPaneState;
+  /** The calendars modal (P): accounts and their calendars, as in the sidebar. */
+  calendarsOpen: boolean;
+  setCalendarsOpen(open: boolean): void;
   /** Drop position of an in-review drag; the grid renders the chip there until saved or cancelled. */
   pendingMove: { id: string; startMs: number; endMs: number } | null;
   setView(view: CalView): void;
@@ -103,18 +108,36 @@ interface CalendarState {
 }
 
 export const useCalendar = create<CalendarState>((set, get) => ({
-  view: 'week',
-  anchor: startOfWeek(Date.now()),
+  view: 'agenda',
+  anchor: startOfDay(Date.now()),
   cursor: startOfDay(Date.now()),
   events: [],
   calendars: [],
-  sidebarOpen: true,
-  rightPaneOpen: true,
+  sidebarOpen: false,
+  rightPaneOpen: false,
+  gridPanes: { sidebar: true, right: true },
   rightPane: { kind: 'shortcuts' },
+  calendarsOpen: false,
+  setCalendarsOpen: (open) => set({ calendarsOpen: open }),
   pendingMove: null,
 
   setView: (view) => {
-    set((s) => ({ view, anchor: anchorFor(view, s.cursor) }));
+    set((s) => {
+      const next = { view, anchor: anchorFor(view, s.cursor) };
+      if (view === s.view) return next;
+      // Into Agenda: remember the grid's panes and tuck both away (opening an
+      // event still slides the right pane in). Out of it: put them back.
+      if (view === 'agenda')
+        return {
+          ...next,
+          gridPanes: { sidebar: s.sidebarOpen, right: s.rightPaneOpen },
+          sidebarOpen: false,
+          rightPaneOpen: false,
+        };
+      if (s.view === 'agenda')
+        return { ...next, sidebarOpen: s.gridPanes.sidebar, rightPaneOpen: s.gridPanes.right };
+      return next;
+    });
     get().refresh();
   },
   setCursor: (dayMs) => {
@@ -204,15 +227,17 @@ export const useCalendar = create<CalendarState>((set, get) => ({
     set({ pendingMove: { id: event.id, startMs, endMs } });
   },
   // A form opened from details (e.g. Edit) returns there on Esc/X; otherwise
-  // fall back to the shortcuts panel. Cancelling also reverts any in-review drag.
+  // fall back to the shortcuts panel (Agenda tucks the pane away instead).
+  // Cancelling also reverts any in-review drag.
   closePane: () =>
-    set((s) => ({
-      pendingMove: null,
-      rightPane:
-        s.rightPane.kind === 'form' && s.rightPane.returnTo
-          ? s.rightPane.returnTo
-          : { kind: 'shortcuts' },
-    })),
+    set((s) => {
+      const back = s.rightPane.kind === 'form' ? s.rightPane.returnTo : undefined;
+      return {
+        pendingMove: null,
+        rightPane: back ?? { kind: 'shortcuts' },
+        ...(!back && s.view === 'agenda' && { rightPaneOpen: false }),
+      };
+    }),
 
   refresh: () => {
     const { view, anchor } = get();

@@ -23,6 +23,7 @@ const SHORTCUTS: [string, string][] = [
   ['Create on focused day', '↩'],
   ['Pick event account', '⌥ ↓'],
   ['Show mail sidebar', '/'],
+  ['Show calendars', 'P'],
   ['Toggle sidebar', '⌘ \\'],
   ['Toggle this panel', '⌘ /'],
   ['Back to mail', 'Esc'],

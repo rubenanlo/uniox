@@ -10,6 +10,7 @@ import { newDraft, useCalendar } from '../../state/calendar';
 import { useUi } from '../../state/store';
 import { AgendaView } from './AgendaView';
 import { CalendarSearch } from './CalendarSearch';
+import { CalendarsDialog } from './CalendarsDialog';
 import { CalendarSidebar } from './CalendarSidebar';
 import { MonthView } from './MonthView';
 import { RightPane } from './RightPane';
@@ -64,6 +65,16 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
         e.stopPropagation();
       };
 
+      // The calendars modal owns the keyboard while open: Esc or P closes it,
+      // everything else (typing in its people search) passes through.
+      if (st.calendarsOpen) {
+        if (e.key === 'Escape' || (e.key === 'p' && !meta && !e.altKey && !inEditable(e))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          st.setCalendarsOpen(false);
+        }
+        return;
+      }
       if (meta && e.key === '\\') {
         stop();
         st.toggleSidebar();
@@ -121,6 +132,10 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
         case 'a':
           stop();
           st.setView('agenda');
+          return;
+        case 'p':
+          stop();
+          st.setCalendarsOpen(true);
           return;
         case 'e':
           if (st.rightPane.kind !== 'details') return;
@@ -189,6 +204,7 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
   return (
     <div className="flex h-full min-w-0 flex-1 py-10">
       <CalendarSidebar onAddAccount={onAddAccount} />
+      <CalendarsDialog onAddAccount={onAddAccount} />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* With the TopBar hidden, this header is the window-drag surface; when
             the calendar sidebar is collapsed it also clears the macOS traffic
