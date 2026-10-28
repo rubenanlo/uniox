@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Calendar, CalendarEvent, Commands } from '@app/shared';
 import { api } from '../lib/api';
+import { canEditEvent } from '../lib/eventEdit';
+import { seriesId } from '../lib/rrule';
 import {
   addDays,
   type CalView,
@@ -16,7 +18,13 @@ import {
 export type RightPaneState =
   | { kind: 'shortcuts' }
   | { kind: 'details'; event: CalendarEvent }
-  | { kind: 'form'; draft: EventDraft; returnTo?: RightPaneState };
+  | { kind: 'form'; draft: EventDraft; returnTo?: RightPaneState; slot?: FreeSlot };
+
+/** An open window the Agenda offers for booking. */
+export interface FreeSlot {
+  startMs: number;
+  endMs: number;
+}
 
 export interface EventDraft {
   /** Stored event id when editing; undefined when creating. */
@@ -49,7 +57,8 @@ let refreshSeq = 0;
 
 /** Anchor appropriate for a view, centred on a day. */
 function anchorFor(view: CalView, dayMs: number): number {
-  return view === 'month' ? startOfMonth(dayMs) : view === 'week' ? startOfWeek(dayMs) : startOfDay(dayMs);
+  if (view === 'month') return startOfMonth(dayMs);
+  return view === 'week' ? startOfWeek(dayMs) : startOfDay(dayMs);
 }
 
 interface CalendarState {
@@ -74,6 +83,10 @@ interface CalendarState {
   toggleRightPane(): void;
   openDetails(event: CalendarEvent): void;
   openForm(draft: Partial<EventDraft> & { startMs: number; endMs: number }, returnTo?: RightPaneState): void;
+  /** Open the edit form for an event (no-op when it isn't editable). */
+  editEvent(event: CalendarEvent): void;
+  /** Agenda free slot: open the form for it, an hour long (or the whole slot if shorter). */
+  bookSlot(slot: FreeSlot): void;
   /** Drag drop: show the chip at its new slot and open the form to review/confirm. */
   beginReschedule(event: CalendarEvent, startMs: number, endMs: number): void;
   closePane(): void;
@@ -169,6 +182,23 @@ export const useCalendar = create<CalendarState>((set, get) => ({
         returnTo,
       },
     })),
+  editEvent: (event) => {
+    const s = get();
+    if (!canEditEvent(event, s.calendars)) return;
+    // Local: edit the stored series row, not this (possibly future) occurrence —
+    // saving from an occurrence's start would rewrite the series start and
+    // silently drop earlier occurrences. Google ids contain ':' and never
+    // expand, so they must not go through seriesId.
+    const base =
+      event.source === 'local'
+        ? (s.events.find((e) => e.id === seriesId(event.id)) ?? event)
+        : event;
+    s.openForm(draftFromEvent(base), { kind: 'details', event: base });
+  },
+  bookSlot: (slot) => {
+    get().openForm({ startMs: slot.startMs, endMs: Math.min(slot.endMs, slot.startMs + HOUR) });
+    set((s) => (s.rightPane.kind === 'form' ? { rightPane: { ...s.rightPane, slot } } : {}));
+  },
   beginReschedule: (event, startMs, endMs) => {
     get().openForm({ ...draftFromEvent(event), startMs, endMs });
     set({ pendingMove: { id: event.id, startMs, endMs } });

@@ -7,14 +7,15 @@ import { descriptionToHtml } from '../../lib/richText';
 import { ruleLabel, seriesId } from '../../lib/rrule';
 import { cn } from '../../lib/utils';
 import { useAccounts } from '../../state/queries';
-import { draftFromEvent, useCalendar } from '../../state/calendar';
+import { useCalendar } from '../../state/calendar';
+import { AgendaDetailsPanel, AgendaShortcutsPanel } from './AgendaPane';
 import { EventForm } from './EventForm';
 
 const SHORTCUTS: [string, string][] = [
   ['Go to today', 'T'],
   ['New event', 'C'],
   ['Search events', '⌘ F'],
-  ['Month / Week / Day', 'M W D'],
+  ['Month / Week / Day / Agenda', 'M W D A'],
   ['Move around', '← → ↑ ↓'],
   ['Earlier / later days', 'Swipe'],
   ['Go to date', '⌘ ⇧ G'],
@@ -72,7 +73,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function DetailsPanel({ event }: { event: CalendarEvent }) {
-  const openForm = useCalendar((s) => s.openForm);
+  const editEvent = useCalendar((s) => s.editEvent);
   const remove = useCalendar((s) => s.remove);
   const closePane = useCalendar((s) => s.closePane);
   const calendars = useCalendar((s) => s.calendars);
@@ -82,17 +83,7 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
   const editable = canEditEvent(event, calendars);
   const deletable = event.source === 'local';
 
-  const openEdit = () => {
-    // Local: edit the stored series row, not this (possibly future) occurrence —
-    // saving from an occurrence's start would rewrite the series start and
-    // silently drop earlier occurrences. Google ids contain ':' and never
-    // expand, so they must not go through seriesId.
-    const base =
-      event.source === 'local'
-        ? (useCalendar.getState().events.find((e) => e.id === seriesId(event.id)) ?? event)
-        : event;
-    openForm(draftFromEvent(base), { kind: 'details', event: base });
-  };
+  const openEdit = () => editEvent(event);
   // Any property of an editable event jumps straight into the form.
   const prop = editable
     ? { onClick: openEdit, className: 'cursor-pointer', title: 'Click to edit' }
@@ -200,18 +191,29 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
 export function RightPane() {
   const rightPane = useCalendar((s) => s.rightPane);
   const open = useCalendar((s) => s.rightPaneOpen);
+  const agenda = useCalendar((s) => s.view === 'agenda');
   if (!open) return null;
   return (
     <aside
       aria-label="Calendar side panel"
-      className="border-hairline h-full w-[300px] shrink-0 overflow-y-auto border-l"
+      className={cn(
+        'border-hairline h-full shrink-0 overflow-y-auto border-l',
+        agenda ? 'w-[340px]' : 'w-[300px]',
+      )}
     >
-      {rightPane.kind === 'shortcuts' && <ShortcutsPanel />}
-      {rightPane.kind === 'details' && <DetailsPanel event={rightPane.event} />}
+      {rightPane.kind === 'shortcuts' && (agenda ? <AgendaShortcutsPanel /> : <ShortcutsPanel />)}
+      {rightPane.kind === 'details' &&
+        (agenda ? (
+          <AgendaDetailsPanel key={rightPane.event.id} event={rightPane.event} />
+        ) : (
+          <DetailsPanel event={rightPane.event} />
+        ))}
       {rightPane.kind === 'form' && (
         <EventForm
           key={`${rightPane.draft.id ?? 'new'}:${rightPane.draft.startMs}`}
           draft={rightPane.draft}
+          variant={agenda ? 'agenda' : 'default'}
+          slot={rightPane.slot}
         />
       )}
     </aside>

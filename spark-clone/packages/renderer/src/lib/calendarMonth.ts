@@ -55,7 +55,10 @@ export function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-export type CalView = 'month' | 'week' | 'day';
+export type CalView = 'month' | 'week' | 'day' | 'agenda';
+
+/** Days the Agenda list covers from its anchor day. */
+export const AGENDA_DAYS = 7;
 
 /** Day stepping that survives DST (noon-anchored, then floored). */
 export function addDays(ms: number, n: number): number {
@@ -77,22 +80,24 @@ export function rangeForView(
   // The week anchor is its first visible day: Sunday after paging or Today,
   // any weekday once a horizontal swipe has rolled the window by days.
   const first = startOfDay(anchorMs);
-  const count = view === 'week' ? 7 : 1;
+  const count = view === 'week' ? 7 : view === 'agenda' ? AGENDA_DAYS : 1;
   const days = Array.from({ length: count }, (_, i) => addDays(first, i));
   return { start: days[0]!, end: addDays(days[count - 1]!, 1), days };
 }
 
 /** Span to load events for: the visible range plus a week either side in
- *  Week/Day, so a horizontal swipe has the next days' events ready. */
+ *  Week/Day, so a horizontal swipe has the next days' events ready. Agenda
+ *  also loads the week behind it for its "earlier this week" line. */
 export function fetchRange(view: CalView, anchorMs: number): { start: number; end: number } {
   const { start, end } = rangeForView(view, anchorMs);
   if (view === 'month') return { start, end };
+  if (view === 'agenda') return { start: addDays(start, -7), end };
   return { start: addDays(start, -7), end: addDays(end, 7) };
 }
 
 export function pageAnchor(view: CalView, anchorMs: number, dir: 1 | -1): number {
   if (view === 'month') return addMonths(anchorMs, dir);
-  return addDays(anchorMs, dir * (view === 'week' ? 7 : 1));
+  return addDays(anchorMs, dir * (view === 'week' || view === 'agenda' ? 7 : 1));
 }
 
 /** Step the day cursor; walking out of the visible range pages the anchor. */

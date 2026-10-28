@@ -29,7 +29,7 @@ import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
 import { composeFromMailto } from './lib/mailto';
 import { fmtWake } from './lib/schedule';
-import { softTint } from './lib/utils';
+import { cn, softTint } from './lib/utils';
 import { assistantOwnsEscape, wireAssistant } from './state/assistant';
 import { wireCalendar } from './state/calendar';
 import { wireKanban } from './state/kanban';
@@ -378,9 +378,15 @@ export default function App() {
 
   return (
     <KeymapProvider>
-      {/* The daylight glow is the shell backdrop everywhere; bars, list, and
-          reading pane are transparent so it runs edge to edge. */}
-      <div className="home-glow relative flex h-full flex-col">
+      {/* The daylight glow is the shell backdrop everywhere but the calendar,
+          which sits on the flat app color; bars, list, and reading pane are
+          transparent so the backdrop runs edge to edge. */}
+      <div
+        className={cn(
+          'relative flex h-full flex-col',
+          view === 'calendar' && !searching ? 'bg-app' : 'home-glow',
+        )}
+      >
         {view !== 'calendar' && <TopBar />}
         <div className="relative flex min-h-0 flex-1">
           <Sidebar onAddAccount={() => setAddingAccount(true)} />
