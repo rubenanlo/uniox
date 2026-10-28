@@ -43,6 +43,7 @@ import {
 import {
   calendarRowId,
   getCalendarTimeZone,
+  insertGoogleEvent,
   listGoogleCalendars,
   listGoogleEvents,
   listGoogleEventsChanged,
@@ -594,6 +595,44 @@ export class SyncService {
       }
       case 'calendar:event:save': {
         const { event } = args as { event: CalendarEventInput };
+        // New events on a Google account's calendar are created on Google, so
+        // guests see them and Meet can attach a link. Edits of local rows and
+        // out-of-office blocks stay local.
+        const cal = event.calendarId ? this.db.getCalendarSync(event.calendarId) : null;
+        const googleBacked =
+          !event.id &&
+          event.eventType !== 'outOfOffice' &&
+          !!cal?.accountId &&
+          !!cal.remoteId &&
+          this.db.getAccount(cal.accountId)?.authType === 'oauth-google';
+        if (googleBacked) {
+          try {
+            const token = await this.freshSecret(cal.accountId!);
+            const item = await insertGoogleEvent(
+              token,
+              cal.remoteId!,
+              {
+                ...event,
+                location: event.location || (!event.addMeet ? event.meetingUrl : undefined),
+                description:
+                  !event.addMeet && event.meetingUrl && event.location
+                    ? [event.description, event.meetingUrl].filter(Boolean).join('<br>')
+                    : event.description,
+              },
+              Intl.DateTimeFormat().resolvedOptions().timeZone,
+              newId(),
+            );
+            // Recurring masters arrive as expanded instances on the next sync;
+            // a single event shows right away.
+            const mapped = event.rrule ? null : mapGoogleEvent(item, event.calendarId!);
+            if (mapped) this.db.upsertGoogleEvent(mapped);
+            this.delta({ kind: 'calendar-changed' });
+            void this.syncAccountCalendars(cal.accountId!);
+            return { ok: true, id: mapped?.id ?? '' };
+          } catch (err) {
+            return { ok: false, id: '', error: err instanceof Error ? err.message : String(err) };
+          }
+        }
         const id = this.db.upsertEvent(event);
         this.delta({ kind: 'calendar-changed' });
         return { ok: true, id };

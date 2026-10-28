@@ -5,7 +5,10 @@ import {
   listGoogleEventsChanged,
   mapGoogleEvent,
   parseGTime,
+  gEventInsertBody,
   gEventTimes,
+  insertGoogleEvent,
+  meetingUrlOf,
   patchGoogleEvent,
   SyncTokenExpiredError,
   type GEventItem,
@@ -188,6 +191,89 @@ describe('patchGoogleEvent', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(page({}, 403)));
     await expect(
       patchGoogleEvent('tok', 'cal', 'ev1', { startMs: 0, endMs: 1, allDay: false }),
+    ).rejects.toThrow(/403/);
+  });
+});
+
+describe('meetingUrlOf', () => {
+  it('prefers Meet, then a conference video entry point, then a bare-URL location', () => {
+    expect(meetingUrlOf({ id: 'a', hangoutLink: 'https://meet.google.com/abc' })).toBe(
+      'https://meet.google.com/abc',
+    );
+    expect(
+      meetingUrlOf({
+        id: 'b',
+        conferenceData: {
+          entryPoints: [
+            { entryPointType: 'phone', uri: 'tel:+1' },
+            { entryPointType: 'video', uri: 'https://zoom.us/j/1' },
+          ],
+        },
+      }),
+    ).toBe('https://zoom.us/j/1');
+    expect(meetingUrlOf({ id: 'c', location: ' https://zoom.us/j/2 ' })).toBe('https://zoom.us/j/2');
+    expect(meetingUrlOf({ id: 'd', location: 'Room 4, https://zoom.us/j/3' })).toBeUndefined();
+  });
+});
+
+describe('insertGoogleEvent', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const start = Date.parse('2026-10-29T09:00:00Z');
+
+  it('asks Google for a Meet link with conferenceDataVersion=1', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'new1', hangoutLink: 'https://meet.google.com/x' })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const item = await insertGoogleEvent(
+      'tok',
+      'me@x.com',
+      { title: 'Sync', startMs: start, endMs: start + 1_800_000, allDay: false, addMeet: true },
+      'Europe/Madrid',
+      'req-1',
+    );
+    expect(item.hangoutLink).toBe('https://meet.google.com/x');
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe(
+      'https://www.googleapis.com/calendar/v3/calendars/me%40x.com/events?conferenceDataVersion=1',
+    );
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(String(init.body)) as {
+      summary: string;
+      start: unknown;
+      conferenceData: { createRequest: unknown };
+    };
+    expect(body.summary).toBe('Sync');
+    expect(body.start).toEqual({ dateTime: '2026-10-29T09:00:00.000Z', timeZone: 'Europe/Madrid' });
+    expect(body.conferenceData.createRequest).toEqual({
+      requestId: 'req-1',
+      conferenceSolutionKey: { type: 'hangoutsMeet' },
+    });
+  });
+
+  it('omits conference data without addMeet and carries recurrence', () => {
+    const body = gEventInsertBody(
+      { title: 'Standup', startMs: start, endMs: start + 900_000, allDay: false, rrule: 'FREQ=DAILY' },
+      'UTC',
+      'r',
+    );
+    expect(body).not.toHaveProperty('conferenceData');
+    expect(body.recurrence).toEqual(['RRULE:FREQ=DAILY']);
+  });
+
+  it('leaves all-day dates without a zone', () => {
+    const body = gEventInsertBody(
+      { title: 'Off', startMs: d(2026, 10, 29), endMs: d(2026, 10, 30), allDay: true },
+      'UTC',
+      'r',
+    );
+    expect(body.start).toEqual({ date: '2026-10-29' });
+  });
+
+  it('throws a readable error on failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response('{}', { status: 403 })));
+    await expect(
+      insertGoogleEvent('tok', 'cal', { title: 't', startMs: 0, endMs: 1, allDay: false }, 'UTC', 'r'),
     ).rejects.toThrow(/403/);
   });
 });

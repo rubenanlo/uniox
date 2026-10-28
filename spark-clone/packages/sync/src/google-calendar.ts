@@ -25,6 +25,7 @@ export interface GCalListItem {
 interface GEventTime {
   date?: string;
   dateTime?: string;
+  timeZone?: string;
 }
 
 export interface GEventItem {
@@ -37,6 +38,8 @@ export interface GEventItem {
   end?: GEventTime;
   eventType?: string;
   hangoutLink?: string;
+  /** Meet, or a third-party add-on (Zoom, Teams) — its video entry point is the join link. */
+  conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[] };
   colorId?: string;
   /** 'transparent' = shows as Free; absent/'opaque' = Busy. */
   transparency?: string;
@@ -93,6 +96,18 @@ export function calendarRowId(accountId: string, remote: Pick<GCalListItem, 'id'
   return remote.primary ? `acct:${accountId}` : `gcal:${accountId}:${remote.id}`;
 }
 
+/**
+ * The event's join link: Meet's hangoutLink, else a conference add-on's video
+ * entry point, else a location that is nothing but a URL (a pasted Zoom link).
+ */
+export function meetingUrlOf(item: GEventItem): string | undefined {
+  if (item.hangoutLink) return item.hangoutLink;
+  const video = item.conferenceData?.entryPoints?.find((p) => p.entryPointType === 'video')?.uri;
+  if (video) return video;
+  const loc = item.location?.trim() ?? '';
+  return /^https?:\/\/\S+$/.test(loc) ? loc : undefined;
+}
+
 /** null = skip (cancelled, unparseable, or working-location noise). */
 export function mapGoogleEvent(item: GEventItem, calendarId: string): MappedGoogleEvent | null {
   if (item.status === 'cancelled') return null;
@@ -111,7 +126,7 @@ export function mapGoogleEvent(item: GEventItem, calendarId: string): MappedGoog
     endMs: Math.max(end.ms, start.ms),
     allDay: start.allDay,
     eventType: item.eventType === 'outOfOffice' ? 'outOfOffice' : 'default',
-    meetingUrl: item.hangoutLink || undefined,
+    meetingUrl: meetingUrlOf(item),
     color: item.colorId ? EVENT_COLORS[item.colorId] : undefined,
     transparency: item.transparency === 'transparent' ? 'transparent' : undefined,
   };
@@ -172,6 +187,63 @@ export async function patchGoogleEvent(
     },
   );
   if (!res.ok) throw new Error(`Could not update the Google event (HTTP ${res.status})`);
+}
+
+/** A new event created upstream; `addMeet` asks Google to attach a Meet link. */
+export interface GEventInsert {
+  title: string;
+  description?: string;
+  location?: string;
+  startMs: number;
+  endMs: number;
+  allDay: boolean;
+  rrule?: string;
+  transparency?: 'opaque' | 'transparent';
+  addMeet?: boolean;
+}
+
+export function gEventInsertBody(ev: GEventInsert, timeZone: string, requestId: string) {
+  const times = gEventTimes(ev.startMs, ev.endMs, ev.allDay);
+  // Recurring timed events need a zone to expand in; harmless on the rest.
+  if (!ev.allDay) {
+    times.start.timeZone = timeZone;
+    times.end.timeZone = timeZone;
+  }
+  return {
+    summary: ev.title,
+    ...(ev.description ? { description: ev.description } : {}),
+    ...(ev.location ? { location: ev.location } : {}),
+    ...times,
+    ...(ev.rrule ? { recurrence: [`RRULE:${ev.rrule}`] } : {}),
+    ...(ev.transparency === 'transparent' ? { transparency: 'transparent' } : {}),
+    ...(ev.addMeet
+      ? { conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }
+      : {}),
+  };
+}
+
+/**
+ * Create the event on Google. With `addMeet` the Meet link is usually in the
+ * response already; when Google is still provisioning it, the next sync picks
+ * it up.
+ */
+export async function insertGoogleEvent(
+  token: string,
+  remoteCalendarId: string,
+  ev: GEventInsert,
+  timeZone: string,
+  requestId: string,
+): Promise<GEventItem> {
+  const res = await fetch(
+    `${API}/calendars/${encodeURIComponent(remoteCalendarId)}/events?conferenceDataVersion=1`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(gEventInsertBody(ev, timeZone, requestId)),
+    },
+  );
+  if (!res.ok) throw new Error(`Could not create the Google event (HTTP ${res.status})`);
+  return (await res.json()) as GEventItem;
 }
 
 export class SyncTokenExpiredError extends Error {}

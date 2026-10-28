@@ -1,4 +1,4 @@
-import { DoorClosed, X } from 'lucide-react';
+import { DoorClosed, Video, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { DAY_MS, startOfDay } from '../../lib/calendarMonth';
 import { descriptionToHtml } from '../../lib/richText';
@@ -67,6 +67,9 @@ export function EventForm({ draft }: { draft: EventDraft }) {
   const [descInit] = useState(() => descriptionToHtml(draft.description));
   const [description, setDescription] = useState(descInit);
   const [meetingUrl, setMeetingUrl] = useState(draft.meetingUrl);
+  // Meet is on by default for new events; it applies only when the chosen
+  // account syncs with Google (the event is then created there).
+  const [addMeet, setAddMeet] = useState(draft.addMeet ?? !draft.id);
   const [color, setColor] = useState(draft.color ?? COLORS[0]!);
   const [showAs, setShowAs] = useState<'opaque' | 'transparent'>(draft.transparency ?? 'opaque');
   const titleRef = useRef<HTMLInputElement>(null);
@@ -75,6 +78,11 @@ export function EventForm({ draft }: { draft: EventDraft }) {
   // Account choices map onto per-account PRIMARY calendars (id 'acct:<id>') —
   // synced secondary Google calendars are view-only in phase 2.
   const accountCalendars = calendars.filter((c) => c.accountId && c.id.startsWith('acct:'));
+  const onGoogle =
+    !draft.id &&
+    accounts.find((a) => a.id === calendars.find((c) => c.id === calendarId)?.accountId)
+      ?.authType === 'oauth-google';
+  const meet = onGoogle && addMeet && !ooo;
 
   const submit = () => {
     if (!title.trim()) return;
@@ -107,10 +115,11 @@ export function EventForm({ draft }: { draft: EventDraft }) {
       rrule: repeat === 'custom' ? customRule || undefined : presetRrule(repeat, startMs),
       location,
       description,
-      meetingUrl,
+      meetingUrl: meet ? '' : meetingUrl,
+      addMeet: meet,
       color,
       transparency: showAs,
-    });
+    }).then(setError);
   };
 
   const weekday = new Date(combine(date, '00:00')).toLocaleDateString(undefined, { weekday: 'long' });
@@ -225,12 +234,21 @@ export function EventForm({ draft }: { draft: EventDraft }) {
             <DoorClosed size={13} className="text-ink-faint shrink-0" />
             <span className="text-ink-faint text-[11.5px]">Rooms — available after Google sync</span>
           </div>
-          <input value={meetingUrl} onChange={(e) => setMeetingUrl(e.target.value)}
-                 placeholder="Meeting link" className={inputCls} />
+          {onGoogle && !ooo && (
+            <label className="text-ink-muted flex items-center gap-2 text-[12.5px]">
+              <input type="checkbox" checked={addMeet} onChange={(e) => setAddMeet(e.target.checked)}
+                     className="accent-[var(--color-accent)]" aria-label="Add Google Meet link" />
+              <Video size={13} className="text-ink-faint" /> Add Google Meet link
+            </label>
+          )}
+          {!meet && (
+            <input value={meetingUrl} onChange={(e) => setMeetingUrl(e.target.value)}
+                   placeholder="Meeting link" className={inputCls} />
+          )}
         </>
       )}
       <RichTextArea initialHtml={descInit} onChange={setDescription} placeholder="Description" />
-      {!isGoogle && (
+      {!isGoogle && !onGoogle && (
         <div className="flex items-center gap-1.5">
           {COLORS.map((c) => (
             <button key={c} onClick={() => setColor(c)} aria-label={`Color ${c}`}
@@ -243,7 +261,7 @@ export function EventForm({ draft }: { draft: EventDraft }) {
       {error && <p className="text-danger text-[12px]">{error}</p>}
       <button onClick={submit} disabled={!title.trim()}
               className="bg-accent mt-1 rounded-xl py-2 text-[12.5px] font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40">
-        {isGoogle ? 'Save & sync' : draft.id ? 'Save changes' : 'Add event'}
+        {isGoogle ? 'Save & sync' : draft.id ? 'Save changes' : onGoogle ? 'Add & sync' : 'Add event'}
       </button>
     </div>
   );

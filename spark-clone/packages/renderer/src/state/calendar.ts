@@ -31,6 +31,8 @@ export interface EventDraft {
   location: string;
   description: string;
   meetingUrl: string;
+  /** New events on Google calendars: have Google attach a Meet link. */
+  addMeet?: boolean;
   color?: string;
   /** Free/busy shown to other calendars; absent = busy. */
   transparency?: 'opaque' | 'transparent';
@@ -80,7 +82,8 @@ interface CalendarState {
   setCalendarVisible(id: string, visible: boolean): void;
   subscribeCalendar(accountId: string, email: string): Promise<string | null>;
   unsubscribeCalendar(id: string): Promise<string | null>;
-  save(draft: EventDraft): Promise<void>;
+  /** Returns an error message to show, or null on success. */
+  save(draft: EventDraft): Promise<string | null>;
   /** In-place update keeping the event's source (Google events sync upstream). Returns an error to show, or null. */
   patch(args: Commands['calendar:event:patch']['args']): Promise<string | null>;
   remove(id: string): Promise<void>;
@@ -222,7 +225,7 @@ export const useCalendar = create<CalendarState>((set, get) => ({
   },
 
   save: async (draft) => {
-    await api.command('calendar:event:save', {
+    const res = await api.command('calendar:event:save', {
       event: {
         id: draft.id,
         calendarId: draft.calendarId,
@@ -237,10 +240,13 @@ export const useCalendar = create<CalendarState>((set, get) => ({
         meetingUrl: draft.meetingUrl.trim() || undefined,
         color: draft.color,
         transparency: draft.transparency,
+        addMeet: draft.addMeet,
       },
     });
+    if (!res.ok) return res.error ?? 'Could not save the event.';
     set({ rightPane: { kind: 'shortcuts' }, pendingMove: null });
     get().refresh();
+    return null;
   },
   patch: async (args) => {
     const res = await api.command('calendar:event:patch', args);
