@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import type { CalendarEvent } from '@app/shared';
 import { expandEvent } from '../../lib/rrule';
+import { dedupeMirroredEvents } from '../../lib/eventDedupe';
 import { DAY_MS, startOfDay } from '../../lib/calendarMonth';
 import { useCalendar } from '../../state/calendar';
 import { useKanban } from '../../state/kanban';
@@ -45,8 +46,9 @@ export const useNotionVisible = create<{ visible: boolean; toggle(): void }>((se
   toggle: () => set((s) => ({ visible: !s.visible })),
 }));
 
-/** Everything the grids render: stored events expanded for the range, plus
- *  Notion due-dates, sorted all-day-first then by start. */
+/** Everything the grids render: stored events expanded for the range (with
+ *  cross-calendar mirrors hidden), plus Notion due-dates, sorted all-day-first
+ *  then by start. */
 export function useVisibleEvents(rangeStart: number, rangeEnd: number): CalendarEvent[] {
   const stored = useCalendar((s) => s.events);
   return useVisibleFrom(stored, rangeStart, rangeEnd);
@@ -64,9 +66,12 @@ export function useVisibleFrom(
   const notionVisible = useNotionVisible((s) => s.visible);
   return useMemo(() => {
     const expanded = stored.flatMap((e) => expandEvent(e, rangeStart, rangeEnd));
+    // One meeting mirrored into a second calendar (a "Busy" block or the same
+    // invite in two accounts) renders once.
+    const deduped = dedupeMirroredEvents(expanded);
     const merged = notionVisible
-      ? [...expanded, ...notion.filter((e) => e.startMs < rangeEnd && e.endMs > rangeStart)]
-      : expanded;
+      ? [...deduped, ...notion.filter((e) => e.startMs < rangeEnd && e.endMs > rangeStart)]
+      : deduped;
     // A dropped-but-unconfirmed drag renders at its new slot; save persists it,
     // cancel clears pendingMove and the chip snaps back.
     const moved = pendingMove
