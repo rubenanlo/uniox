@@ -9,6 +9,7 @@ import { cn } from '../../lib/utils';
 import { useAccounts } from '../../state/queries';
 import { draftFromEvent, useCalendar } from '../../state/calendar';
 import { EventForm } from './EventForm';
+import { PaneSlide } from './PaneSlide';
 
 const SHORTCUTS: [string, string][] = [
   ['Go to today', 'T'],
@@ -53,7 +54,9 @@ function ShortcutsPanel() {
 
 function whenLabel(e: CalendarEvent): string {
   const day = new Date(e.startMs).toLocaleDateString(undefined, {
-    weekday: 'long', month: 'long', day: 'numeric',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
   });
   if (e.allDay) return `${day} · All day`;
   return `${day} · ${timeLabel(e.startMs)} – ${timeLabel(e.endMs)}`;
@@ -140,8 +143,12 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
       )}
       {event.meetingUrl && (
         <Field label="Meeting">
-          <a href={event.meetingUrl} target="_blank" rel="noreferrer"
-             className="text-accent block truncate font-medium">
+          <a
+            href={event.meetingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-accent block truncate font-medium"
+          >
             {event.meetingUrl}
           </a>
         </Field>
@@ -167,8 +174,12 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
         </div>
       )}
       {event.url && (
-        <a href={event.url} target="_blank" rel="noreferrer"
-           className="text-accent inline-flex items-center gap-1.5 text-[12.5px] font-medium">
+        <a
+          href={event.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent inline-flex items-center gap-1.5 text-[12.5px] font-medium"
+        >
           <ExternalLink size={13} /> Open in Notion
         </a>
       )}
@@ -200,20 +211,21 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
 export function RightPane() {
   const rightPane = useCalendar((s) => s.rightPane);
   const open = useCalendar((s) => s.rightPaneOpen);
-  if (!open) return null;
   return (
-    <aside
-      aria-label="Calendar side panel"
-      className="border-hairline h-full w-[300px] shrink-0 overflow-y-auto border-l"
-    >
-      {rightPane.kind === 'shortcuts' && <ShortcutsPanel />}
-      {rightPane.kind === 'details' && <DetailsPanel event={rightPane.event} />}
-      {rightPane.kind === 'form' && (
-        <EventForm
-          key={`${rightPane.draft.id ?? 'new'}:${rightPane.draft.startMs}`}
-          draft={rightPane.draft}
-        />
-      )}
-    </aside>
+    <PaneSlide open={open} side="right" width={300}>
+      <aside
+        aria-label="Calendar side panel"
+        className="border-hairline h-full w-full overflow-y-auto border-l"
+      >
+        {rightPane.kind === 'shortcuts' && <ShortcutsPanel />}
+        {rightPane.kind === 'details' && <DetailsPanel event={rightPane.event} />}
+        {rightPane.kind === 'form' && (
+          <EventForm
+            key={`${rightPane.draft.id ?? 'new'}:${rightPane.draft.startMs}`}
+            draft={rightPane.draft}
+          />
+        )}
+      </aside>
+    </PaneSlide>
   );
 }
