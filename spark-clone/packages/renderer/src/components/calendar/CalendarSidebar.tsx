@@ -212,15 +212,107 @@ function CalendarSearch({ accountId }: { accountId: string }) {
   );
 }
 
-export function CalendarSidebar({ onAddAccount }: { onAddAccount(): void }) {
-  const open = useCalendar((s) => s.sidebarOpen);
+const ROW = 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px]';
+
+/** Accounts and their calendars with visibility toggles; shared by the
+ *  sidebar and the calendars modal (P). */
+export function CalendarList({
+  onAddAccount,
+  className,
+}: {
+  onAddAccount(): void;
+  className?: string;
+}) {
   const calendars = useCalendar((s) => s.calendars);
   const setVisible = useCalendar((s) => s.setCalendarVisible);
   const { accounts } = useAccounts();
+
+  return (
+    <div className={cn('flex flex-col gap-4', className)}>
+      {accounts.map((a) => {
+        const cals = calendars.filter((c) => c.accountId === a.id);
+        return (
+          <section key={a.id}>
+            <h3 className="text-ink px-2 text-[12.5px] font-semibold">{a.email}</h3>
+            <div className="mt-1 flex flex-col">
+              {cals.map((c) => (
+                <div key={c.id} className={cn(ROW, 'group text-ink-muted hover:bg-sunken/60')}>
+                  <span
+                    className="h-3 w-3 shrink-0 rounded"
+                    style={{ backgroundColor: c.color, opacity: c.visible ? 1 : 0.35 }}
+                  />
+                  <span className={cn('flex-1 truncate', !c.visible && 'opacity-50')}>
+                    {c.name}
+                  </span>
+                  <EyeToggle
+                    on={c.visible}
+                    label={`Toggle ${c.name}`}
+                    onClick={() => setVisible(c.id, !c.visible)}
+                  />
+                  {c.source === 'google' && c.id.startsWith('gcal:') && (
+                    <UnsubButton calendarId={c.id} name={c.name} />
+                  )}
+                </div>
+              ))}
+              {cals.length <= 1 && a.authType !== 'oauth-google' && (
+                <p className="text-ink-faint px-2 py-1 text-[11px]">
+                  Connect Google in Settings to see this account's calendars
+                </p>
+              )}
+              {a.authType === 'oauth-google' && <CalendarSearch accountId={a.id} />}
+            </div>
+          </section>
+        );
+      })}
+      {(() => {
+        const local = calendars.find((c) => c.id === 'local-default');
+        return local ? (
+          <div className={cn(ROW, 'text-ink-muted hover:bg-sunken/60')}>
+            <span
+              className="h-3 w-3 shrink-0 rounded"
+              style={{ backgroundColor: local.color, opacity: local.visible ? 1 : 0.35 }}
+            />
+            <span className={cn('truncate', !local.visible && 'opacity-50')}>{local.name}</span>
+            <EyeToggle
+              on={local.visible}
+              label="Toggle My Calendar"
+              onClick={() => setVisible(local.id, !local.visible)}
+            />
+          </div>
+        ) : null;
+      })()}
+      <button onClick={onAddAccount} className={cn(ROW, 'text-ink-muted hover:bg-sunken/60')}>
+        <Plus size={13} /> Add calendar account
+      </button>
+    </div>
+  );
+}
+
+/** Notion sprint-board toggle (or the hint to connect one). */
+export function NotionCalendarRow({ className }: { className?: string }) {
   const kanban = useKanban();
   const notionVisible = useNotionVisible((s) => s.visible);
   const toggleNotion = useNotionVisible((s) => s.toggle);
-  const row = 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px]';
+
+  return (
+    <div className={className}>
+      {kanban.configured ? (
+        <div className={cn(ROW, 'text-ink-muted')}>
+          <span className="h-3 w-3 shrink-0 rounded" style={{ backgroundColor: '#8b5cf6' }} />
+          <span className="truncate">Sprint board</span>
+          <EyeToggle on={notionVisible} label="Toggle Notion events" onClick={toggleNotion} />
+        </div>
+      ) : (
+        <p className="text-ink-faint px-2 text-[11.5px]">
+          Connect a Notion board in Settings to see due dates here.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function CalendarSidebar({ onAddAccount }: { onAddAccount(): void }) {
+  const open = useCalendar((s) => s.sidebarOpen);
 
   return (
     <PaneSlide open={open} side="left" width={280}>
@@ -233,76 +325,8 @@ export function CalendarSidebar({ onAddAccount }: { onAddAccount(): void }) {
           <Link2 size={13} /> Scheduling
           <Eye size={12} className="text-ink-faint ml-auto" />
         </div>
-        <div className="mt-4 flex flex-col gap-4 px-4">
-          {accounts.map((a) => {
-            const cals = calendars.filter((c) => c.accountId === a.id);
-            return (
-              <section key={a.id}>
-                <h3 className="text-ink px-2 text-[12.5px] font-semibold">{a.email}</h3>
-                <div className="mt-1 flex flex-col">
-                  {cals.map((c) => (
-                    <div key={c.id} className={cn(row, 'group text-ink-muted hover:bg-sunken/60')}>
-                      <span
-                        className="h-3 w-3 shrink-0 rounded"
-                        style={{ backgroundColor: c.color, opacity: c.visible ? 1 : 0.35 }}
-                      />
-                      <span className={cn('flex-1 truncate', !c.visible && 'opacity-50')}>
-                        {c.name}
-                      </span>
-                      <EyeToggle
-                        on={c.visible}
-                        label={`Toggle ${c.name}`}
-                        onClick={() => setVisible(c.id, !c.visible)}
-                      />
-                      {c.source === 'google' && c.id.startsWith('gcal:') && (
-                        <UnsubButton calendarId={c.id} name={c.name} />
-                      )}
-                    </div>
-                  ))}
-                  {cals.length <= 1 && a.authType !== 'oauth-google' && (
-                    <p className="text-ink-faint px-2 py-1 text-[11px]">
-                      Connect Google in Settings to see this account's calendars
-                    </p>
-                  )}
-                  {a.authType === 'oauth-google' && <CalendarSearch accountId={a.id} />}
-                </div>
-              </section>
-            );
-          })}
-          {(() => {
-            const local = calendars.find((c) => c.id === 'local-default');
-            return local ? (
-              <div className={cn(row, 'text-ink-muted hover:bg-sunken/60')}>
-                <span
-                  className="h-3 w-3 shrink-0 rounded"
-                  style={{ backgroundColor: local.color, opacity: local.visible ? 1 : 0.35 }}
-                />
-                <span className={cn('truncate', !local.visible && 'opacity-50')}>{local.name}</span>
-                <EyeToggle
-                  on={local.visible}
-                  label="Toggle My Calendar"
-                  onClick={() => setVisible(local.id, !local.visible)}
-                />
-              </div>
-            ) : null;
-          })()}
-          <button onClick={onAddAccount} className={cn(row, 'text-ink-muted hover:bg-sunken/60')}>
-            <Plus size={13} /> Add calendar account
-          </button>
-        </div>
-        <div className="border-hairline mt-auto border-t px-4 pt-3">
-          {kanban.configured ? (
-            <div className={cn(row, 'text-ink-muted')}>
-              <span className="h-3 w-3 shrink-0 rounded" style={{ backgroundColor: '#8b5cf6' }} />
-              <span className="truncate">Sprint board</span>
-              <EyeToggle on={notionVisible} label="Toggle Notion events" onClick={toggleNotion} />
-            </div>
-          ) : (
-            <p className="text-ink-faint px-2 text-[11.5px]">
-              Connect a Notion board in Settings to see due dates here.
-            </p>
-          )}
-        </div>
+        <CalendarList onAddAccount={onAddAccount} className="mt-4 px-4" />
+        <NotionCalendarRow className="border-hairline mt-auto border-t px-4 pt-3" />
       </aside>
     </PaneSlide>
   );

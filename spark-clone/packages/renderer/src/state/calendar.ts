@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Calendar, CalendarEvent, Commands } from '@app/shared';
 import { api } from '../lib/api';
+import { canEditEvent } from '../lib/eventEdit';
+import { seriesId } from '../lib/rrule';
 import {
   addDays,
   type CalView,
@@ -16,7 +18,13 @@ import {
 export type RightPaneState =
   | { kind: 'shortcuts' }
   | { kind: 'details'; event: CalendarEvent }
-  | { kind: 'form'; draft: EventDraft; returnTo?: RightPaneState };
+  | { kind: 'form'; draft: EventDraft; returnTo?: RightPaneState; slot?: FreeSlot };
+
+/** An open window the Agenda offers for booking. */
+export interface FreeSlot {
+  startMs: number;
+  endMs: number;
+}
 
 export interface EventDraft {
   /** Stored event id when editing; undefined when creating. */
@@ -49,7 +57,8 @@ let refreshSeq = 0;
 
 /** Anchor appropriate for a view, centred on a day. */
 function anchorFor(view: CalView, dayMs: number): number {
-  return view === 'month' ? startOfMonth(dayMs) : view === 'week' ? startOfWeek(dayMs) : startOfDay(dayMs);
+  if (view === 'month') return startOfMonth(dayMs);
+  return view === 'week' ? startOfWeek(dayMs) : startOfDay(dayMs);
 }
 
 interface CalendarState {
@@ -60,7 +69,12 @@ interface CalendarState {
   calendars: Calendar[];
   sidebarOpen: boolean;
   rightPaneOpen: boolean;
+  /** Pane state Month/Week/Day return to; Agenda opens with both panes tucked away. */
+  gridPanes: { sidebar: boolean; right: boolean };
   rightPane: RightPaneState;
+  /** The calendars modal (P): accounts and their calendars, as in the sidebar. */
+  calendarsOpen: boolean;
+  setCalendarsOpen(open: boolean): void;
   /** Drop position of an in-review drag; the grid renders the chip there until saved or cancelled. */
   pendingMove: { id: string; startMs: number; endMs: number } | null;
   setView(view: CalView): void;
@@ -74,6 +88,10 @@ interface CalendarState {
   toggleRightPane(): void;
   openDetails(event: CalendarEvent): void;
   openForm(draft: Partial<EventDraft> & { startMs: number; endMs: number }, returnTo?: RightPaneState): void;
+  /** Open the edit form for an event (no-op when it isn't editable). */
+  editEvent(event: CalendarEvent): void;
+  /** Agenda free slot: open the form for it, an hour long (or the whole slot if shorter). */
+  bookSlot(slot: FreeSlot): void;
   /** Drag drop: show the chip at its new slot and open the form to review/confirm. */
   beginReschedule(event: CalendarEvent, startMs: number, endMs: number): void;
   closePane(): void;
@@ -90,18 +108,36 @@ interface CalendarState {
 }
 
 export const useCalendar = create<CalendarState>((set, get) => ({
-  view: 'week',
-  anchor: startOfWeek(Date.now()),
+  view: 'agenda',
+  anchor: startOfDay(Date.now()),
   cursor: startOfDay(Date.now()),
   events: [],
   calendars: [],
-  sidebarOpen: true,
-  rightPaneOpen: true,
+  sidebarOpen: false,
+  rightPaneOpen: false,
+  gridPanes: { sidebar: true, right: true },
   rightPane: { kind: 'shortcuts' },
+  calendarsOpen: false,
+  setCalendarsOpen: (open) => set({ calendarsOpen: open }),
   pendingMove: null,
 
   setView: (view) => {
-    set((s) => ({ view, anchor: anchorFor(view, s.cursor) }));
+    set((s) => {
+      const next = { view, anchor: anchorFor(view, s.cursor) };
+      if (view === s.view) return next;
+      // Into Agenda: remember the grid's panes and tuck both away (opening an
+      // event still slides the right pane in). Out of it: put them back.
+      if (view === 'agenda')
+        return {
+          ...next,
+          gridPanes: { sidebar: s.sidebarOpen, right: s.rightPaneOpen },
+          sidebarOpen: false,
+          rightPaneOpen: false,
+        };
+      if (s.view === 'agenda')
+        return { ...next, sidebarOpen: s.gridPanes.sidebar, rightPaneOpen: s.gridPanes.right };
+      return next;
+    });
     get().refresh();
   },
   setCursor: (dayMs) => {
@@ -169,20 +205,39 @@ export const useCalendar = create<CalendarState>((set, get) => ({
         returnTo,
       },
     })),
+  editEvent: (event) => {
+    const s = get();
+    if (!canEditEvent(event, s.calendars)) return;
+    // Local: edit the stored series row, not this (possibly future) occurrence —
+    // saving from an occurrence's start would rewrite the series start and
+    // silently drop earlier occurrences. Google ids contain ':' and never
+    // expand, so they must not go through seriesId.
+    const base =
+      event.source === 'local'
+        ? (s.events.find((e) => e.id === seriesId(event.id)) ?? event)
+        : event;
+    s.openForm(draftFromEvent(base), { kind: 'details', event: base });
+  },
+  bookSlot: (slot) => {
+    get().openForm({ startMs: slot.startMs, endMs: Math.min(slot.endMs, slot.startMs + HOUR) });
+    set((s) => (s.rightPane.kind === 'form' ? { rightPane: { ...s.rightPane, slot } } : {}));
+  },
   beginReschedule: (event, startMs, endMs) => {
     get().openForm({ ...draftFromEvent(event), startMs, endMs });
     set({ pendingMove: { id: event.id, startMs, endMs } });
   },
   // A form opened from details (e.g. Edit) returns there on Esc/X; otherwise
-  // fall back to the shortcuts panel. Cancelling also reverts any in-review drag.
+  // fall back to the shortcuts panel (Agenda tucks the pane away instead).
+  // Cancelling also reverts any in-review drag.
   closePane: () =>
-    set((s) => ({
-      pendingMove: null,
-      rightPane:
-        s.rightPane.kind === 'form' && s.rightPane.returnTo
-          ? s.rightPane.returnTo
-          : { kind: 'shortcuts' },
-    })),
+    set((s) => {
+      const back = s.rightPane.kind === 'form' ? s.rightPane.returnTo : undefined;
+      return {
+        pendingMove: null,
+        rightPane: back ?? { kind: 'shortcuts' },
+        ...(!back && s.view === 'agenda' && { rightPaneOpen: false }),
+      };
+    }),
 
   refresh: () => {
     const { view, anchor } = get();

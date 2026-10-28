@@ -1,21 +1,21 @@
-import { ChevronDown, ChevronLeft, ChevronRight, PanelRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PanelLeft, PanelRight } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
-import { rangeForView, viewTitle, type CalView } from '../../lib/calendarMonth';
+import { freeSlots } from '../../lib/agenda';
+import { api } from '../../lib/api';
+import { addDays, rangeForView, startOfDay, viewTitle } from '../../lib/calendarMonth';
+import { expandEvent } from '../../lib/rrule';
 import { cn } from '../../lib/utils';
 import { assistantOwnsEscape } from '../../state/assistant';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useUi } from '../../state/store';
+import { AgendaView } from './AgendaView';
 import { CalendarSearch } from './CalendarSearch';
+import { CalendarsDialog } from './CalendarsDialog';
 import { CalendarSidebar } from './CalendarSidebar';
 import { MonthView } from './MonthView';
 import { RightPane } from './RightPane';
 import { TimeGrid } from './TimeGrid';
-
-const VIEWS: { id: CalView; label: string }[] = [
-  { id: 'month', label: 'Month' },
-  { id: 'week', label: 'Week' },
-  { id: 'day', label: 'Day' },
-];
+import { ViewSwitcher } from './ViewSwitcher';
 
 function inEditable(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
@@ -38,6 +38,17 @@ function openSelect(select: HTMLSelectElement) {
   }
 }
 
+/** F in Agenda: open the form on the next free slot today, else tomorrow. */
+async function bookNextFreeSlot() {
+  const now = Date.now();
+  const today = startOfDay(now);
+  const end = addDays(today, 2);
+  const rows = await api.query('calendar:events', { startMs: today, endMs: end });
+  const events = rows.flatMap((e) => expandEvent(e, today, end));
+  const slot = freeSlots(events, today, now)[0] ?? freeSlots(events, addDays(today, 1))[0];
+  if (slot) useCalendar.getState().bookSlot(slot);
+}
+
 export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
   const s = useCalendar();
   const { view, anchor } = s;
@@ -54,6 +65,16 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
         e.stopPropagation();
       };
 
+      // The calendars modal owns the keyboard while open: Esc or P closes it,
+      // everything else (typing in its people search) passes through.
+      if (st.calendarsOpen) {
+        if (e.key === 'Escape' || (e.key === 'p' && !meta && !e.altKey && !inEditable(e))) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          st.setCalendarsOpen(false);
+        }
+        return;
+      }
       if (meta && e.key === '\\') {
         stop();
         st.toggleSidebar();
@@ -62,6 +83,15 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
       if (meta && e.key === '/') {
         stop();
         st.toggleRightPane();
+        return;
+      }
+      // ⌘J joins the open event's meeting.
+      if (meta && e.key === 'j') {
+        const pane = st.rightPane;
+        if (pane.kind === 'details' && pane.event.meetingUrl) {
+          stop();
+          window.open(pane.event.meetingUrl, '_blank');
+        }
         return;
       }
       // ⌥↓ opens the event form's Account dropdown from anywhere in the form.
@@ -99,6 +129,24 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
           stop();
           st.setView('day');
           return;
+        case 'a':
+          stop();
+          st.setView('agenda');
+          return;
+        case 'p':
+          stop();
+          st.setCalendarsOpen(true);
+          return;
+        case 'e':
+          if (st.rightPane.kind !== 'details') return;
+          stop();
+          st.editEvent(st.rightPane.event);
+          return;
+        case 'f':
+          if (st.view !== 'agenda') return;
+          stop();
+          void bookNextFreeSlot();
+          return;
         case 'Enter':
           if ((e.target as HTMLElement | null)?.closest?.('button, a, input')) return;
           stop();
@@ -120,8 +168,12 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
           stop();
           const dir = e.key === 'ArrowDown' ? 1 : -1;
           if (st.view === 'month') st.moveCursorBy(dir * 7);
-          // Week/Day: arrows scroll the time grid by one hour step (spec §1).
-          else document.querySelector('[data-timegrid]')?.scrollBy({ top: dir * 48 });
+          // Week/Day: arrows scroll the time grid by one hour step (spec §1);
+          // Agenda scrolls its list the same way.
+          else
+            document
+              .querySelector(st.view === 'agenda' ? '[data-agenda-list]' : '[data-timegrid]')
+              ?.scrollBy({ top: dir * 48 });
           return;
         }
         case 'Escape':
@@ -152,31 +204,33 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
   return (
     <div className="flex h-full min-w-0 flex-1 py-10">
       <CalendarSidebar onAddAccount={onAddAccount} />
+      <CalendarsDialog onAddAccount={onAddAccount} />
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* With the TopBar hidden, this header is the window-drag surface; when
             the calendar sidebar is collapsed it also clears the macOS traffic
             lights (same 84px inset the TopBar uses). */}
         <header className={cn('titlebar-drag flex items-center gap-2 px-5 pt-4 pb-3')}>
-          <h1 className="text-ink text-[19px] font-bold tracking-tight">{viewTitle(anchor)}</h1>
+          <button
+            onClick={s.toggleSidebar}
+            aria-label="Toggle calendar sidebar"
+            className={cn(
+              '-ml-1.5 flex h-8 w-8 items-center justify-center rounded-lg',
+              s.sidebarOpen ? 'text-ink' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            <PanelLeft size={15} />
+          </button>
+          <h1 className="text-ink text-[19px] font-bold tracking-tight">
+            {view === 'agenda'
+              ? new Date(anchor).toLocaleDateString(undefined, {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })
+              : viewTitle(anchor)}
+          </h1>
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="border-hairline relative flex h-8 items-center rounded-lg border">
-              <select
-                value={view}
-                onChange={(e) => s.setView(e.target.value as CalView)}
-                aria-label="Calendar view"
-                className="text-ink h-full appearance-none bg-transparent pr-7 pl-3 text-[12.5px] font-medium outline-none"
-              >
-                {VIEWS.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                className="text-ink-faint pointer-events-none absolute right-2"
-              />
-            </div>
+            <ViewSwitcher view={view} onChange={s.setView} />
             <button
               onClick={s.goToday}
               className="border-hairline text-ink-muted hover:bg-sunken hover:text-ink h-8 rounded-lg border px-3 text-[12.5px] font-medium"
@@ -209,7 +263,13 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
             </button>
           </div>
         </header>
-        {view === 'month' ? <MonthView /> : <TimeGrid days={days} />}
+        {view === 'month' ? (
+          <MonthView />
+        ) : view === 'agenda' ? (
+          <AgendaView />
+        ) : (
+          <TimeGrid days={days} />
+        )}
       </div>
       <RightPane />
       <CalendarSearch />

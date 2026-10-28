@@ -51,6 +51,16 @@ export const useNotionVisible = create<{ visible: boolean; toggle(): void }>((se
  *  then by start. */
 export function useVisibleEvents(rangeStart: number, rangeEnd: number): CalendarEvent[] {
   const stored = useCalendar((s) => s.events);
+  return useVisibleFrom(stored, rangeStart, rangeEnd);
+}
+
+/** useVisibleEvents over an explicit set of stored events (e.g. a separate
+ *  query for a span the main range may not cover). */
+export function useVisibleFrom(
+  stored: CalendarEvent[],
+  rangeStart: number,
+  rangeEnd: number,
+): CalendarEvent[] {
   const pendingMove = useCalendar((s) => s.pendingMove);
   const notion = useNotionEvents();
   const notionVisible = useNotionVisible((s) => s.visible);
