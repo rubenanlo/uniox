@@ -101,6 +101,7 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
   // CalendarSidebar is the primary rail there). Every other view keeps the
   // classic sticky rail that `/` expands.
   const autoHide = view === 'home' || view === 'calendar';
+  const clearTrafficLights = view === 'calendar' && navigator.platform.startsWith('Mac');
   const [hover, setHover] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
   const open = hover || focusWithin;
@@ -239,7 +240,16 @@ export function Sidebar({ onAddAccount }: { onAddAccount: () => void }) {
         )}
         aria-label="Mailboxes"
       >
-        <div ref={navRef} onKeyDown={onNavKeyDown} className="flex-1 overflow-x-hidden overflow-y-auto px-2 pt-2.5">
+        <div
+          ref={navRef}
+          onKeyDown={onNavKeyDown}
+          className={cn(
+            'flex-1 overflow-x-hidden overflow-y-auto px-2 pt-2.5',
+            // Calendar hides the TopBar, so the rail starts at the window's top
+            // edge; on macOS drop it below the traffic lights (TopBar is h-11).
+            clearTrafficLights && 'mt-11',
+          )}
+        >
         {/* account switcher */}
         <div
           className={cn(
