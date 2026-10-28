@@ -56,6 +56,8 @@ export interface CalendarEventInput {
   color?: string;
   meetingUrl?: string;
   transparency?: 'opaque' | 'transparent';
+  /** Create-only, Google calendars: have Google attach a Meet link. */
+  addMeet?: boolean;
 }
 
 /**

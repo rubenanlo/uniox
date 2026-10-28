@@ -201,7 +201,10 @@ export interface Commands {
   /** Abort an in-flight `ai:chat` turn. */
   'ai:stop': { args: { id: string }; result: { ok: boolean } };
   /** Create (no id) or update a local calendar event. */
-  'calendar:event:save': { args: { event: CalendarEventInput }; result: { ok: boolean; id: string } };
+  'calendar:event:save': {
+    args: { event: CalendarEventInput };
+    result: { ok: boolean; id: string; error?: string };
+  };
   /** Show/hide a calendar's events everywhere. */
   'calendar:setVisible': { args: { id: string; visible: boolean }; result: { ok: boolean } };
   /** Add another calendar (e.g. a colleague's, by email) to a Google account. */
