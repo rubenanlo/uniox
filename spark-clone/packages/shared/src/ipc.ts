@@ -26,6 +26,8 @@ export interface Queries {
   'accounts:list': { args: undefined; result: Account[] };
   'folders:list': { args: { accountId?: string }; result: Folder[] };
   'threads:list': { args: ThreadQuery; result: ThreadSummary[] };
+  /** Inbox threads from priority senders, newest first; `before` pages back by date. */
+  'threads:priority': { args: { before?: number; limit: number }; result: ThreadSummary[] };
   'thread:messages': { args: { threadId: string }; result: MessageMeta[] };
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };

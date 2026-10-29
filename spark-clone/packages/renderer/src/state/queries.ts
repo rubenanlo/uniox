@@ -227,3 +227,74 @@ export function useSyncStatuses(): Map<string, SyncStatus> {
   });
   return statuses;
 }
+
+const PRIORITY_PAGE = 40;
+
+/**
+ * Priority mail for Home's timeline, newest first, a page at a time.
+ * `loadOlder` walks back one more page; a sync delta re-reads everything
+ * loaded so far in one query, so new mail lands without losing the history
+ * already scrolled through.
+ */
+export function usePriorityTimeline(prioKey: string): {
+  threads: ThreadSummary[];
+  hasMore: boolean;
+  loadOlder: () => void;
+} {
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const loaded = useRef(PRIORITY_PAGE);
+  const busy = useRef(false);
+  const gen = useRef(0);
+
+  const refresh = useCallback(() => {
+    const g = ++gen.current;
+    const limit = loaded.current;
+    void api.query('threads:priority', { limit }).then((t) => {
+      if (gen.current !== g) return;
+      setThreads(t);
+      setHasMore(t.length === limit);
+    });
+    // The priority list is part of the query, so a change re-reads it.
+  }, [prioKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(refresh, [refresh]);
+
+  const loadOlder = useCallback(() => {
+    if (busy.current || !hasMore) return;
+    const last = threads[threads.length - 1];
+    if (!last) return;
+    busy.current = true;
+    const g = gen.current;
+    void api
+      .query('threads:priority', { before: last.lastMessageDate, limit: PRIORITY_PAGE })
+      .then((older) => {
+        busy.current = false;
+        if (gen.current !== g) return;
+        loaded.current += PRIORITY_PAGE;
+        const seen = new Set(threads.map((t) => t.id));
+        setThreads([...threads, ...older.filter((t) => !seen.has(t.id))]);
+        setHasMore(older.length === PRIORITY_PAGE);
+      });
+  }, [threads, hasMore]);
+
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRefresh = useRef(refresh);
+  useEffect(() => {
+    latestRefresh.current = refresh;
+  }, [refresh]);
+  useEffect(
+    () => () => {
+      if (pending.current) clearTimeout(pending.current);
+    },
+    [],
+  );
+  useDelta((e) => {
+    if (e.kind !== 'threads-changed' && e.kind !== 'accounts-changed') return;
+    if (pending.current) return;
+    pending.current = setTimeout(() => {
+      pending.current = null;
+      latestRefresh.current();
+    }, DELTA_COALESCE_MS);
+  });
+  return { threads, hasMore, loadOlder };
+}

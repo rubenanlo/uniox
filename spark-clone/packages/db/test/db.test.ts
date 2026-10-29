@@ -831,6 +831,38 @@ describe('priority outranks gatekeeper screening', () => {
   });
 });
 
+describe('listPriorityThreads', () => {
+  it('pages back through inbox threads a priority sender wrote in', () => {
+    const db = makeDb();
+    setup(db);
+    db.setPrioritySender('acc1', 'carol@partner.example', true);
+    const thread = (id: string, date: number, from: string, folderId = 'f-inbox') => {
+      db.createThread(id, 'acc1', id);
+      db.insertMessage(
+        msg({
+          id: `m-${id}`,
+          threadId: id,
+          uid: date,
+          date,
+          messageIdHdr: `<${id}@x>`,
+          folderId,
+          from: { email: from },
+        }),
+      );
+      db.refreshThreadAggregates(id);
+    };
+    thread('a', 1000, 'carol@partner.example');
+    thread('b', 2000, 'someone@else.example');
+    thread('c', 3000, 'Carol@Partner.example');
+    thread('d', 4000, 'carol@partner.example', 'f-arch');
+    thread('e', 5000, 'alice@dev.local');
+
+    expect(db.listPriorityThreads({ limit: 10 }).map((t) => t.id)).toEqual(['c', 'a']);
+    expect(db.listPriorityThreads({ limit: 1 }).map((t) => t.id)).toEqual(['c']);
+    expect(db.listPriorityThreads({ before: 3000, limit: 10 }).map((t) => t.id)).toEqual(['a']);
+  });
+});
+
 describe('review fixes', () => {
   it('does not index the from_json keys as searchable words', () => {
     const db = makeDb();
