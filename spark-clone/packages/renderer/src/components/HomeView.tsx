@@ -350,7 +350,7 @@ export function HomeView() {
         </button>
       )}
       {/* Centred both ways: the summary on the left, the day rail on the
-          right. Only the rail scrolls when the day outgrows the window. */}
+          right. The rail is a fixed 60% of the window and scrolls back in time. */}
       <div className="relative m-auto grid max-h-full w-full max-w-230 min-h-0 grid-cols-[minmax(0,320px)_minmax(0,1fr)] items-center gap-x-14 px-10 py-12">
         <header className="home-rise">
           <p className="text-ink-faint font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
@@ -383,7 +383,7 @@ export function HomeView() {
 
         <section
           ref={railRef}
-          className="home-rise no-scrollbar flex max-h-[calc(100vh-6rem)] min-h-0 flex-col-reverse overflow-y-auto"
+          className="home-rise no-scrollbar flex h-[60vh] min-h-0 flex-col-reverse overflow-y-auto"
           style={{
             animationDelay: '0.09s',
             // Older mail fades out under the top edge instead of being cut.
