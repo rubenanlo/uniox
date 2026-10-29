@@ -361,6 +361,12 @@ body {
   animation: home-slide-in 0.9s ease both;
   transition: left 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+/* Home's day rail fill, "now" line and rolling percentage: one transform
+   transition per change (the 30s tick), nothing in between. Left off while
+   the window is in the background so changes snap there. */
+.home-glide {
+  transition: transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
 
 /* The kanban card panel reveals from the window's right edge to its width.
    Width (not transform) so nothing paints outside the app frame; the inner

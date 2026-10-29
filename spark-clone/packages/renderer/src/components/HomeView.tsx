@@ -3,13 +3,15 @@ import { KanbanSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { hourOf, useNow, useScheduling } from '../lib/workday';
 import { api } from '../lib/api';
-import { cn } from '../lib/utils';
+import { cn, isPriorityThread } from '../lib/utils';
 import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/homePriority';
 import { kanbanNewCount, useKanban } from '../state/kanban';
-import { useAccounts, useThreads } from '../state/queries';
+import { useAccounts, usePriorityTimeline } from '../state/queries';
 import { useUi } from '../state/store';
+import { useWindowActive } from '../lib/useWindowActive';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
+import { RollingNumber } from './RollingNumber';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -20,55 +22,131 @@ function clockTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Where the timeline's track sits: past the 44px gutter and the 8px gap. */
+const TRACK_X = 52;
+
 /**
- * One hour of the day rail: the hour label in the gutter, then a stretch of
- * rail (lit in the daylight gradient once lived) carrying whatever priority
- * mail arrived in that hour.
+ * One hour of the timeline that holds priority mail: the hour label in the
+ * gutter, then the cards that arrived in it. The track itself is drawn once
+ * per day by RailDay, so rows stay plain layout.
  */
 function RailRow({
   label,
-  lit,
   current,
   children,
 }: {
   label: string;
-  lit: boolean;
   current?: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-11 grid-cols-[44px_1fr] gap-x-2">
+    <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-2">
       <span
         className={cn(
-          'pt-px text-right text-[11px] tabular-nums',
+          'pt-3 text-right text-[11px] tabular-nums',
           current ? 'text-ink font-semibold' : 'text-ink-faint',
         )}
       >
         {label}
       </span>
-      <div
-        className={cn('border-l-2 pb-3 pl-5', !lit && 'border-hairline')}
-        style={
-          lit
-            ? { borderImage: 'linear-gradient(var(--color-aqua), var(--color-azure)) 1' }
-            : undefined
-        }
-      >
-        <div className="flex flex-col gap-2">{children}</div>
-      </div>
+      <div className="flex min-w-0 flex-col gap-2 pb-3 pl-5">{children}</div>
     </div>
   );
 }
 
-/** The "now" line across the rail, its dot sitting on the rail itself. */
-function NowLine({ label, ref }: { label: string; ref: React.Ref<HTMLDivElement> }) {
+/**
+ * A day on the timeline: its name, then its hours. Today's stretch of track
+ * is lit and ends in the "now" line; earlier days sit on a plain hairline.
+ */
+function RailDay({
+  label,
+  today,
+  children,
+}: {
+  label: string;
+  today: boolean;
+  children?: React.ReactNode;
+}) {
   return (
-    <div ref={ref} className="-ml-[25px] flex items-center gap-2 py-1" aria-label={`Now, ${label}`}>
+    <div className="relative">
+      <span
+        aria-hidden
+        className={cn('absolute top-7 bottom-0 w-0.5', !today && 'bg-hairline')}
+        style={{
+          left: TRACK_X,
+          background: today ? 'linear-gradient(var(--color-aqua), var(--color-azure))' : undefined,
+        }}
+      />
+      <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-2 pb-2">
+        <span />
+        <p className="text-ink-faint pl-5 font-mono text-[10.5px] font-semibold tracking-[0.16em] uppercase">
+          {label}
+        </p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function RailNow({ label }: { label: string }) {
+  return (
+    <div
+      className="relative flex h-5 items-center gap-2"
+      style={{ marginLeft: TRACK_X - 3 }}
+      aria-label={`Now, ${label}`}
+    >
       <span className="bg-ink h-2 w-2 shrink-0 rounded-full" />
       <span className="bg-ink/60 h-px flex-1" />
       <span className="text-ink text-[11px] font-semibold tabular-nums">Now · {label}</span>
     </div>
   );
+}
+
+const DAY_MS = 86_400_000;
+
+function startOfDay(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/** "Today", "Yesterday", "Monday" within the week, then "Mon, Oct 20". */
+function dayLabel(dayStart: number, todayStart: number): string {
+  const back = Math.round((todayStart - dayStart) / DAY_MS);
+  if (back === 0) return 'Today';
+  if (back === 1) return 'Yesterday';
+  const d = new Date(dayStart);
+  if (back < 7) return d.toLocaleDateString([], { weekday: 'long' });
+  return d.toLocaleDateString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: d.getFullYear() === new Date(todayStart).getFullYear() ? undefined : 'numeric',
+  });
+}
+
+type TimelineDay = {
+  start: number;
+  hours: { hour: number; mail: ThreadSummary[] }[];
+};
+
+/** Group mail (any order) into days and hours, oldest first, today always last. */
+function buildTimeline(mail: ThreadSummary[], todayStart: number): TimelineDay[] {
+  const byDay = new Map<number, Map<number, ThreadSummary[]>>([[todayStart, new Map()]]);
+  for (const t of [...mail].sort((a, b) => arrivedAt(a) - arrivedAt(b))) {
+    const at = arrivedAt(t);
+    // Anything stamped after now (clock skew) still belongs to today.
+    const day = Math.min(startOfDay(at), todayStart);
+    const hour = day === todayStart && at > todayStart + DAY_MS ? 23 : new Date(at).getHours();
+    let hours = byDay.get(day);
+    if (!hours) byDay.set(day, (hours = new Map()));
+    hours.set(hour, [...(hours.get(hour) ?? []), t]);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([start, hours]) => ({
+      start,
+      hours: [...hours.entries()].sort(([a], [b]) => a - b).map(([hour, m]) => ({ hour, mail: m })),
+    }));
 }
 
 function RailMail({
@@ -170,47 +248,32 @@ export function HomeView() {
   const setKanbanOpen = useUi((s) => s.setKanbanOpen);
   const kanban = useKanban();
   const newRequests = kanbanNewCount(kanban.board, kanban.seenAt);
-  const { threads } = useThreads({ view: 'inbox', accountId: undefined, search: '' });
+  const timeline = usePriorityTimeline(priorityEmails.join(','));
 
   const start = scheduling.morningHour;
   const end = Math.max(scheduling.eveningHour, start + 1);
   const h = hourOf(now);
 
   const prio = new Set(priorityEmails.map((e) => e.toLowerCase()));
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  // Priority mail that actually arrived since the app was last open (the
-  // persisted last-active baseline), in arrival order. Keyed off the newest
-  // message from someone else, so our own drafts and replies do not resurface
-  // an old thread, and rows name the person who really wrote.
-  const fresh = freshPriorityThreads(threads, prio, baseline);
+  const startOfToday = startOfDay(now.getTime());
+  // Unread priority mail that actually arrived since the app was last open
+  // (the persisted last-active baseline). Keyed off the newest message from
+  // someone else, so our own drafts and replies do not resurface an old thread.
+  const fresh = freshPriorityThreads(timeline.threads, prio, baseline);
   const newCount = fresh.filter((t) => t.unreadCount > 0).length;
-  // Hang each email on the rail at the hour it arrived. Anything from before
-  // the workday (or an earlier day) collects under "Earlier", anything after it
-  // under the closing hour; those two rows only show when they hold something.
-  const railHour = (t: ThreadSummary) => {
-    const at = arrivedAt(t);
-    return at < startOfToday ? -Infinity : hourOf(new Date(at));
-  };
-  const rows: { key: string; label: string; from: number; to: number }[] = [
-    { key: 'earlier', label: 'Earlier', from: -Infinity, to: start },
-  ];
-  for (let t = start; t < end; t += 1)
-    rows.push({ key: String(t), label: hm(t), from: t, to: t + 1 });
-  rows.push({ key: 'later', label: hm(end), from: end, to: Infinity });
-  const railRows = rows
-    .map((r) => ({
-      ...r,
-      mail: fresh.filter((t) => railHour(t) >= r.from && railHour(t) < r.to),
-      current: h >= r.from && h < r.to,
-    }))
-    .filter((r) => (r.key !== 'earlier' && r.key !== 'later') || r.mail.length > 0 || r.current);
+  // The timeline is no longer the workday grid: every priority email sits at
+  // the hour it arrived, grouped by day, with today (and "now") at the bottom
+  // and older days above it, loaded a page at a time as you scroll up.
+  const days = buildTimeline(
+    timeline.threads.filter((t) => isPriorityThread(t, prio)),
+    startOfToday,
+  );
   const nowLabel = now.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
   const pct = Math.round(clamp01((h - start) / (end - start)) * 100);
-
   const accountName = (id: string) => {
     const a = accounts.find((x) => x.id === id);
     return a?.displayName || a?.email || 'Account';
@@ -229,16 +292,27 @@ export function HomeView() {
 
   const dateLine = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // In a short window the rail scrolls; keep "now" in view as rows arrive.
+  const active = useWindowActive();
+  // The rail scrolls bottom-up (flex-col-reverse), so it opens on "now" and
+  // keeps its place while older pages are added above. A sentinel at the top
+  // asks for the next page once it comes within reach.
   const railRef = useRef<HTMLElement>(null);
-  const nowRef = useRef<HTMLDivElement>(null);
-  const railSize = fresh.length;
+  const olderRef = useRef<HTMLDivElement>(null);
+  const { hasMore, loadOlder } = timeline;
+  const loadedCount = timeline.threads.length;
   useEffect(() => {
     const rail = railRef.current;
-    const line = nowRef.current;
-    if (!rail || !line || rail.scrollHeight <= rail.clientHeight) return;
-    rail.scrollTop = line.offsetTop - rail.offsetTop - rail.clientHeight / 2;
-  }, [railSize, kanbanOpen]);
+    const sentinel = olderRef.current;
+    if (!rail || !sentinel || !hasMore) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadOlder();
+      },
+      { root: rail, rootMargin: '240px 0px 0px 0px' },
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [hasMore, loadOlder, loadedCount, kanbanOpen]);
 
   if (kanbanOpen) {
     return <KanbanView board={kanban.board} onBack={() => setKanbanOpen(false)} />;
@@ -294,7 +368,7 @@ export function HomeView() {
           <p className="text-ink-muted mt-1.5 text-[14px]">{subline}</p>
           <div className="mt-12">
             <div className="text-ink text-[56px] leading-none font-bold tracking-tight tabular-nums">
-              {pct}
+              <RollingNumber value={pct} glide={active} />
               <span className="text-ink-faint text-[24px]">%</span>
             </div>
             <p className="text-ink-faint mt-2 font-mono text-[11px] font-semibold tracking-[0.16em] uppercase">
@@ -309,36 +383,50 @@ export function HomeView() {
 
         <section
           ref={railRef}
-          className="home-rise no-scrollbar max-h-[calc(100vh-6rem)] min-h-0 overflow-y-auto"
-          style={{ animationDelay: '0.09s' }}
-          aria-label="Workday and priority mail"
+          className="home-rise no-scrollbar flex max-h-[calc(100vh-6rem)] min-h-0 flex-col-reverse overflow-y-auto"
+          style={{
+            animationDelay: '0.09s',
+            // Older mail fades out under the top edge instead of being cut.
+            maskImage: 'linear-gradient(transparent, black 40px)',
+          }}
+          aria-label="Priority mail timeline"
         >
-          {railRows.map((r) => (
-            <RailRow key={r.key} label={r.label} lit={r.to <= h || r.current} current={r.current}>
-              {r.mail
-                .filter((t) => !r.current || railHour(t) <= h)
-                .map((t) => (
-                  <RailMail
-                    key={t.id}
-                    thread={t}
-                    accountName={accountName(t.accountId)}
-                    showAccount={showAccount}
-                  />
-                ))}
-              {r.current && <NowLine ref={nowRef} label={nowLabel} />}
-              {r.current &&
-                r.mail
-                  .filter((t) => railHour(t) > h)
-                  .map((t) => (
-                    <RailMail
-                      key={t.id}
-                      thread={t}
-                      accountName={accountName(t.accountId)}
-                      showAccount={showAccount}
-                    />
+          <div className="flex flex-col gap-4 pt-8">
+            <div ref={olderRef} className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-2">
+              <span />
+              <p className="text-ink-faint pl-5 text-[11.5px]">
+                {hasMore
+                  ? 'Loading earlier mail…'
+                  : loadedCount > 0
+                    ? 'That’s everything from your priority senders'
+                    : 'No priority mail yet'}
+              </p>
+            </div>
+            {days.map((d) => {
+              const today = d.start === startOfToday;
+              return (
+                <RailDay key={d.start} label={dayLabel(d.start, startOfToday)} today={today}>
+                  {d.hours.map((r) => (
+                    <RailRow
+                      key={r.hour}
+                      label={hm(r.hour)}
+                      current={today && r.hour === Math.floor(h)}
+                    >
+                      {r.mail.map((t) => (
+                        <RailMail
+                          key={t.id}
+                          thread={t}
+                          accountName={accountName(t.accountId)}
+                          showAccount={showAccount}
+                        />
+                      ))}
+                    </RailRow>
                   ))}
-            </RailRow>
-          ))}
+                  {today && <RailNow label={nowLabel} />}
+                </RailDay>
+              );
+            })}
+          </div>
         </section>
       </div>
     </div>
