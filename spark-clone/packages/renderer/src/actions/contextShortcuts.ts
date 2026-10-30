@@ -30,6 +30,13 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
+    section: 'Home',
+    rows: [
+      { label: 'Walk priority emails', keys: [['↑'], ['↓']] },
+      { label: 'Open the focused email', keys: [['↩']] },
+    ],
+  },
+  {
     section: 'New senders',
     rows: [
       { label: 'Step up into the cards (from the first email)', keys: [['↑']] },
@@ -60,6 +67,7 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     rows: [
       { label: 'Send', keys: [['⌘', '↩']] },
       { label: 'Close (asks before discarding)', keys: [['Esc']] },
+      { label: 'Open in its own window', keys: [['⇧', '⌘', 'O']] },
       { label: 'Insert link', keys: [['⇧', '⌘', 'K']] },
       { label: 'Bold / Italic / Underline', keys: [['⌘', 'B'], ['⌘', 'I'], ['⌘', 'U']] },
       { label: 'Go to To / Cc / Bcc', keys: [['⌘', '1'], ['⌘', '2'], ['⌘', '3']] },

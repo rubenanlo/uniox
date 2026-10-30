@@ -14,7 +14,7 @@ const IDLE_OPACITY = 0.45;
  * https://fontawesome.com/license). Both layers ride currentColor — the
  * duotone back layer at 40% — so the accent token colors it in both themes.
  */
-function RobotIcon({ size = 26 }: { size?: number }) {
+export function RobotIcon({ size = 26 }: { size?: number }) {
   return (
     <svg viewBox="0 0 640 640" width={size} height={size} fill="currentColor" aria-hidden>
       <path

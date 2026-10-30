@@ -5,6 +5,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   net,
   Notification,
   powerMonitor,
@@ -27,9 +28,11 @@ import {
   type Account,
   type AccountConfig,
   type AiMessage,
+  type ComposerWindowState,
   type DeltaEvent,
   type MailtoDraft,
   type NotifySound,
+  type OutgoingDraft,
   type Task,
 } from '@app/shared';
 import { AiService } from './ai';
@@ -199,7 +202,9 @@ function buildMenu(): void {
         {
           label: 'Undo',
           accelerator: 'CmdOrCtrl+Z',
-          click: () => mainWindow?.webContents.send('triage:undo'),
+          // The focused window: a popped-out composer needs ⌘Z in its editor.
+          click: () =>
+            (BrowserWindow.getFocusedWindow() ?? mainWindow)?.webContents.send('triage:undo'),
         },
         { type: 'separator' },
         { role: 'cut' },
@@ -252,6 +257,111 @@ function applyAppIcon(): void {
   if (process.platform === 'darwin') app.dock?.setIcon(image);
 }
 
+const RENDERER_PREFS = {
+  preload: join(__dirname, '../preload/index.js'),
+  contextIsolation: true,
+  sandbox: true,
+  nodeIntegration: false,
+  spellcheck: true,
+} as const;
+
+/** Links leave the app through openExternalGated; the window itself never navigates. */
+function guardNavigation(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalGated(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    const current = win.isDestroyed() ? '' : win.webContents.getURL();
+    if (url !== current) {
+      event.preventDefault();
+      openExternalGated(url);
+    }
+  });
+}
+
+/** Load the renderer; `hash` picks a standalone surface (e.g. `composer`). */
+function loadRenderer(win: BrowserWindow, hash?: string): void {
+  if (isDev) {
+    const url = process.env['ELECTRON_RENDERER_URL']!;
+    void win.loadURL(hash ? `${url}#${hash}` : url);
+  } else {
+    void win.loadFile(join(__dirname, '../renderer/index.html'), hash ? { hash } : undefined);
+  }
+}
+
+/** Popped-out composer windows and the draft each opens with, by webContents id. */
+const composerWindows = new Map<number, ComposerWindowState>();
+
+/**
+ * A composer in its own window, so the inbox stays free to browse while a
+ * reply is half-written. It loads the same renderer (`#composer`), which asks
+ * for its draft with `composer:window-state`. Opens a little off-center over the
+ * window it came from, so the inbox still shows beside it.
+ */
+function openComposerWindow(popped: ComposerWindowState, from: BrowserWindow | null): void {
+  const icon = resolveIconPath();
+  const width = 760;
+  const height = 720;
+  const anchor = from && !from.isDestroyed() ? from.getBounds() : null;
+  const win = new BrowserWindow({
+    width,
+    height,
+    minWidth: 480,
+    minHeight: 360,
+    ...(anchor
+      ? {
+          x: Math.round(anchor.x + (anchor.width - width) / 2 + 40),
+          y: Math.round(anchor.y + Math.max(0, (anchor.height - height) / 2) + 24),
+        }
+      : {}),
+    title: composerTitle(popped),
+    ...(icon ? { icon } : {}),
+    show: false,
+    // Matches --color-surface, so nothing flashes before the page paints.
+    backgroundColor: windowLooksDark(popped.theme) ? '#1e1e21' : '#ffffff',
+    titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
+    // centered in the composer header (py-2.5 + 20px row)
+    trafficLightPosition: { x: 16, y: 13 },
+    webPreferences: RENDERER_PREFS,
+  });
+  const id = win.webContents.id;
+  composerWindows.set(id, popped);
+  win.on('closed', () => composerWindows.delete(id));
+  win.once('ready-to-show', () => win.show());
+  guardNavigation(win);
+  loadRenderer(win, 'composer');
+}
+
+function composerTitle({ state }: ComposerWindowState): string {
+  const subject = state.restore?.subject.trim() || state.subject?.trim();
+  const kind =
+    state.mode === 'new'
+      ? 'New email'
+      : state.mode === 'forward'
+        ? 'Forward'
+        : state.mode === 'edit-draft'
+          ? 'Edit draft'
+          : 'Reply';
+  return subject ? `${kind} — ${subject}` : kind;
+}
+
+function windowLooksDark(theme: ComposerWindowState['theme']): boolean {
+  return theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors);
+}
+
+/**
+ * Run a popped-out composer's send in the main window, which shows the Undo
+ * Send toast; with no main window listening, send straight away.
+ */
+function sendFromComposerWindow(draft: OutgoingDraft): Promise<unknown> | void {
+  if (mainWindow && rendererListening) {
+    mainWindow.webContents.send('delta', { kind: 'send-draft', draft });
+    return;
+  }
+  return bridge!.enqueueTask({ type: 'send-draft', draft });
+}
+
 function createWindow(): void {
   const icon = resolveIconPath();
   mainWindow = new BrowserWindow({
@@ -264,32 +374,11 @@ function createWindow(): void {
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
     // center the traffic lights in the 44px title bar (TopBar h-11)
     trafficLightPosition: { x: 16, y: 16 },
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      spellcheck: true,
-    },
+    webPreferences: RENDERER_PREFS,
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    openExternalGated(url);
-    return { action: 'deny' };
-  });
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const current = mainWindow?.webContents.getURL() ?? '';
-    if (url !== current) {
-      event.preventDefault();
-      openExternalGated(url);
-    }
-  });
-
-  if (isDev) {
-    void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']!);
-  } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-  }
+  guardNavigation(mainWindow);
+  loadRenderer(mainWindow);
   // A reload (or the first load) remounts the renderer; until it asks for
   // `mailto:pending` again, links must be parked rather than sent. Only a
   // main-frame document navigation counts: did-start-loading also fires for
@@ -350,7 +439,8 @@ function broadcastDelta(event: DeltaEvent): void {
   // Mail notifications stay quiet while the app is focused (you're looking at
   // the inbox); meeting alerts always show — being in the app is exactly when
   // you need the 10-minute nudge.
-  const wantsBanner = event.kind === 'notify' && (event.category === 'event' || !mainWindow?.isFocused());
+  const wantsBanner =
+    event.kind === 'notify' && (event.category === 'event' || !BrowserWindow.getFocusedWindow());
   if (event.kind === 'notify' && Notification.isSupported() && wantsBanner) {
     void (async () => {
       const sound = await notifySound();
@@ -445,6 +535,9 @@ function registerIpc(): void {
       pendingMailto = null;
       return draft;
     }
+    if (channel === 'composer:window-state') {
+      return composerWindows.get(event.sender.id) ?? null;
+    }
     if (channel === 'mailto:is-default') {
       return app.isDefaultProtocolClient('mailto', ...protocolClientArgs());
     }
@@ -465,6 +558,21 @@ function registerIpc(): void {
         return ok
           ? { ok: true }
           : { ok: false, error: 'The system did not accept Uniox as the mail app' };
+      }
+      case 'composer:pop-out': {
+        openComposerWindow(args as ComposerWindowState, BrowserWindow.fromWebContents(event.sender));
+        return { ok: true };
+      }
+      case 'composer:send': {
+        await sendFromComposerWindow((args as { draft: OutgoingDraft }).draft);
+        return { ok: true };
+      }
+      case 'composer:notice': {
+        const { message } = args as { message: string };
+        if (mainWindow && rendererListening) {
+          mainWindow.webContents.send('delta', { kind: 'toast', message });
+        }
+        return { ok: true };
       }
       case 'ai:config':
         return ai!.config(args as { key?: string; model?: string });
@@ -775,7 +883,9 @@ void app.whenReady().then(() => {
   if (launchMailto) openMailto(launchMailto);
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    // A popped-out composer may be the only window left; the dock still
+    // brings the inbox back.
+    if (!mainWindow) createWindow();
   });
 });
 

@@ -14,6 +14,7 @@ import {
   Maximize2,
   Minimize2,
   Paperclip,
+  SquareArrowOutUpRight,
   Send,
   TextQuote,
   Trash2,
@@ -22,7 +23,13 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { Address, OutgoingAttachment, OutgoingDraft, Template } from '@app/shared';
+import type {
+  Address,
+  ComposerState,
+  OutgoingAttachment,
+  OutgoingDraft,
+  Template,
+} from '@app/shared';
 import { api } from '../../lib/api';
 import {
   registerComposerAccount,
@@ -34,19 +41,20 @@ import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
 import { normalizeSignatureHtml, signatureText } from '../../lib/signature';
 import { fmtWake } from '../../lib/schedule';
-import { cn, formatSize } from '../../lib/utils';
+import { sendWithUndo } from '../../lib/sendDraft';
+import { cn, formatSize, isMac } from '../../lib/utils';
 import { cancelAvailabilityCheck, useComposerTimes } from '../../state/availability';
 import { useZonePrompt } from '../../state/contactZones';
 import { useAccounts, useTemplates } from '../../state/queries';
-import { useUi, type ComposerState } from '../../state/store';
+import { useUi } from '../../state/store';
 import { SchedulePicker } from '../SchedulePicker';
 import { Keycaps } from '../ui/Keycap';
 import { useTimesCalendarOpen } from '../reading/TimesCalendar';
+import { assistantOwnsEscape } from '../../state/assistant';
+import { AssistantChip, assistantChipOwnsEscape } from './AssistantChip';
 import { AvailabilityChecking } from './AvailabilityChecking';
 import { SignaturePreview } from './SignaturePreview';
 import { TimesHoverBar } from './TimesHoverBar';
-
-const UNDO_SEND_MS = 5000;
 
 function parseAddresses(raw: string): Address[] {
   return raw
@@ -180,8 +188,28 @@ function signatureBlock(html: string): string {
   return html ? `<br><div class="uniox-signature">--&nbsp;<br>${html}</div>` : '';
 }
 
-export function Composer({ state }: { state: ComposerState }) {
-  const closeComposer = useUi((s) => s.closeComposer);
+/**
+ * `windowed`: the composer fills its own popped-out window (ComposerWindow)
+ * rather than floating over the inbox; finishing the email closes the window.
+ */
+export function Composer({ state, windowed = false }: { state: ComposerState; windowed?: boolean }) {
+  const closeInline = useUi((s) => s.closeComposer);
+  // Set right before a deliberate close, so the window's unload guard lets it go.
+  const closingRef = useRef(false);
+  const closeComposer = useCallback(() => {
+    if (!windowed) return closeInline();
+    closingRef.current = true;
+    window.close();
+  }, [windowed, closeInline]);
+  /** A closing message: a toast here, or in the main window once this one closes. */
+  const notify = useCallback(
+    (message: string) => {
+      if (windowed) void api.command('composer:notice', { message });
+      else toast(message);
+    },
+    [windowed],
+  );
+  const restore = state.restore;
   const { accounts, loaded: accountsLoaded } = useAccounts();
   const [accountId, setAccountId] = useState(state.accountId);
   const account = accounts.find((a) => a.id === accountId) ?? accounts[0];
@@ -229,29 +257,33 @@ export function Composer({ state }: { state: ComposerState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [to, setTo] = useState(initialRecipients.to);
-  const [cc, setCc] = useState(initialRecipients.cc);
-  const [showCcBcc, setShowCcBcc] = useState(!!initialRecipients.cc || !!state.bcc?.length);
+  const [to, setTo] = useState(restore?.to ?? initialRecipients.to);
+  const [cc, setCc] = useState(restore?.cc ?? initialRecipients.cc);
+  const [showCcBcc, setShowCcBcc] = useState(
+    restore?.showCcBcc ?? (!!initialRecipients.cc || !!state.bcc?.length),
+  );
 
   // Accounts load async, so the memo above can run before they arrive and
   // leave the user's own address in To. Re-derive once they load — but only
   // while the fields still hold the auto-computed values, never over edits.
   const autoRecipientsRef = useRef(initialRecipients);
   useEffect(() => {
-    if (!accountsLoaded || state.mode !== 'reply-all') return;
+    if (!accountsLoaded || state.mode !== 'reply-all' || restore) return;
     const prev = autoRecipientsRef.current;
     const corrected = replyAllFields(new Set(accounts.map((a) => a.email.toLowerCase())));
     autoRecipientsRef.current = corrected;
     setTo((current) => (current === prev.to ? corrected.to : current));
     setCc((current) => (current === prev.cc ? corrected.cc : current));
     if (corrected.cc) setShowCcBcc(true);
-  }, [accountsLoaded, accounts, state.mode, replyAllFields]);
-  const [bcc, setBcc] = useState(state.mode === 'new' ? formatAddresses(state.bcc) : '');
-  const [subject, setSubject] = useState(
-    state.subject ? replySubject(state.mode, state.subject) : '',
+  }, [accountsLoaded, accounts, state.mode, replyAllFields, restore]);
+  const [bcc, setBcc] = useState(
+    restore?.bcc ?? (state.mode === 'new' ? formatAddresses(state.bcc) : ''),
   );
-  const [attachments, setAttachments] = useState<OutgoingAttachment[]>([]);
-  const [quotedHtml, setQuotedHtml] = useState('');
+  const [subject, setSubject] = useState(
+    restore?.subject ?? (state.subject ? replySubject(state.mode, state.subject) : ''),
+  );
+  const [attachments, setAttachments] = useState<OutgoingAttachment[]>(restore?.attachments ?? []);
+  const [quotedHtml, setQuotedHtml] = useState(restore?.quotedHtml ?? '');
   const [sending, setSending] = useState(false);
   const [showSendLater, setShowSendLater] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -280,8 +312,8 @@ export function Composer({ state }: { state: ComposerState }) {
       }),
       Placeholder.configure({ placeholder: 'Write your message…' }),
     ],
-    content: '',
-    autofocus: state.mode === 'new' ? false : true,
+    content: restore?.bodyHtml ?? '',
+    autofocus: restore ? 'end' : state.mode === 'new' ? false : true,
   });
 
   // Expose the editor to the assistant orb (rewrite / translate / AI reply).
@@ -313,7 +345,7 @@ export function Composer({ state }: { state: ComposerState }) {
 
   // Editing a stored draft: load its saved body into the editor.
   useEffect(() => {
-    if (state.mode !== 'edit-draft' || !state.draftMessage || !editor) return;
+    if (state.mode !== 'edit-draft' || !state.draftMessage || !editor || restore) return;
     void api.query('message:body', { messageId: state.draftMessage.id }).then((body) => {
       if (!body) return;
       const html = body.html ?? `<pre>${(body.text ?? '').replace(/</g, '&lt;')}</pre>`;
@@ -325,7 +357,7 @@ export function Composer({ state }: { state: ComposerState }) {
 
   // Pull the original body for the quote block on reply/forward.
   useEffect(() => {
-    if (!state.replyTo) return;
+    if (!state.replyTo || restore) return;
     void api.query('message:body', { messageId: state.replyTo.id }).then((body) => {
       if (!body) return;
       const meta = `On ${new Date(state.replyTo!.date).toLocaleString()}, ${
@@ -334,18 +366,18 @@ export function Composer({ state }: { state: ComposerState }) {
       const inner = body.html ?? `<pre>${(body.text ?? '').replace(/</g, '&lt;')}</pre>`;
       setQuotedHtml(`<p></p><p style="color:#777">${meta}</p><blockquote>${inner}</blockquote>`);
     });
-  }, [state.replyTo]);
+  }, [state.replyTo, restore]);
 
   useEffect(() => {
-    if (state.mode === 'new') toRef.current?.focus();
-  }, [state.mode]);
+    if (state.mode === 'new' && !restore) toRef.current?.focus();
+  }, [state.mode, restore]);
 
   // Per-account signature (Settings → Signatures), shown under the message
   // and following the From account. It stays outside the editor so pasted
   // layouts (tables, fonts, images) survive. Skipped when editing a draft:
   // its body already carries any signature.
   const [signatures, setSignatures] = useState<Record<string, string>>({});
-  const [signatureRemoved, setSignatureRemoved] = useState(false);
+  const [signatureRemoved, setSignatureRemoved] = useState(restore?.signatureRemoved ?? false);
   useEffect(() => {
     if (state.mode === 'edit-draft') return;
     void api.query('signatures:list', undefined).then((sigs) => {
@@ -451,8 +483,8 @@ export function Composer({ state }: { state: ComposerState }) {
     if (!draft) return;
     closeComposer();
     void api.command('task:enqueue', { type: 'save-draft', draft });
-    toast('Draft saved');
-  }, [buildLooseDraft, closeComposer]);
+    notify('Draft saved');
+  }, [buildLooseDraft, closeComposer, notify]);
 
   /** Delete = the email is gone: editing a stored draft removes it from Drafts too. */
   const discardDraft = useCallback(() => {
@@ -463,50 +495,104 @@ export function Composer({ state }: { state: ComposerState }) {
         accountId: state.draftMessage.accountId,
         messageId: state.draftMessage.id,
       });
-      toast('Draft deleted');
+      notify('Draft deleted');
     }
-  }, [closeComposer, state]);
+  }, [closeComposer, notify, state]);
 
   /**
    * Closing with content asks Delete / Save draft (Spark behavior); an empty
    * composer just closes.
    */
-  const requestClose = useCallback(() => {
-    const hasContent =
+  const hasContent = useCallback(
+    () =>
       to.trim() !== '' ||
       cc.trim() !== '' ||
       bcc.trim() !== '' ||
       subject.trim() !== '' ||
       attachments.length > 0 ||
-      (editor?.getText().trim() ?? '') !== '';
-    if (hasContent) setConfirmClose(true);
+      (editor?.getText().trim() ?? '') !== '',
+    [to, cc, bcc, subject, attachments, editor],
+  );
+  const requestClose = useCallback(() => {
+    if (hasContent()) setConfirmClose(true);
     else closeComposer();
-  }, [to, cc, bcc, subject, attachments, editor, closeComposer]);
+  }, [hasContent, closeComposer]);
+
+  // The window's own close button (or ⌘W) asks the same Save / Delete
+  // question instead of dropping the draft.
+  useEffect(() => {
+    if (!windowed) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (closingRef.current || !hasContent()) return;
+      e.preventDefault();
+      e.returnValue = false; // Electron: cancels the close without a dialog
+      setConfirmClose(true);
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [windowed, hasContent]);
+
+  /** Move this draft, as typed, into its own window; this composer then closes. */
+  const popOut = useCallback(() => {
+    if (windowed || !editor) return;
+    const ui = useUi.getState();
+    void api
+      .command('composer:pop-out', {
+        state: {
+          ...state,
+          accountId: account?.id ?? state.accountId,
+          initialBody: undefined,
+          restore: {
+            to,
+            cc,
+            bcc,
+            showCcBcc,
+            subject,
+            bodyHtml: editor.getHTML(),
+            quotedHtml,
+            signatureRemoved,
+            attachments,
+          },
+        },
+        theme: ui.theme,
+        accentColor: ui.accentColor,
+      })
+      .then((r) => {
+        if (r.ok) closeInline();
+      });
+  }, [
+    windowed,
+    editor,
+    state,
+    account?.id,
+    to,
+    cc,
+    bcc,
+    showCcBcc,
+    subject,
+    quotedHtml,
+    signatureRemoved,
+    attachments,
+    closeInline,
+  ]);
 
   const send = useCallback(() => {
     if (sending) return;
     const draft = buildDraft();
     if (!draft) return;
     setSending(true);
+    if (windowed) {
+      // The main window runs the Undo Send countdown; this one closes once
+      // the draft is handed over.
+      void api.command('composer:send', { draft }).then(closeComposer, () => {
+        setSending(false);
+        toast('Could not send — try again');
+      });
+      return;
+    }
     closeComposer();
-
-    // Undo Send: the task is enqueued only after the window elapses.
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (!cancelled) void api.command('task:enqueue', { type: 'send-draft', draft });
-    }, UNDO_SEND_MS);
-    toast('Sending…', {
-      duration: UNDO_SEND_MS,
-      action: {
-        label: 'Undo',
-        onClick: () => {
-          cancelled = true;
-          clearTimeout(timer);
-          toast('Send cancelled');
-        },
-      },
-    });
-  }, [sending, buildDraft, closeComposer]);
+    sendWithUndo(draft);
+  }, [sending, buildDraft, closeComposer, windowed]);
 
   const sendLater = useCallback(
     (sendAt: number) => {
@@ -515,9 +601,9 @@ export function Composer({ state }: { state: ComposerState }) {
       setShowSendLater(false);
       closeComposer();
       void api.command('task:enqueue', { type: 'schedule-send', draft, sendAt });
-      toast(`Scheduled — sends ${fmtWake(sendAt)}. Find it in the Outbox.`);
+      notify(`Scheduled — sends ${fmtWake(sendAt)}. Find it in the Outbox.`);
     },
-    [buildDraft, closeComposer],
+    [buildDraft, closeComposer, notify],
   );
 
   // Link editor (Spark-style): link the selected text, ⇧⌘K or toolbar button.
@@ -557,6 +643,8 @@ export function Composer({ state }: { state: ComposerState }) {
         // The time zone dialog and the times calendar close themselves;
         // Esc while checking only cancels the check.
         if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
+        // the palette, the chat and the assistant menu close first
+        if (assistantOwnsEscape() || assistantChipOwnsEscape()) return;
         e.preventDefault();
         if (cancelAvailabilityCheck()) {
           e.stopImmediatePropagation();
@@ -578,6 +666,11 @@ export function Composer({ state }: { state: ComposerState }) {
         send();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'o' && !windowed) {
+        e.preventDefault();
+        popOut();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
         const fields: Record<string, () => void> = {
           '1': () => toRef.current?.focus(),
@@ -596,21 +689,29 @@ export function Composer({ state }: { state: ComposerState }) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [send, requestClose, confirmClose, editor, linkOpen, openLinkEditor]);
+  }, [send, requestClose, confirmClose, editor, linkOpen, openLinkEditor, popOut, windowed]);
 
   const fieldCls =
     'w-full bg-transparent text-[12.5px] py-1.5 focus:outline-none placeholder:text-ink-faint';
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 flex items-end justify-end p-4">
+    <div
+      className={cn(
+        'pointer-events-none absolute inset-0 z-40 flex items-end justify-end',
+        !windowed && 'p-4',
+      )}
+    >
       <div
         ref={cardRef}
         data-composer
         role="dialog"
         aria-label="Compose email"
         className={cn(
-          'border-hairline bg-surface pointer-events-auto relative flex max-w-full flex-col rounded-2xl border shadow-2xl',
-          expanded ? 'h-full w-[1100px]' : 'max-h-[85%] w-[620px]',
+          'bg-surface pointer-events-auto relative flex max-w-full flex-col',
+          windowed
+            ? 'h-full w-full'
+            : 'border-hairline rounded-2xl border shadow-2xl',
+          !windowed && (expanded ? 'h-full w-[1100px]' : 'max-h-[85%] w-[620px]'),
         )}
         onDragEnterCapture={(e) => {
           if (!hasFiles(e)) return;
@@ -645,7 +746,14 @@ export function Composer({ state }: { state: ComposerState }) {
             </span>
           </div>
         )}
-        <header className="border-hairline flex items-center gap-2 border-b px-4 py-2.5">
+        <header
+          className={cn(
+            'border-hairline flex items-center gap-2 border-b px-4 py-2.5',
+            // its own window: the header is the title bar, clear of the traffic lights
+            windowed && 'titlebar-drag',
+            windowed && isMac && 'pl-[84px]',
+          )}
+        >
           <span className="flex-1 text-[12.5px] font-bold">
             {state.mode === 'new'
               ? 'New email'
@@ -658,14 +766,26 @@ export function Composer({ state }: { state: ComposerState }) {
           <span className="text-ink-faint flex items-center gap-1 text-[11px]">
             send <Keycaps keys={['⌘', '↩']} />
           </span>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            title={expanded ? 'Shrink' : 'Expand'}
-            aria-label={expanded ? 'Shrink composer' : 'Expand composer'}
-            className="text-ink-muted hover:text-ink ml-1"
-          >
-            {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
+          {!windowed && (
+            <>
+              <button
+                onClick={popOut}
+                title="Open in a new window — ⇧⌘O"
+                aria-label="Open composer in a new window"
+                className="text-ink-muted hover:text-ink ml-1"
+              >
+                <SquareArrowOutUpRight size={14} />
+              </button>
+              <button
+                onClick={() => setExpanded(!expanded)}
+                title={expanded ? 'Shrink' : 'Expand'}
+                aria-label={expanded ? 'Shrink composer' : 'Expand composer'}
+                className="text-ink-muted hover:text-ink ml-1"
+              >
+                {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            </>
+          )}
           <button onClick={requestClose} aria-label="Close composer" className="text-ink-muted hover:text-ink ml-1">
             <X size={15} />
           </button>
@@ -907,6 +1027,8 @@ export function Composer({ state }: { state: ComposerState }) {
             <Paperclip size={13.5} />
           </button>
           <input ref={fileRef} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
+          {/* No corner orb in a popped-out window: the assistant sits here. */}
+          {windowed && <AssistantChip />}
           <span className="flex-1" />
           <button onClick={discardDraft} className="text-ink-muted hover:text-danger rounded-md p-1.5" title="Discard" aria-label="Discard draft">
             <Trash2 size={13.5} />

@@ -755,6 +755,51 @@ export class MailDb {
   }
 
   listThreads(q: ThreadQuery): ThreadSummary[] {
+    const { where, params } = this.viewWhere(q);
+    params.push(q.limit, q.offset);
+    const rows = this.stmt(
+        // has_draft / from_emails_json are denormalized columns maintained by
+        // refreshThreadAggregates; they used to be correlated subqueries run
+        // once per returned row.
+        `SELECT t.*, s.wake_at AS snooze_wake_at, ${THREAD_LABELS}
+         FROM threads t
+         LEFT JOIN snoozes s ON s.thread_id = t.id
+         WHERE ${where}
+         ORDER BY t.last_message_date DESC LIMIT ? OFFSET ?`,
+      )
+      .all(...params) as Row[];
+    return rows.map(rowToThreadSummary);
+  }
+
+  /**
+   * Inbox threads a priority sender wrote in, newest first, for Home's
+   * timeline. Pages walk back with `before` (a last_message_date cursor, so
+   * the scan rides the date index); threads holding only our own mail are
+   * left out since they have no arrival to place.
+   */
+  listPriorityThreads(q: { before?: number; limit: number }): ThreadSummary[] {
+    const { where, params } = this.viewWhere({ view: 'inbox', limit: q.limit, offset: 0 });
+    let extra = ` AND t.last_inbound_date > 0 AND EXISTS (
+      SELECT 1 FROM json_each(t.senders_json) je
+      JOIN priority_senders ps ON ps.email = lower(json_extract(je.value, '$.email'))
+    )`;
+    if (q.before !== undefined) {
+      extra += ` AND t.last_message_date < ?`;
+      params.push(q.before);
+    }
+    params.push(q.limit);
+    const rows = this.stmt(
+        `SELECT t.*, s.wake_at AS snooze_wake_at, ${THREAD_LABELS}
+         FROM threads t
+         LEFT JOIN snoozes s ON s.thread_id = t.id
+         WHERE ${where}${extra}
+         ORDER BY t.last_message_date DESC LIMIT ?`,
+      )
+      .all(...params) as Row[];
+    return rows.map(rowToThreadSummary);
+  }
+
+  private viewWhere(q: ThreadQuery): { where: string; params: unknown[] } {
     const params: unknown[] = [];
     let where: string;
     if (q.view === 'pinned') {
@@ -797,19 +842,7 @@ export class MailDb {
       where += ` AND t.account_id = ?`;
       params.push(q.accountId);
     }
-    params.push(q.limit, q.offset);
-    const rows = this.stmt(
-        // has_draft / from_emails_json are denormalized columns maintained by
-        // refreshThreadAggregates; they used to be correlated subqueries run
-        // once per returned row.
-        `SELECT t.*, s.wake_at AS snooze_wake_at, ${THREAD_LABELS}
-         FROM threads t
-         LEFT JOIN snoozes s ON s.thread_id = t.id
-         WHERE ${where}
-         ORDER BY t.last_message_date DESC LIMIT ? OFFSET ?`,
-      )
-      .all(...params) as Row[];
-    return rows.map(rowToThreadSummary);
+    return { where, params };
   }
 
   /**

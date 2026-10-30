@@ -19,13 +19,16 @@ import type {
 import type { Calendar, CalendarEvent, CalendarEventInput } from './calendar';
 import type { KanbanBoard, NotionBlock } from './notion';
 import type { MailtoDraft } from './mailto';
-import type { Task } from './tasks';
+import type { ComposerWindowState } from './compose';
+import type { OutgoingDraft, Task } from './tasks';
 
 /** Typed invoke channels: renderer → main → (mostly) sync process. */
 export interface Queries {
   'accounts:list': { args: undefined; result: Account[] };
   'folders:list': { args: { accountId?: string }; result: Folder[] };
   'threads:list': { args: ThreadQuery; result: ThreadSummary[] };
+  /** Inbox threads from priority senders, newest first; `before` pages back by date. */
+  'threads:priority': { args: { before?: number; limit: number }; result: ThreadSummary[] };
   'thread:messages': { args: { threadId: string }; result: MessageMeta[] };
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };
@@ -69,6 +72,8 @@ export interface Queries {
   'mailto:pending': { args: undefined; result: MailtoDraft | null };
   /** Main process: whether Uniox is the OS handler for mailto: links. */
   'mailto:is-default': { args: undefined; result: boolean };
+  /** Main process: the draft a popped-out composer window opens with (null elsewhere). */
+  'composer:window-state': { args: undefined; result: ComposerWindowState | null };
   /**
    * Busy events overlapping [startMs, endMs) across every account, hidden
    * calendars included; subscribed colleague calendars and 'transparent'
@@ -157,6 +162,18 @@ export interface Commands {
     args: { url: string };
     result: { ok: boolean; dataUri?: string; error?: string };
   };
+  /** Move a composer's draft into its own window (main process). */
+  'composer:pop-out': {
+    args: ComposerWindowState;
+    result: { ok: boolean };
+  };
+  /**
+   * A popped-out composer hands its draft to the main window, which runs the
+   * usual Undo Send countdown (or sends it straight away if that window is gone).
+   */
+  'composer:send': { args: { draft: OutgoingDraft }; result: { ok: boolean } };
+  /** A popped-out composer's closing message ("Draft saved"), shown as a main-window toast. */
+  'composer:notice': { args: { message: string }; result: { ok: boolean } };
   /** ⌘P: print a conversation from a hidden window via the system print dialog. */
   'print:thread': { args: { html: string; title: string }; result: { ok: boolean; error?: string } };
   /** Quick Look (macOS) / default-app preview of a downloaded attachment. */
@@ -255,6 +272,10 @@ export type DeltaEvent =
   | { kind: 'open-calendar' }
   /** A mailto: link was opened (browser, another app, or a link in an email). */
   | { kind: 'compose'; draft: MailtoDraft }
+  /** A popped-out composer sent this draft; the main window runs Undo Send. */
+  | { kind: 'send-draft'; draft: OutgoingDraft }
+  /** A popped-out composer's closing message, shown as a toast. */
+  | { kind: 'toast'; message: string }
   /** Calendar events changed (local edit, or Google sync); renderer re-queries. */
   | { kind: 'calendar-changed' };
 
