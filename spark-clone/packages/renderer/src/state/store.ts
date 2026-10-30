@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Category, MailView, MessageMeta, ThreadSummary } from '@app/shared';
+import type { Category, ComposerState, MailView, ThreadSummary } from '@app/shared';
 
 export type ListLayout = 'focused' | 'cards' | 'simple';
 /** Row spacing: compressed = flush rows with hairline dividers; expanded = spaced cards. */
@@ -28,21 +28,7 @@ export function navRowId(row: NavRow): string {
   return row.kind === 'thread' ? row.thread.id : bundleRowId(row.category);
 }
 
-export interface ComposerState {
-  mode: 'new' | 'reply' | 'reply-all' | 'forward' | 'edit-draft';
-  accountId: string;
-  replyTo?: MessageMeta;
-  /** The stored draft being edited; sending it replaces the draft. */
-  draftMessage?: MessageMeta;
-  quotedHtml?: string;
-  subject?: string;
-  to?: { name?: string; email: string }[];
-  /** New messages only (e.g. from a mailto: link). */
-  cc?: { name?: string; email: string }[];
-  bcc?: { name?: string; email: string }[];
-  /** Plain-text body drafted by the assistant, seeded into the editor on open. */
-  initialBody?: string;
-}
+export type { ComposerState } from '@app/shared';
 
 interface UiState {
   view: MailView;

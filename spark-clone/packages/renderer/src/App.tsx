@@ -1,9 +1,10 @@
 import type { ThreadSummary } from '@app/shared';
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import { KeymapProvider } from './actions/KeymapProvider';
 import { CommandCenter } from './components/CommandCenter';
+import { AppToaster } from './components/AppToaster';
 import { Composer } from './components/composer/Composer';
 import { GatekeeperCard } from './components/GatekeeperCard';
 import { CalendarView } from './components/calendar/CalendarView';
@@ -30,7 +31,8 @@ import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
 import { composeFromMailto } from './lib/mailto';
 import { fmtWake } from './lib/schedule';
-import { softTint } from './lib/utils';
+import { sendWithUndo } from './lib/sendDraft';
+import { useAccentColor, useTheme } from './lib/theme';
 import { assistantOwnsEscape, wireAssistant } from './state/assistant';
 import { wireCalendar } from './state/calendar';
 import { wireKanban } from './state/kanban';
@@ -38,40 +40,6 @@ import { usePersistedUiPrefs } from './state/persist';
 import { useAccounts, useDelta, useSelectedThread, useThreads } from './state/queries';
 import { useUi } from './state/store';
 import { useShallow } from 'zustand/react/shallow';
-
-function useTheme() {
-  const theme = useUi((s) => s.theme);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const dark = theme === 'dark' || (theme === 'system' && mq.matches);
-      document.documentElement.classList.toggle('dark', dark);
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, [theme]);
-}
-
-/**
- * A custom accent overrides --color-accent everywhere (buttons, links, the
- * unread rail) via an inline var, which wins over the theme's stylesheet value.
- * accent-soft is derived so selected-row tints follow along in both themes.
- * Clearing it hands control back to the theme.
- */
-function useAccentColor() {
-  const accentColor = useUi((s) => s.accentColor);
-  useEffect(() => {
-    const root = document.documentElement.style;
-    if (accentColor) {
-      root.setProperty('--color-accent', accentColor);
-      root.setProperty('--color-accent-soft', softTint(accentColor));
-    } else {
-      root.removeProperty('--color-accent');
-      root.removeProperty('--color-accent-soft');
-    }
-  }, [accentColor]);
-}
 
 /**
  * Home's "new since you were last here" line: read the last-active time saved
@@ -328,6 +296,12 @@ export default function App() {
       useUi.getState().setView('calendar');
     } else if (e.kind === 'compose') {
       composeFromMailto(e.draft);
+    } else if (e.kind === 'send-draft') {
+      // Sent from a popped-out composer: the countdown runs here, where the
+      // inbox is, since that window has already closed.
+      sendWithUndo(e.draft);
+    } else if (e.kind === 'toast') {
+      toast(e.message);
     }
   });
   // A mailto: link that launched the app (or reopened its window) was parked
@@ -418,25 +392,7 @@ export default function App() {
         <SettingsSheet />
         <ThreadSchedulePicker />
         <TimeZonePrompt />
-        <Toaster
-          position="bottom-left"
-          // Toasts wear the app's own surface tokens, so they sit naturally on
-          // the backdrop and flip with the light/dark theme.
-          toastOptions={{
-            style: {
-              fontSize: '12.5px',
-              borderRadius: '12px',
-              background: 'var(--color-surface)',
-              color: 'var(--color-ink)',
-              border: '1px solid var(--color-hairline)',
-              boxShadow: '0 8px 28px rgb(0 0 0 / 0.28)',
-            },
-            actionButtonStyle: {
-              background: 'var(--color-accent)',
-              color: '#fff',
-            },
-          }}
-        />
+        <AppToaster />
       </div>
     </KeymapProvider>
   );
