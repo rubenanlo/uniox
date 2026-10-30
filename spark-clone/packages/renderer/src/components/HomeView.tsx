@@ -8,6 +8,7 @@ import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/home
 import { kanbanNewCount, useKanban } from '../state/kanban';
 import { useAccounts, usePriorityTimeline } from '../state/queries';
 import { useUi } from '../state/store';
+import { assistantOwnsEscape } from '../state/assistant';
 import { useWindowActive } from '../lib/useWindowActive';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
@@ -102,6 +103,13 @@ function RailNow({ label }: { label: string }) {
   );
 }
 
+/** Focus a timeline card and bring it into view without jumping the rail. */
+function focusCard(el: HTMLElement | null | undefined) {
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: 'nearest' });
+}
+
 const DAY_MS = 86_400_000;
 
 function startOfDay(ms: number): number {
@@ -153,10 +161,15 @@ function RailMail({
   thread,
   accountName,
   showAccount,
+  current,
+  onFocus,
 }: {
   thread: ThreadSummary;
   accountName: string;
   showAccount: boolean;
+  /** The keyboard's place in the timeline: the one card reachable by Tab. */
+  current: boolean;
+  onFocus(): void;
 }) {
   const setView = useUi((s) => s.setView);
   const setAccountFilter = useUi((s) => s.setAccountFilter);
@@ -176,9 +189,13 @@ function RailMail({
 
   return (
     <button
+      data-home-mail={thread.id}
+      tabIndex={current ? 0 : -1}
       onClick={open}
+      onFocus={onFocus}
       aria-label={`Open ${from}: ${subject}, ${clockTime(at)}`}
-      className="border-hairline bg-surface/60 hover:bg-surface focus-visible:ring-accent w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none"
+      // Focus shows as a soft accent fill, never a ring or outline.
+      className="border-hairline bg-surface/60 hover:bg-surface focus:bg-accent-soft w-full rounded-xl border px-3.5 py-2.5 text-left transition-colors outline-none focus:outline-none"
     >
       <span className="flex items-center gap-2">
         {unread && (
@@ -268,6 +285,8 @@ export function HomeView() {
     timeline.threads.filter((t) => isPriorityThread(t, prio)),
     startOfToday,
   );
+  // Every card in on-screen order (oldest at the top).
+  const order = days.flatMap((d) => d.hours.flatMap((r) => r.mail.map((t) => t.id)));
   const nowLabel = now.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -313,6 +332,65 @@ export function HomeView() {
     io.observe(sentinel);
     return () => io.disconnect();
   }, [hasMore, loadOlder, loadedCount, kanbanOpen]);
+
+  // Keyboard place in the timeline. It starts on the newest email (next to
+  // "now") and falls back there whenever the remembered one is gone.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const currentId =
+    focusedId && order.includes(focusedId) ? focusedId : (order[order.length - 1] ?? null);
+
+  // Home opens with focus on the priority mail, once per visit (and again on
+  // coming back from the Sprint board). It never steals focus that the user
+  // already put somewhere, such as the name field or the sidebar.
+  const autoFocused = useRef(false);
+  useEffect(() => {
+    if (kanbanOpen) {
+      autoFocused.current = false;
+      return;
+    }
+    if (autoFocused.current || !currentId) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    autoFocused.current = true;
+    focusCard(railRef.current?.querySelector('[data-home-mail][tabindex="0"]'));
+  }, [kanbanOpen, currentId]);
+
+  // ↑ / ↓ walk the cards and Enter opens the focused one, wherever focus sits
+  // on Home. Capture phase, so the mail list's own ↑ / ↓ never see the keys.
+  // The cards themselves are the source of truth: DOM order is on-screen
+  // order, and the one with tabindex 0 is the current card.
+  useEffect(() => {
+    if (kanbanOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Enter') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const ui = useUi.getState();
+      if (ui.view !== 'home' || ui.kanbanOpen || ui.composer || ui.commandOpen) return;
+      if (ui.settingsOpen || ui.shortcutsOpen || ui.picker || assistantOwnsEscape()) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      // The revealed sidebar walks its own rows.
+      if (target?.closest?.('nav[aria-label="Mailboxes"]')) return;
+      const cards = [...(railRef.current?.querySelectorAll<HTMLElement>('[data-home-mail]') ?? [])];
+      const current = cards.find((c) => c.tabIndex === 0);
+      if (!current) return;
+      if (e.key === 'Enter') {
+        // A focused card (or any other button) clicks itself natively.
+        if (target?.closest?.('button, a')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        current.click();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      // The first arrow from elsewhere just lands back on the current card.
+      if (!target?.closest?.('[data-home-mail]')) return focusCard(current);
+      focusCard(cards[cards.indexOf(current) + (e.key === 'ArrowDown' ? 1 : -1)]);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [kanbanOpen]);
 
   if (kanbanOpen) {
     return <KanbanView board={kanban.board} onBack={() => setKanbanOpen(false)} />;
@@ -418,6 +496,8 @@ export function HomeView() {
                           thread={t}
                           accountName={accountName(t.accountId)}
                           showAccount={showAccount}
+                          current={t.id === currentId}
+                          onFocus={() => setFocusedId(t.id)}
                         />
                       ))}
                     </RailRow>

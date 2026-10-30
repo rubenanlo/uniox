@@ -29,6 +29,13 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
+    section: 'Home',
+    rows: [
+      { label: 'Walk priority emails', keys: [['↑'], ['↓']] },
+      { label: 'Open the focused email', keys: [['↩']] },
+    ],
+  },
+  {
     section: 'New senders',
     rows: [
       { label: 'Step up into the cards (from the first email)', keys: [['↑']] },
