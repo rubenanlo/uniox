@@ -110,7 +110,13 @@ export function focusPanelRight(): void {
     // of the drawer. Blur it directly — dropping focus tucks the auto-hide pane
     // away, mirroring the kanban board's → behavior.
     if (useUi.getState().view === 'home' || useUi.getState().view === 'calendar') {
-      (document.activeElement as HTMLElement | null)?.blur();
+      // Home steps back onto its priority mail, when it has any.
+      const card =
+        useUi.getState().view === 'home'
+          ? document.querySelector<HTMLElement>('[data-home-mail][tabindex="0"]')
+          : null;
+      if (card) card.focus();
+      else (document.activeElement as HTMLElement | null)?.blur();
       return;
     }
     focusList(); // stepping right blurs the sidebar, which tucks it away
