@@ -50,6 +50,8 @@ import { useUi } from '../../state/store';
 import { SchedulePicker } from '../SchedulePicker';
 import { Keycaps } from '../ui/Keycap';
 import { useTimesCalendarOpen } from '../reading/TimesCalendar';
+import { assistantOwnsEscape } from '../../state/assistant';
+import { AssistantChip, assistantChipOwnsEscape } from './AssistantChip';
 import { AvailabilityChecking } from './AvailabilityChecking';
 import { SignaturePreview } from './SignaturePreview';
 import { TimesHoverBar } from './TimesHoverBar';
@@ -641,6 +643,8 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
         // The time zone dialog and the times calendar close themselves;
         // Esc while checking only cancels the check.
         if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
+        // the palette, the chat and the assistant menu close first
+        if (assistantOwnsEscape() || assistantChipOwnsEscape()) return;
         e.preventDefault();
         if (cancelAvailabilityCheck()) {
           e.stopImmediatePropagation();
@@ -1023,6 +1027,8 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
             <Paperclip size={13.5} />
           </button>
           <input ref={fileRef} type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />
+          {/* No corner orb in a popped-out window: the assistant sits here. */}
+          {windowed && <AssistantChip />}
           <span className="flex-1" />
           <button onClick={discardDraft} className="text-ink-muted hover:text-danger rounded-md p-1.5" title="Discard" aria-label="Discard draft">
             <Trash2 size={13.5} />

@@ -3,8 +3,11 @@ import type { ComposerState } from '@app/shared';
 import { api } from '../../lib/api';
 import { useAccentColor, useTheme } from '../../lib/theme';
 import { handleTriageUndo } from '../../lib/undo';
+import { useAssistant, wireAssistant } from '../../state/assistant';
 import { useUi } from '../../state/store';
 import { AppToaster } from '../AppToaster';
+import { AssistantModal } from '../orb/AssistantModal';
+import { AssistantPalette } from '../orb/AssistantPalette';
 import { Composer } from './Composer';
 
 /**
@@ -24,9 +27,29 @@ export function ComposerWindow() {
         window.close();
         return;
       }
-      useUi.setState({ theme: popped.theme, accentColor: popped.accentColor });
+      // `composer` set so the assistant offers the composer actions here.
+      useUi.setState({
+        theme: popped.theme,
+        accentColor: popped.accentColor,
+        composer: popped.state,
+      });
       setState(popped.state);
     });
+  }, []);
+
+  useEffect(() => wireAssistant(), []);
+  // ⌘I opens the assistant palette, as in the main window.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'i')
+        return;
+      e.preventDefault();
+      e.stopPropagation();
+      const a = useAssistant.getState();
+      a.setPaletteOpen(!a.paletteOpen);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   // ⌘Z comes through the app menu; in the editor it is text undo.
@@ -35,6 +58,8 @@ export function ComposerWindow() {
   return (
     <div className="bg-surface relative h-full">
       {state && <Composer state={state} windowed />}
+      <AssistantPalette />
+      <AssistantModal />
       <AppToaster />
     </div>
   );
