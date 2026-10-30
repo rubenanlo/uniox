@@ -69,6 +69,7 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
       { label: 'Close (asks before discarding)', keys: [['Esc']] },
       { label: 'Open in its own window', keys: [['⇧', '⌘', 'O']] },
       { label: 'Insert link', keys: [['⇧', '⌘', 'K']] },
+      { label: 'Add times when everyone in To is free', keys: [['⇧', '⌘', 'A']] },
       { label: 'Bold / Italic / Underline', keys: [['⌘', 'B'], ['⌘', 'I'], ['⌘', 'U']] },
       { label: 'Go to To / Cc / Bcc', keys: [['⌘', '1'], ['⌘', '2'], ['⌘', '3']] },
       { label: 'Go to Subject / Body / From', keys: [['⌘', '4'], ['⌘', '5'], ['⌘', '6']] },

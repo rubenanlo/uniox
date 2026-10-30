@@ -35,6 +35,7 @@ describe('shortcut audit', () => {
       'Show / hide calendars',
       'Join the open event’s meeting',
       'Book the next free slot (Agenda)',
+      'Add times when everyone in To is free',
     ])
       expect(labels).toContain(l);
     for (const { section, rows } of CONTEXT_SHORTCUTS) {
