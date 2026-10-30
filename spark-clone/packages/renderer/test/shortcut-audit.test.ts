@@ -29,6 +29,15 @@ describe('shortcut audit', () => {
     const labels = CONTEXT_SHORTCUTS.flatMap((s) => s.rows.map((r) => r.label));
     expect(labels).toContain('Open the event Account menu');
     expect(labels).toContain('Accept ⇄ Block, then next / previous card');
+    for (const l of [
+      'Search events, past or future',
+      'Month / Week / Day / Agenda',
+      'Show / hide calendars',
+      'Join the open event’s meeting',
+      'Book the next free slot (Agenda)',
+      'Add times when everyone in To is free',
+    ])
+      expect(labels).toContain(l);
     for (const { section, rows } of CONTEXT_SHORTCUTS) {
       const own = rows.map((r) => r.label);
       expect(new Set(own).size, section).toBe(own.length);
