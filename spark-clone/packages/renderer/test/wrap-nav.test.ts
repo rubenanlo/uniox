@@ -5,7 +5,7 @@ vi.mock('../src/lib/api', () => ({
 }));
 const gatekeeper = vi.hoisted(() => ({ present: false }));
 vi.mock('../src/lib/panels', async (orig) => ({
-  ...(await orig<typeof import('../src/lib/panels')>()),
+  ...(await orig<Record<string, unknown>>()),
   focusGatekeeper: () => gatekeeper.present,
 }));
 

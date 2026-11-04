@@ -25,6 +25,7 @@ import { ACTIONS, keysFor } from '../../actions/registry';
 import { useAccountColor } from '../../lib/accountColor';
 import { api } from '../../lib/api';
 import { markThreadsRead, moveThreads } from '../../lib/bulk';
+import { planPage, registerListPager } from '../../lib/listPager';
 import { selectRangeTo, toggleInSelection } from '../../lib/multiSelect';
 import { fmtWake } from '../../lib/schedule';
 import { toastWithUndo } from '../../lib/undo';
@@ -1248,9 +1249,50 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
     }
   }, [priorityExpanded, items, virtualizer]);
 
+  const pagedRef = useRef<string | null>(null);
+  // Page Up / Page Down / Home / End (see lib/listPager). Reads the virtualizer
+  // only on the keypress, so it costs nothing while the list sits idle.
+  useEffect(
+    () =>
+      registerListPager((move) => {
+        const el = parentRef.current;
+        if (!el) return;
+        const nav = items.map(
+          (it) => it.kind === 'thread' || it.kind === 'bundle' || it.kind === 'priority-toggle',
+        );
+        const plan = planPage(
+          move,
+          virtualizer.measurementsCache,
+          nav,
+          el.scrollTop,
+          el.clientHeight,
+        );
+        if (!plan) return;
+        if (plan.scrollTo !== null) virtualizer.scrollToOffset(plan.scrollTo);
+        const it = items[plan.select]!;
+        const id =
+          it.kind === 'thread'
+            ? it.thread.id
+            : it.kind === 'bundle'
+              ? bundleRowId(it.category)
+              : PRIORITY_TOGGLE_ID;
+        // The page move already placed the row; the keep-visible effect below
+        // would otherwise re-scroll against the virtualizer's stale offset.
+        if (id !== useUi.getState().selectedThreadId) pagedRef.current = id;
+        // Like the arrows: an auto selection previews without marking read.
+        useUi.getState().selectThread(id, true);
+        useUi.getState().hoverThread(null);
+      }),
+    [items, virtualizer],
+  );
+
   // keep selection visible when navigating with arrows
   useEffect(() => {
     if (!selectedThreadId) return;
+    if (pagedRef.current === selectedThreadId) {
+      pagedRef.current = null;
+      return;
+    }
     const idx = items.findIndex(
       (it) =>
         (it.kind === 'thread' && it.thread.id === selectedThreadId) ||

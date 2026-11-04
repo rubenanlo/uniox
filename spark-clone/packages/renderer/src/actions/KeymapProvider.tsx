@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { api } from '../lib/api';
-import { focusPanelLeft, focusPanelRight } from '../lib/panels';
+import { listPagerReady } from '../lib/listPager';
+import { currentPanel, focusPanelLeft, focusPanelRight } from '../lib/panels';
 import { handleTriageUndo } from '../lib/undo';
 import { keyboardTargetId, useUi } from '../state/store';
 import { ACTIONS, fieldOwnsKey, matchCombo, refreshNow } from './registry';
@@ -68,6 +69,17 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
         const inComposer = !!el?.closest?.('[data-composer]');
         const richText = !!el?.isContentEditable;
         if (fieldOwnsKey(e, action, { editable, inComposer, richText })) return;
+        // Page keys only drive the list; in the reading pane (or on Home,
+        // Calendar) they keep scrolling natively.
+        if (
+          action.listOnly &&
+          (!listPagerReady() ||
+            currentPanel() !== 'list' ||
+            ui.view === 'home' ||
+            ui.view === 'calendar' ||
+            ui.kanbanOpen)
+        )
+          return;
         e.preventDefault();
         action.perform(keyboardTargetId());
         return;
