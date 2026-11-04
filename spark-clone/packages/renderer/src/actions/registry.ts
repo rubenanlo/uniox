@@ -155,7 +155,10 @@ export function moveSelection(delta: 1 | -1) {
   const idx = rows.findIndex((r) => navRowId(r) === currentId);
   // ↑ past the first row climbs into the new-sender cards above the list.
   if (delta === -1 && idx === 0 && focusGatekeeper()) return;
-  const next = rows[idx === -1 ? (delta === 1 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, idx + delta))];
+  // Past either end wraps around: ↓ on the last email lands on the first, ↑
+  // on the first (with no new-sender cards above) lands on the last.
+  const next =
+    rows[idx === -1 ? (delta === 1 ? 0 : rows.length - 1) : (idx + delta + rows.length) % rows.length];
   if (next) {
     // Arrow browsing is an auto selection: preview without marking read.
     ui.selectThread(navRowId(next), true);

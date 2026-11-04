@@ -1257,7 +1257,14 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
         (it.kind === 'bundle' && bundleRowId(it.category) === selectedThreadId) ||
         (it.kind === 'priority-toggle' && selectedThreadId === PRIORITY_TOGGLE_ID),
     );
-    if (idx >= 0) virtualizer.scrollToIndex(idx, { align: 'auto' });
+    if (idx < 0) return;
+    // The first navigable row (e.g. after ↓ wraps from the bottom) scrolls to
+    // the very top so the section header above it shows too.
+    const firstNav = items.findIndex(
+      (it) => it.kind === 'thread' || it.kind === 'bundle' || it.kind === 'priority-toggle',
+    );
+    if (idx === firstNav) virtualizer.scrollToOffset(0);
+    else virtualizer.scrollToIndex(idx, { align: 'auto' });
   }, [selectedThreadId, items, virtualizer]);
 
   // Arrowing onto a priority row surfaces the same card the mouse does. Runs
