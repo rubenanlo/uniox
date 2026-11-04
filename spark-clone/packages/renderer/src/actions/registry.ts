@@ -6,6 +6,7 @@ import { shareAvailability } from '../state/availability';
 import { useGoToDate } from '../state/goToDate';
 import { markThreadsRead, moveThreads } from '../lib/bulk';
 import { advancePastMultiSelection, extendSelection, multiSelectedThreads } from '../lib/multiSelect';
+import { pageList } from '../lib/listPager';
 import { printThread } from '../lib/print';
 import { focusGatekeeper, openSelectedThread, toggleSidebarReveal } from '../lib/panels';
 import { toastWithUndo, handleTriageUndo } from '../lib/undo';
@@ -28,6 +29,8 @@ export interface AppAction {
   altCombo?: KeyCombo;
   context: ActionContext;
   section: string;
+  /** Keyboard only fires it while the mail list is the active panel; elsewhere the key keeps its native behavior. */
+  listOnly?: boolean;
   /** Disabled actions still appear in the Command Center with a hint. */
   disabledReason?: string;
   perform(targetThreadId: string | null): void;
@@ -478,6 +481,42 @@ export const ACTIONS: AppAction[] = [
     perform: () => moveSelection(-1),
   },
   {
+    id: 'page-down',
+    label: 'Page down the list',
+    combo: { key: 'pagedown' },
+    context: 'global',
+    section: 'Navigate',
+    listOnly: true,
+    perform: () => pageList('page-down'),
+  },
+  {
+    id: 'page-up',
+    label: 'Page up the list',
+    combo: { key: 'pageup' },
+    context: 'global',
+    section: 'Navigate',
+    listOnly: true,
+    perform: () => pageList('page-up'),
+  },
+  {
+    id: 'first-email',
+    label: 'First email',
+    combo: { key: 'home' },
+    context: 'global',
+    section: 'Navigate',
+    listOnly: true,
+    perform: () => pageList('first'),
+  },
+  {
+    id: 'last-email',
+    label: 'Last email',
+    combo: { key: 'end' },
+    context: 'global',
+    section: 'Navigate',
+    listOnly: true,
+    perform: () => pageList('last'),
+  },
+  {
     id: 'go-to',
     label: 'Go to…',
     combo: { key: 'l', meta: true },
@@ -680,7 +719,23 @@ export function comboLabel(combo: KeyCombo | null): string[] {
   if (combo.shift) keys.push('⇧');
   const k = combo.key;
   keys.push(
-    k === 'backspace' ? '⌫' : k === 'arrowdown' ? '↓' : k === 'arrowup' ? '↑' : k === 'enter' ? '↩' : k.toUpperCase(),
+    k === 'backspace'
+      ? '⌫'
+      : k === 'arrowdown'
+        ? '↓'
+        : k === 'arrowup'
+          ? '↑'
+          : k === 'enter'
+            ? '↩'
+            : k === 'pagedown'
+              ? 'PgDn'
+              : k === 'pageup'
+                ? 'PgUp'
+                : k === 'home'
+                  ? 'Home'
+                  : k === 'end'
+                    ? 'End'
+                    : k.toUpperCase(),
   );
   return keys;
 }
