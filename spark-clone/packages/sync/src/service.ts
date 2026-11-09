@@ -988,6 +988,13 @@ export class SyncService {
         this.db.setThreadPinned(task.threadId, task.pinned);
         this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
         break;
+      case 'gatekeeper-decide':
+        // The card leaves the strip (and accepted mail joins the list) now; the
+        // archive sweep and Uniox/Blocked label sync follow in the queue, which
+        // can sit behind slow IMAP work for a long time.
+        this.db.setReputation(task.accountId, task.key, task.kind, task.decision);
+        this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
+        break;
       case 'set-label':
         this.db.setLabelOverride(task.threadId, task.label, task.add);
         this.delta({ kind: 'threads-changed', accountIds: [task.accountId] });
