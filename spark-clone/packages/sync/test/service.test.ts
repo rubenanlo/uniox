@@ -391,6 +391,21 @@ describe.skipIf(!up)('SyncService Spark layer against live servers', () => {
     expect(db().getThreadSummary(thread.id)?.category).toBe('personal');
   });
 
+  it('gatekeeper accept takes effect at enqueue, even behind a busy queue', async () => {
+    db().setReputation(accountId, 'ext@ext.example', 'address', 'pending');
+    // Stand in for slow IMAP work ahead in the queue: the task itself can't run yet.
+    const loop = service as unknown as { taskLoopRunning: boolean; runTaskLoop(): Promise<void> };
+    loop.taskLoopRunning = true;
+    try {
+      enqueue({ type: 'gatekeeper-decide', accountId, key: 'ext@ext.example', kind: 'address', decision: 'accepted' });
+      expect(db().getReputation(accountId, 'ext@ext.example', 'ext.example')).toBe('accepted');
+      expect(db().listGatekeeperPending().some((p) => p.key === 'ext@ext.example')).toBe(false);
+    } finally {
+      loop.taskLoopRunning = false;
+    }
+    await loop.runTaskLoop();
+  });
+
   it('gatekeeper block sweeps existing inbox threads to archive', async () => {
     const thread = inbox().find((t) => t.subject === 'Block target');
     expect(thread).toBeDefined();
