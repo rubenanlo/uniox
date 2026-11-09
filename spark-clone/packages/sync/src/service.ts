@@ -43,6 +43,7 @@ import {
 import {
   calendarRowId,
   getCalendarTimeZone,
+  deleteGoogleEvent,
   insertGoogleEvent,
   listGoogleCalendars,
   listGoogleEvents,
@@ -697,7 +698,25 @@ export class SyncService {
         }
       }
       case 'calendar:event:delete': {
-        this.db.deleteEvent((args as { id: string }).id);
+        // Google rows are deleted upstream first; otherwise the next sync
+        // would bring them straight back. A failed DELETE leaves the row.
+        const { id } = args as { id: string };
+        const ev = this.db.getEventSync(id);
+        if (ev?.source === 'google') {
+          const cal = this.db.getCalendarSync(ev.calendarId);
+          if (!cal?.accountId || !cal.remoteId || !ev.remoteId) {
+            return { ok: false, error: 'This event is not linked to a Google calendar.' };
+          }
+          try {
+            const token = await this.freshSecret(cal.accountId);
+            await deleteGoogleEvent(token, cal.remoteId, ev.remoteId);
+          } catch (err) {
+            return { ok: false, error: err instanceof Error ? err.message : String(err) };
+          }
+          this.db.deleteGoogleEventRow(id);
+        } else {
+          this.db.deleteEvent(id);
+        }
         this.delta({ kind: 'calendar-changed' });
         return { ok: true };
       }

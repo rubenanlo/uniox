@@ -233,8 +233,8 @@ export interface Commands {
   'calendar:unsubscribe': { args: { id: string }; result: { ok: boolean; error?: string } };
   /** Store a `calendar:search:remote` hit so the grid can show it once jumped to. */
   'calendar:search:keep': { args: { id: string }; result: { ok: boolean } };
-  /** Delete a local calendar event. */
-  'calendar:event:delete': { args: { id: string }; result: { ok: boolean } };
+  /** Delete a calendar event; Google-sourced events are deleted upstream first. */
+  'calendar:event:delete': { args: { id: string }; result: { ok: boolean; error?: string } };
   /**
    * Partial update (drag reschedule / edit) that keeps the event's source.
    * Google-sourced events PATCH upstream first; text fields only when changed.

@@ -196,6 +196,24 @@ export async function patchGoogleEvent(
   if (!res.ok) throw new Error(`Could not update the Google event (HTTP ${res.status})`);
 }
 
+/**
+ * Delete the event on Google. Guests aren't emailed (no `sendUpdates`), matching
+ * the other write paths. 404/410 mean it's already gone upstream: success.
+ */
+export async function deleteGoogleEvent(
+  token: string,
+  remoteCalendarId: string,
+  remoteEventId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API}/calendars/${encodeURIComponent(remoteCalendarId)}/events/${encodeURIComponent(remoteEventId)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    throw new Error(`Could not delete the Google event (HTTP ${res.status})`);
+  }
+}
+
 /** A new event created upstream; `addMeet` asks Google to attach a Meet link. */
 export interface GEventInsert {
   title: string;

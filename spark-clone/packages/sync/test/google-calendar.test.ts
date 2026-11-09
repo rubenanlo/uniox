@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   calendarRowId,
+  deleteGoogleEvent,
   listGoogleEvents,
   listGoogleEventsChanged,
   mapGoogleEvent,
@@ -306,5 +307,31 @@ describe('insertGoogleEvent', () => {
     await expect(
       insertGoogleEvent('tok', 'cal', { title: 't', startMs: 0, endMs: 1, allDay: false }, 'UTC', 'r'),
     ).rejects.toThrow(/403/);
+  });
+});
+
+describe('deleteGoogleEvent', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('DELETEs the event without asking Google to email guests', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await deleteGoogleEvent('tok', 'cal id', 'ev_1');
+    const [url, init] = fetchMock.mock.calls[0]! as [URL | string, RequestInit];
+    expect(String(url)).toBe('https://www.googleapis.com/calendar/v3/calendars/cal%20id/events/ev_1');
+    expect(init.method).toBe('DELETE');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+  });
+
+  it('treats an already-deleted event as success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 410 })));
+    await expect(deleteGoogleEvent('tok', 'cal', 'ev1')).resolves.toBeUndefined();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 404 })));
+    await expect(deleteGoogleEvent('tok', 'cal', 'ev1')).resolves.toBeUndefined();
+  });
+
+  it('throws a readable error on other failures', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 403 })));
+    await expect(deleteGoogleEvent('tok', 'cal', 'ev1')).rejects.toThrow(/403/);
   });
 });

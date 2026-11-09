@@ -4,10 +4,11 @@ import { durationLabel, eventColor, softFill, timedOn } from '../../lib/agenda';
 import { addDays, startOfDay, timeLabel } from '../../lib/calendarMonth';
 import { canEditEvent } from '../../lib/eventEdit';
 import { descriptionToHtml } from '../../lib/richText';
-import { ruleLabel, seriesId } from '../../lib/rrule';
+import { ruleLabel } from '../../lib/rrule';
 import { useAccounts } from '../../state/queries';
 import { useCalendar } from '../../state/calendar';
 import { DayTrack, useNow } from './AgendaView';
+import { DeleteEventButton } from './DeleteEventButton';
 import { useVisibleEvents } from './useNotionEvents';
 
 /* The calendar's right pane as the Agenda view shows it: the time leads,
@@ -68,7 +69,6 @@ function Row({ icon, children }: { icon: React.ReactNode; children: React.ReactN
 
 export function AgendaDetailsPanel({ event }: { event: CalendarEvent }) {
   const editEvent = useCalendar((s) => s.editEvent);
-  const remove = useCalendar((s) => s.remove);
   const calendars = useCalendar((s) => s.calendars);
   const { accounts } = useAccounts();
   const day = startOfDay(event.startMs);
@@ -76,7 +76,6 @@ export function AgendaDetailsPanel({ event }: { event: CalendarEvent }) {
   const cal = calendars.find((c) => c.id === event.calendarId);
   const account = accounts.find((a) => a.id === (event.accountId ?? cal?.accountId));
   const editable = canEditEvent(event, calendars);
-  const deletable = event.source === 'local';
   const color = eventColor(event, calendars);
   const now = useNow();
 
@@ -187,15 +186,14 @@ export function AgendaDetailsPanel({ event }: { event: CalendarEvent }) {
             <Pencil size={12} /> Edit{' '}
             <span className="text-ink-faint font-mono text-[10.5px]">E</span>
           </button>
-          {deletable && (
-            <button
-              onClick={() => void remove(seriesId(event.id))}
-              aria-label="Delete event"
-              className="border-hairline text-danger hover:bg-sunken flex h-9 w-11 items-center justify-center rounded-lg border"
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
+          <DeleteEventButton
+            key={event.id}
+            event={event}
+            armedLabel="Delete?"
+            className="border-hairline text-danger hover:bg-sunken flex h-9 w-11 items-center justify-center rounded-lg border"
+          >
+            <Trash2 size={13} />
+          </DeleteEventButton>
         </div>
       )}
       {event.rrule && editable && (

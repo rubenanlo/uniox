@@ -1456,6 +1456,11 @@ export class MailDb {
     this.stmt(`DELETE FROM events WHERE id = ? AND source = 'local'`).run(id);
   }
 
+  /** Drop a Google row once it's been deleted upstream. */
+  deleteGoogleEventRow(id: string) {
+    this.stmt(`DELETE FROM events WHERE id = ? AND source = 'google'`).run(id);
+  }
+
   /** Sync coordinates of one stored event, for the Google write-back path. */
   getEventSync(id: string): { source: string; remoteId?: string; calendarId: string } | null {
     const r = this.stmt(`SELECT source, remote_id, calendar_id FROM events WHERE id = ?`)
