@@ -374,7 +374,16 @@ function createWindow(): void {
     titleBarStyle: process.platform === 'darwin' ? 'hidden' : 'default',
     // center the traffic lights in the 44px title bar (TopBar h-11)
     trafficLightPosition: { x: 16, y: 16 },
+    show: false,
     webPreferences: RENDERER_PREFS,
+  });
+  // Open filling the screen's usable area (macOS "Fill"), not native full
+  // screen, which would move the app to its own Space. Maximizing before the
+  // first show avoids a visible jump from the default size.
+  const win = mainWindow;
+  win.once('ready-to-show', () => {
+    win.maximize();
+    win.show();
   });
 
   guardNavigation(mainWindow);
