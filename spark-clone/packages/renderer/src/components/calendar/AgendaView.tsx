@@ -16,6 +16,7 @@ import {
 } from '../../lib/agenda';
 import { api } from '../../lib/api';
 import { addDays, rangeForView, startOfDay, startOfWeek, timeLabel } from '../../lib/calendarMonth';
+import { holidaysIn } from '../../lib/holidays';
 import { cn } from '../../lib/utils';
 import { useCalendar } from '../../state/calendar';
 import { useVisibleEvents, useVisibleFrom } from './useNotionEvents';
@@ -402,6 +403,7 @@ function AgendaList({ now, calendars }: { now: number; calendars: Calendar[] }) 
   const { days, start, end } = useMemo(() => rangeForView('agenda', anchor), [anchor]);
   const weekStart = startOfWeek(today);
   const events = useVisibleEvents(Math.min(start, weekStart), end);
+  const holidays = useMemo(() => holidaysIn(events, start, end), [events, start, end]);
   const selectedId = rightPane.kind === 'details' ? rightPane.event.id : undefined;
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -437,6 +439,7 @@ function AgendaList({ now, calendars }: { now: number; calendars: Calendar[] }) 
         const past = day < today;
         const timed = timedOn(events, day).filter((e) => !isToday || e.endMs > now);
         const allDay = allDayOn(events, day);
+        const holiday = holidays.get(day);
         let cur = isToday ? now : day + WORK_START * HOUR;
         const label = isToday
           ? 'Today'
@@ -448,7 +451,15 @@ function AgendaList({ now, calendars }: { now: number; calendars: Calendar[] }) 
             ? new Date(day).toLocaleDateString(undefined, { month: 'short' })
             : '';
         return (
-          <div key={day} data-day={day} className="grid grid-cols-[104px_minmax(0,1fr)] gap-5 pt-6">
+          <div
+            key={day}
+            data-day={day}
+            className={cn(
+              'grid grid-cols-[104px_minmax(0,1fr)] gap-5 pt-6',
+              holiday &&
+                'holiday-day -ml-4 mt-3 rounded-xl border-l-2 border-accent pb-4 pl-[14px]',
+            )}
+          >
             <div className={cn(past && 'opacity-60')}>
               <div
                 className={cn(
@@ -464,6 +475,11 @@ function AgendaList({ now, calendars }: { now: number; calendars: Calendar[] }) 
                 </span>
                 {month && <span className="text-ink-muted text-[13px]">{month}</span>}
               </div>
+              {holiday && (
+                <div className="text-accent mt-1.5 text-[10.5px] font-semibold tracking-[0.1em] uppercase">
+                  Holiday
+                </div>
+              )}
               <div className="mt-2 flex flex-col gap-1">
                 {allDay.map((a) => (
                   <button

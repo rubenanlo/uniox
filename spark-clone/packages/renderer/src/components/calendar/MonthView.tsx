@@ -11,6 +11,7 @@ import {
   WEEKDAYS,
 } from '../../lib/calendarMonth';
 import { isAllDayLike, packLanes } from '../../lib/eventLayout';
+import { holidaysIn } from '../../lib/holidays';
 import { cn } from '../../lib/utils';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useVisibleEvents } from './useNotionEvents';
@@ -22,7 +23,9 @@ const LANE_PX = 20;
 
 /** Chip color: explicit override → calendar color → accent. */
 function chipColor(event: CalendarEvent, calendars: Calendar[]): string {
-  return event.color ?? calendars.find((c) => c.id === event.calendarId)?.color ?? 'var(--color-accent)';
+  return (
+    event.color ?? calendars.find((c) => c.id === event.calendarId)?.color ?? 'var(--color-accent)'
+  );
 }
 
 /** One spanning all-day chip, absolutely placed across a week row. */
@@ -54,13 +57,12 @@ function SpanChip({
         top: HEADER_PX + lane * LANE_PX,
         left: `calc(${(startCol / 7) * 100}% + 3px)`,
         width: `calc(${(span / 7) * 100}% - 6px)`,
-        backgroundColor: event.eventType === 'outOfOffice' ? undefined : chipColor(event, calendars),
+        backgroundColor:
+          event.eventType === 'outOfOffice' ? undefined : chipColor(event, calendars),
       }}
       className={cn(
         'flex h-[18px] items-center gap-1 truncate rounded px-1.5 text-left text-[11px] leading-none font-medium',
-        event.eventType === 'outOfOffice'
-          ? 'bg-sunken text-ink-muted'
-          : 'text-white',
+        event.eventType === 'outOfOffice' ? 'bg-sunken text-ink-muted' : 'text-white',
       )}
     >
       {event.eventType === 'outOfOffice' && <span aria-hidden>⊗</span>}
@@ -119,6 +121,11 @@ export function MonthView() {
     return { spanning, timed };
   }, [events]);
 
+  const holidays = useMemo(
+    () => holidaysIn(events, gridStart, gridStart + 42 * DAY_MS),
+    [events, gridStart],
+  );
+
   const [moreOpen, setMoreOpen] = useState<number | null>(null);
 
   return (
@@ -137,7 +144,10 @@ export function MonthView() {
           const rowStart = weekDays[0]!;
           const rowEnd = rowStart + 7 * DAY_MS;
           const placements = packLanes(spanning, rowStart, rowEnd);
-          const rowLanes = Math.min(MAX_LANES, placements.reduce((m, p) => Math.max(m, p.lane + 1), 0));
+          const rowLanes = Math.min(
+            MAX_LANES,
+            placements.reduce((m, p) => Math.max(m, p.lane + 1), 0),
+          );
           const timedTop = HEADER_PX + rowLanes * LANE_PX;
 
           return (
@@ -146,6 +156,7 @@ export function MonthView() {
                 const dim = !isSameMonth(dayMs, anchor);
                 const today = isToday(dayMs);
                 const focused = startOfDay(dayMs) === cursor;
+                const holiday = holidays.get(dayMs);
 
                 const dayTimed = timed.filter((e) => overlapsDay(e.startMs, e.endMs, dayMs));
                 const hiddenSpan = placements.filter(
@@ -160,8 +171,10 @@ export function MonthView() {
                     key={dayMs}
                     onClick={() => setCursor(dayMs)}
                     onDoubleClick={() => openForm(newDraft(dayMs, calendars))}
+                    title={holiday ? `Holiday · ${holiday.title}` : undefined}
                     className={cn(
                       'border-hairline/60 hover:bg-sunken/40 relative flex min-h-0 flex-col overflow-visible border-r border-b',
+                      holiday && 'holiday-day',
                       dim && 'opacity-45',
                       focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
                     )}
@@ -175,6 +188,14 @@ export function MonthView() {
                       >
                         {new Date(dayMs).getDate()}
                       </span>
+                      {holiday && (
+                        <span
+                          title={`Holiday · ${holiday.title}`}
+                          className="text-accent ml-auto text-[9.5px] font-semibold tracking-wide uppercase"
+                        >
+                          Holiday
+                        </span>
+                      )}
                     </div>
 
                     <div
@@ -182,7 +203,12 @@ export function MonthView() {
                       style={{ paddingTop: Math.max(0, timedTop - HEADER_PX) }}
                     >
                       {dayTimed.slice(0, MAX_TIMED).map((e) => (
-                        <TimedChip key={e.id} event={e} calendars={calendars} onOpen={openDetails} />
+                        <TimedChip
+                          key={e.id}
+                          event={e}
+                          calendars={calendars}
+                          onOpen={openDetails}
+                        />
                       ))}
                       {moreCount > 0 && (
                         <button

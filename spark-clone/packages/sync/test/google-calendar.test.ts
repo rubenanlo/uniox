@@ -69,6 +69,10 @@ describe('mapGoogleEvent', () => {
   it('skips cancelled and working-location items', () => {
     expect(mapGoogleEvent({ ...base, status: 'cancelled' }, 'c')).toBeNull();
     expect(mapGoogleEvent({ ...base, eventType: 'workingLocation' }, 'c')).toBeNull();
+    expect(
+      mapGoogleEvent({ ...base, attendees: [{ self: true, responseStatus: 'declined' }] }, 'c'),
+    ).toBeNull();
+    expect(mapGoogleEvent({ ...base, attendees: [{ responseStatus: 'declined' }] }, 'c')).not.toBeNull();
   });
   it('carries out-of-office, meet links, and palette colors', () => {
     const m = mapGoogleEvent(
@@ -259,6 +263,33 @@ describe('insertGoogleEvent', () => {
     );
     expect(body).not.toHaveProperty('conferenceData');
     expect(body.recurrence).toEqual(['RRULE:FREQ=DAILY']);
+  });
+
+  it('sends an auto-declining out of office as midnight-to-midnight times', () => {
+    const body = gEventInsertBody(
+      {
+        title: 'Out of office',
+        startMs: d(2026, 11, 11),
+        endMs: d(2026, 11, 12),
+        allDay: true,
+        addMeet: true,
+        outOfOffice: { declineMessage: 'Away' },
+      },
+      'Europe/Paris',
+      'r',
+    );
+    expect(body.start).toEqual({
+      dateTime: new Date(d(2026, 11, 11)).toISOString(),
+      timeZone: 'Europe/Paris',
+    });
+    expect(body).toMatchObject({
+      eventType: 'outOfOffice',
+      outOfOfficeProperties: {
+        autoDeclineMode: 'declineAllConflictingInvitations',
+        declineMessage: 'Away',
+      },
+    });
+    expect(body).not.toHaveProperty('conferenceData');
   });
 
   it('leaves all-day dates without a zone', () => {

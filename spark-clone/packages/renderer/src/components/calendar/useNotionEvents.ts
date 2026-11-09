@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { CalendarEvent } from '@app/shared';
 import { expandEvent } from '../../lib/rrule';
 import { dedupeMirroredEvents } from '../../lib/eventDedupe';
+import { hideWorkOnHolidays } from '../../lib/holidays';
 import { DAY_MS, startOfDay } from '../../lib/calendarMonth';
 import { useCalendar } from '../../state/calendar';
 import { useKanban } from '../../state/kanban';
@@ -62,13 +63,20 @@ export function useVisibleFrom(
   rangeEnd: number,
 ): CalendarEvent[] {
   const pendingMove = useCalendar((s) => s.pendingMove);
+  const calendars = useCalendar((s) => s.calendars);
   const notion = useNotionEvents();
   const notionVisible = useNotionVisible((s) => s.visible);
   return useMemo(() => {
     const expanded = stored.flatMap((e) => expandEvent(e, rangeStart, rangeEnd));
     // One meeting mirrored into a second calendar (a "Busy" block or the same
     // invite in two accounts) renders once.
-    const deduped = dedupeMirroredEvents(expanded);
+    // On a holiday the closed work account's meetings drop out of view.
+    const deduped = hideWorkOnHolidays(
+      dedupeMirroredEvents(expanded),
+      calendars,
+      rangeStart,
+      rangeEnd,
+    );
     const merged = notionVisible
       ? [...deduped, ...notion.filter((e) => e.startMs < rangeEnd && e.endMs > rangeStart)]
       : deduped;
@@ -82,5 +90,5 @@ export function useVisibleFrom(
         )
       : merged;
     return moved.sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.startMs - b.startMs);
-  }, [stored, pendingMove, notion, notionVisible, rangeStart, rangeEnd]);
+  }, [stored, calendars, pendingMove, notion, notionVisible, rangeStart, rangeEnd]);
 }

@@ -43,6 +43,12 @@ export interface GEventItem {
   colorId?: string;
   /** 'transparent' = shows as Free; absent/'opaque' = Busy. */
   transparency?: string;
+  attendees?: { self?: boolean; responseStatus?: string }[];
+}
+
+/** An invite the calendar's owner declined (e.g. auto-declined by out of office). */
+export function declinedBySelf(item: GEventItem): boolean {
+  return !!item.attendees?.some((a) => a.self && a.responseStatus === 'declined');
 }
 
 /** The row shape handed to MailDb.upsertGoogleEvent. */
@@ -111,6 +117,7 @@ export function meetingUrlOf(item: GEventItem): string | undefined {
 /** null = skip (cancelled, unparseable, or working-location noise). */
 export function mapGoogleEvent(item: GEventItem, calendarId: string): MappedGoogleEvent | null {
   if (item.status === 'cancelled') return null;
+  if (declinedBySelf(item)) return null; // declined invites leave the calendar
   if (item.eventType === 'workingLocation') return null; // home/office markers, not events
   const start = parseGTime(item.start);
   const end = parseGTime(item.end);
@@ -200,12 +207,17 @@ export interface GEventInsert {
   rrule?: string;
   transparency?: 'opaque' | 'transparent';
   addMeet?: boolean;
+  /** Out of office that declines existing and new conflicting invites. */
+  outOfOffice?: { declineMessage: string };
 }
 
 export function gEventInsertBody(ev: GEventInsert, timeZone: string, requestId: string) {
-  const times = gEventTimes(ev.startMs, ev.endMs, ev.allDay);
+  // Google rejects all-day out-of-office events: send local midnight to
+  // midnight instead, which covers the same days.
+  const timed = !ev.allDay || !!ev.outOfOffice;
+  const times = gEventTimes(ev.startMs, ev.endMs, !timed);
   // Recurring timed events need a zone to expand in; harmless on the rest.
-  if (!ev.allDay) {
+  if (timed) {
     times.start.timeZone = timeZone;
     times.end.timeZone = timeZone;
   }
@@ -216,8 +228,22 @@ export function gEventInsertBody(ev: GEventInsert, timeZone: string, requestId: 
     ...times,
     ...(ev.rrule ? { recurrence: [`RRULE:${ev.rrule}`] } : {}),
     ...(ev.transparency === 'transparent' ? { transparency: 'transparent' } : {}),
-    ...(ev.addMeet
-      ? { conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }
+    ...(ev.outOfOffice
+      ? {
+          eventType: 'outOfOffice',
+          transparency: 'opaque',
+          outOfOfficeProperties: {
+            autoDeclineMode: 'declineAllConflictingInvitations',
+            declineMessage: ev.outOfOffice.declineMessage,
+          },
+        }
+      : {}),
+    ...(ev.addMeet && !ev.outOfOffice
+      ? {
+          conferenceData: {
+            createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } },
+          },
+        }
       : {}),
   };
 }
@@ -282,10 +308,10 @@ export async function subscribeGoogleCalendar(
 
 /** Unsubscribe the account from a calendar (removes it from Google entirely). */
 export async function unsubscribeGoogleCalendar(token: string, calendarId: string): Promise<void> {
-  const res = await fetch(
-    `${API}/users/me/calendarList/${encodeURIComponent(calendarId)}`,
-    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } },
-  );
+  const res = await fetch(`${API}/users/me/calendarList/${encodeURIComponent(calendarId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
   // 410 Gone = already unsubscribed; treat as success.
   if (!res.ok && res.status !== 410) {
     throw new Error(`Could not unsubscribe (HTTP ${res.status})`);
