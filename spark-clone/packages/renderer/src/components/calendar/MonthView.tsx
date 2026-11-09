@@ -11,7 +11,7 @@ import {
   WEEKDAYS,
 } from '../../lib/calendarMonth';
 import { isAllDayLike, packLanes } from '../../lib/eventLayout';
-import { freeDaysIn } from '../../lib/freeDays';
+import { holidaysIn } from '../../lib/holidays';
 import { cn } from '../../lib/utils';
 import { newDraft, useCalendar } from '../../state/calendar';
 import { useVisibleEvents } from './useNotionEvents';
@@ -121,8 +121,8 @@ export function MonthView() {
     return { spanning, timed };
   }, [events]);
 
-  const free = useMemo(
-    () => freeDaysIn(events, gridStart, gridStart + 42 * DAY_MS),
+  const holidays = useMemo(
+    () => holidaysIn(events, gridStart, gridStart + 42 * DAY_MS),
     [events, gridStart],
   );
 
@@ -156,7 +156,7 @@ export function MonthView() {
                 const dim = !isSameMonth(dayMs, anchor);
                 const today = isToday(dayMs);
                 const focused = startOfDay(dayMs) === cursor;
-                const freeBy = free.get(dayMs);
+                const holiday = holidays.get(dayMs);
 
                 const dayTimed = timed.filter((e) => overlapsDay(e.startMs, e.endMs, dayMs));
                 const hiddenSpan = placements.filter(
@@ -171,10 +171,10 @@ export function MonthView() {
                     key={dayMs}
                     onClick={() => setCursor(dayMs)}
                     onDoubleClick={() => openForm(newDraft(dayMs, calendars))}
-                    title={freeBy ? `Free day · ${freeBy.title}` : undefined}
+                    title={holiday ? `Holiday · ${holiday.title}` : undefined}
                     className={cn(
                       'border-hairline/60 hover:bg-sunken/40 relative flex min-h-0 flex-col overflow-visible border-r border-b',
-                      freeBy && 'free-day',
+                      holiday && 'holiday-day',
                       dim && 'opacity-45',
                       focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
                     )}
@@ -188,12 +188,12 @@ export function MonthView() {
                       >
                         {new Date(dayMs).getDate()}
                       </span>
-                      {freeBy && (
+                      {holiday && (
                         <span
-                          title={`Free day · ${freeBy.title}`}
+                          title={`Holiday · ${holiday.title}`}
                           className="text-accent ml-auto text-[9.5px] font-semibold tracking-wide uppercase"
                         >
-                          Free
+                          Holiday
                         </span>
                       )}
                     </div>

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Calendar, CalendarEvent } from '@app/shared';
 import { addDays, DAY_MS, isToday, startOfDay, timeLabel } from '../../lib/calendarMonth';
 import { dragTarget } from '../../lib/dragMove';
-import { freeDaysIn } from '../../lib/freeDays';
+import { holidaysIn } from '../../lib/holidays';
 import { canEditEvent } from '../../lib/eventEdit';
 import { isAllDayLike, layoutColumns, packLanes } from '../../lib/eventLayout';
 import { cn } from '../../lib/utils';
@@ -73,9 +73,9 @@ export function TimeGrid({ days }: { days: number[] }) {
     return { allDay, timed };
   }, [events]);
 
-  // Days freed by an out-of-office block or a "Paris office closed" event.
-  const free = useMemo(
-    () => freeDaysIn(events, rangeStart, rangeEnd),
+  // Holidays: an out-of-office block or a "Paris office closed" event.
+  const holidays = useMemo(
+    () => holidaysIn(events, rangeStart, rangeEnd),
     [events, rangeStart, rangeEnd],
   );
 
@@ -258,18 +258,18 @@ export function TimeGrid({ days }: { days: number[] }) {
             {ext.map((day) => {
               const today = isToday(day);
               const focused = day === cursor && !today;
-              const freeBy = free.get(day);
+              const holiday = holidays.get(day);
               return (
                 <div
                   key={day}
-                  title={freeBy ? `Free day · ${freeBy.title}` : undefined}
+                  title={holiday ? `Holiday · ${holiday.title}` : undefined}
                   className={cn(
                     'relative flex items-center gap-1.5 px-2 py-1.5',
-                    freeBy && 'free-day',
+                    holiday && 'holiday-day',
                     focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
                   )}
                 >
-                  {freeBy && (
+                  {holiday && (
                     <span aria-hidden className="bg-accent absolute inset-x-0 top-0 h-0.5" />
                   )}
                   <span className="text-ink-muted text-[11px] font-semibold uppercase">
@@ -283,9 +283,9 @@ export function TimeGrid({ days }: { days: number[] }) {
                   >
                     {new Date(day).getDate()}
                   </span>
-                  {freeBy && (
-                    <span className="text-accent ml-auto text-[10px] font-semibold tracking-wide uppercase">
-                      Free
+                  {holiday && (
+                    <span className="text-accent ml-auto shrink-0 text-[9.5px] font-semibold uppercase">
+                      Holiday
                     </span>
                   )}
                 </div>
@@ -315,11 +315,11 @@ export function TimeGrid({ days }: { days: number[] }) {
           <div className="min-w-0 flex-1 overflow-hidden">
             <div data-day-track className="grid" style={{ ...trackStyle, gridAutoRows: '22px' }}>
               {ext.map((day, i) =>
-                free.has(day) ? (
+                holidays.has(day) ? (
                   <div
                     key={'free' + day}
                     aria-hidden
-                    className="free-day pointer-events-none"
+                    className="holiday-day pointer-events-none"
                     style={{
                       gridColumn: `${i + 1}`,
                       gridRow: `1 / span ${Math.max(1, visibleLanes)}`,
@@ -404,8 +404,11 @@ export function TimeGrid({ days }: { days: number[] }) {
                       day === cursor && 'bg-sunken/30',
                     )}
                   >
-                    {free.has(day) && (
-                      <div aria-hidden className="free-day pointer-events-none absolute inset-0" />
+                    {holidays.has(day) && (
+                      <div
+                        aria-hidden
+                        className="holiday-day pointer-events-none absolute inset-0"
+                      />
                     )}
                     {/* Hour gridlines */}
                     {Array.from({ length: 24 }, (_, h) => (

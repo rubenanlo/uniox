@@ -539,11 +539,11 @@ body {
   color: #1a56c8;
 }
 
-/* Free days in the calendar (out of office, "Paris office closed"): a quiet
+/* Holidays in the calendar (out of office, "Paris office closed"): a quiet
    accent wash over the whole day so open days for calls stand out. */
-.free-day {
+.holiday-day {
   background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
-.dark .free-day {
+.dark .holiday-day {
   background-color: color-mix(in srgb, var(--color-accent) 11%, transparent);
 }
