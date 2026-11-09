@@ -74,6 +74,8 @@ export function EventForm({
   const [end, setEnd] = useState(timeValue(draft.endMs));
   const [allDay, setAllDay] = useState(draft.allDay);
   const [ooo, setOoo] = useState(draft.eventType === 'outOfOffice');
+  // Off by default: declining sends replies to organizers.
+  const [autoDecline, setAutoDecline] = useState(false);
   const [repeat, setRepeat] = useState<RepeatPreset | 'custom'>(presetOf(draft.rrule));
   const [customRule, setCustomRule] = useState(presetOf(draft.rrule) === 'custom' ? draft.rrule! : '');
   const [location, setLocation] = useState(draft.location);
@@ -134,6 +136,7 @@ export function EventForm({
       addMeet: meet,
       color,
       transparency: showAs,
+      autoDecline: ooo && onGoogle && autoDecline,
     }).then(setError);
   };
 
@@ -232,6 +235,14 @@ export function EventForm({
           <label className="text-ink-muted flex items-center gap-2 text-[12.5px]">
             <input type="checkbox" checked={ooo} onChange={(e) => setOoo(e.target.checked)}
                    className="accent-[var(--color-accent)]" /> Out of office
+          </label>
+        )}
+        {ooo && onGoogle && (
+          <label className="text-ink-muted flex items-center gap-2 pl-5 text-[12.5px]">
+            <input type="checkbox" checked={autoDecline}
+                   onChange={(e) => setAutoDecline(e.target.checked)}
+                   className="accent-[var(--color-accent)]" />
+            Auto-decline existing and new invites
           </label>
         )}
       </div>

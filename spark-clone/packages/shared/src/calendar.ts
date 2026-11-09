@@ -58,6 +58,9 @@ export interface CalendarEventInput {
   transparency?: 'opaque' | 'transparent';
   /** Create-only, Google calendars: have Google attach a Meet link. */
   addMeet?: boolean;
+  /** Create-only out of office on a Google account: Google declines existing
+   *  and new invites that conflict with it, on that account only. */
+  autoDecline?: boolean;
 }
 
 /**

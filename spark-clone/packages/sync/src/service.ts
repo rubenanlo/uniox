@@ -48,6 +48,7 @@ import {
   listGoogleEvents,
   listGoogleEventsChanged,
   mapGoogleEvent,
+  declinedBySelf,
   patchGoogleEvent,
   queryFreeBusy,
   searchGoogleEvents,
@@ -65,6 +66,9 @@ import { newId, withTimeout } from './util';
 
 /** People's calendar zones rarely change; look each up once per run. */
 const zoneCache = new Map<string, string | null>();
+
+/** Sent by Google with each invite an out-of-office block auto-declines. */
+const DECLINE_MESSAGE = "I'm out of office that day, so I've declined. I'll reply when I'm back.";
 
 const MAX_TASK_ATTEMPTS = 3;
 const TASK_TIMEOUT_MS = 120_000;
@@ -365,7 +369,7 @@ export class SyncService {
           stored.token,
         );
         for (const item of items) {
-          if (item.status === 'cancelled') {
+          if (item.status === 'cancelled' || declinedBySelf(item)) {
             this.db.deleteGoogleEventByRemoteId(rowId, item.id);
             continue;
           }
@@ -598,12 +602,14 @@ export class SyncService {
       case 'calendar:event:save': {
         const { event } = args as { event: CalendarEventInput };
         // New events on a Google account's calendar are created on Google, so
-        // guests see them and Meet can attach a link. Edits of local rows and
-        // out-of-office blocks stay local.
+        // guests see them and Meet can attach a link. Edits of local rows stay
+        // local, and so do out-of-office blocks unless they auto-decline
+        // invites, which only Google can do (for that account's calendar).
         const cal = event.calendarId ? this.db.getCalendarSync(event.calendarId) : null;
+        const ooo = event.eventType === 'outOfOffice';
         const googleBacked =
           !event.id &&
-          event.eventType !== 'outOfOffice' &&
+          (!ooo || !!event.autoDecline) &&
           !!cal?.accountId &&
           !!cal.remoteId &&
           this.db.getAccount(cal.accountId)?.authType === 'oauth-google';
@@ -615,6 +621,7 @@ export class SyncService {
               cal.remoteId!,
               {
                 ...event,
+                ...(ooo ? { outOfOffice: { declineMessage: DECLINE_MESSAGE }, addMeet: false } : {}),
                 location: event.location || (!event.addMeet ? event.meetingUrl : undefined),
                 description:
                   !event.addMeet && event.meetingUrl && event.location
@@ -632,7 +639,15 @@ export class SyncService {
             void this.syncAccountCalendars(cal.accountId!);
             return { ok: true, id: mapped?.id ?? '' };
           } catch (err) {
-            return { ok: false, id: '', error: err instanceof Error ? err.message : String(err) };
+            const msg = err instanceof Error ? err.message : String(err);
+            return {
+              ok: false,
+              id: '',
+              error:
+                ooo && /HTTP 400/.test(msg)
+                  ? 'Google only supports auto-decline on Workspace accounts. Turn it off to save this out of office locally.'
+                  : msg,
+            };
           }
         }
         const id = this.db.upsertEvent(event);

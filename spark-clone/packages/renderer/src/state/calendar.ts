@@ -41,6 +41,8 @@ export interface EventDraft {
   meetingUrl: string;
   /** New events on Google calendars: have Google attach a Meet link. */
   addMeet?: boolean;
+  /** New out of office on a Google account: decline conflicting invites there. */
+  autoDecline?: boolean;
   color?: string;
   /** Free/busy shown to other calendars; absent = busy. */
   transparency?: 'opaque' | 'transparent';
@@ -296,6 +298,7 @@ export const useCalendar = create<CalendarState>((set, get) => ({
         color: draft.color,
         transparency: draft.transparency,
         addMeet: draft.addMeet,
+        autoDecline: draft.autoDecline,
       },
     });
     if (!res.ok) return res.error ?? 'Could not save the event.';
