@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Calendar, CalendarEvent } from '@app/shared';
-import { canEditEvent } from '../src/lib/eventEdit';
+import { canEditEvent, deleteTargetId } from '../src/lib/eventEdit';
 
 const cal = (over: Partial<Calendar>): Calendar => ({
   id: 'c1',
@@ -37,5 +37,21 @@ describe('canEditEvent', () => {
   });
   it('notion events are never editable', () => {
     expect(canEditEvent(ev({ source: 'notion' }), [])).toBe(false);
+  });
+});
+
+describe('deleteTargetId', () => {
+  it('local occurrences delete their series', () => {
+    expect(deleteTargetId(ev({ id: 'e1:1700000000000' }), [cal({})])).toBe('e1');
+  });
+  it('google events delete by their full id', () => {
+    const cals = [cal({ id: 'gcal:a1:fam', source: 'google', accountId: 'a1' })];
+    const id = 'gev:gcal:a1:fam:abc_20261106T120000Z';
+    expect(deleteTargetId(ev({ id, source: 'google', calendarId: 'gcal:a1:fam' }), cals)).toBe(id);
+  });
+  it('google events on calendars without an account, and notion events, cannot be deleted', () => {
+    const cals = [cal({ id: 'gcal:x', source: 'google' })];
+    expect(deleteTargetId(ev({ source: 'google', calendarId: 'gcal:x' }), cals)).toBeNull();
+    expect(deleteTargetId(ev({ source: 'notion' }), [])).toBeNull();
   });
 });

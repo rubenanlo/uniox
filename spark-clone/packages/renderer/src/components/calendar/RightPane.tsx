@@ -4,11 +4,12 @@ import type { CalendarEvent } from '@app/shared';
 import { timeLabel } from '../../lib/calendarMonth';
 import { canEditEvent } from '../../lib/eventEdit';
 import { descriptionToHtml } from '../../lib/richText';
-import { ruleLabel, seriesId } from '../../lib/rrule';
+import { ruleLabel } from '../../lib/rrule';
 import { cn } from '../../lib/utils';
 import { useAccounts } from '../../state/queries';
 import { useCalendar } from '../../state/calendar';
 import { AgendaDetailsPanel, AgendaShortcutsPanel } from './AgendaPane';
+import { DeleteEventButton } from './DeleteEventButton';
 import { EventForm } from './EventForm';
 import { PaneSlide } from './PaneSlide';
 
@@ -78,14 +79,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function DetailsPanel({ event }: { event: CalendarEvent }) {
   const editEvent = useCalendar((s) => s.editEvent);
-  const remove = useCalendar((s) => s.remove);
   const closePane = useCalendar((s) => s.closePane);
   const calendars = useCalendar((s) => s.calendars);
   const { accounts } = useAccounts();
   const cal = calendars.find((c) => c.id === event.calendarId);
   const account = accounts.find((a) => a.id === (event.accountId ?? cal?.accountId));
   const editable = canEditEvent(event, calendars);
-  const deletable = event.source === 'local';
 
   const openEdit = () => editEvent(event);
   // Any property of an editable event jumps straight into the form.
@@ -183,14 +182,13 @@ function DetailsPanel({ event }: { event: CalendarEvent }) {
           >
             <Pencil size={12} /> Edit
           </button>
-          {deletable && (
-            <button
-              onClick={() => void remove(seriesId(event.id))}
-              className="border-hairline text-danger hover:bg-sunken flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[12px] font-semibold"
-            >
-              <Trash2 size={12} /> Delete
-            </button>
-          )}
+          <DeleteEventButton
+            key={event.id}
+            event={event}
+            className="border-hairline text-danger hover:bg-sunken flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[12px] font-semibold"
+          >
+            <Trash2 size={12} /> Delete
+          </DeleteEventButton>
         </div>
       )}
       {event.rrule && editable && (

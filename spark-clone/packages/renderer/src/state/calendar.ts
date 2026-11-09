@@ -104,7 +104,8 @@ interface CalendarState {
   save(draft: EventDraft): Promise<string | null>;
   /** In-place update keeping the event's source (Google events sync upstream). Returns an error to show, or null. */
   patch(args: Commands['calendar:event:patch']['args']): Promise<string | null>;
-  remove(id: string): Promise<void>;
+  /** Deletes the event (Google events on Google too). Returns an error to show, or null. */
+  remove(id: string): Promise<string | null>;
 }
 
 export const useCalendar = create<CalendarState>((set, get) => ({
@@ -315,9 +316,11 @@ export const useCalendar = create<CalendarState>((set, get) => ({
     return null;
   },
   remove: async (id) => {
-    await api.command('calendar:event:delete', { id });
+    const res = await api.command('calendar:event:delete', { id });
+    if (!res.ok) return res.error ?? 'Could not delete the event.';
     set({ rightPane: { kind: 'shortcuts' }, pendingMove: null });
     get().refresh();
+    return null;
   },
 }));
 
