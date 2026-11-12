@@ -9,6 +9,7 @@
     "packages/renderer/src",
     "packages/email-render/src",
     "packages/shared/src",
-    "packages/main/src/preload.ts"
+    "packages/main/src/preload.ts",
+    "packages/main/src/notify/overlay-preload.ts"
   ]
 }

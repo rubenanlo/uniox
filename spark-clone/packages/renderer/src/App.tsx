@@ -30,6 +30,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { api } from './lib/api';
 import { composeFromMailto } from './lib/mailto';
+import { useNotifyContext } from './lib/notifyContext';
 import { fmtWake } from './lib/schedule';
 import { sendWithUndo } from './lib/sendDraft';
 import { useAccentColor, useTheme } from './lib/theme';
@@ -285,13 +286,26 @@ export default function App() {
   useEffect(() => wireAssistant(), []);
   // Calendar change-delta subscription + initial load, app-level.
   useEffect(() => wireCalendar(), []);
-  // Clicking a system notification lands on that email (or the calendar
+  // Account colours + theme for Uniox's own notification cards (drawn in main).
+  useNotifyContext();
+  // Clicking a notification lands on that email (or the calendar
   // for meeting alerts).
   useDelta((e) => {
     if (e.kind === 'open-thread') {
       const ui = useUi.getState();
       ui.setView('inbox');
       ui.selectThread(e.threadId);
+      const accountId = e.accountId;
+      if (e.reply && accountId) {
+        void api.query('thread:messages', { threadId: e.threadId }).then((messages) => {
+          const last = messages[messages.length - 1];
+          if (last) {
+            useUi.getState().openComposer({ mode: 'reply', accountId, replyTo: last, subject: last.subject });
+          }
+        });
+      }
+    } else if (e.kind === 'open-inbox') {
+      useUi.getState().setView('inbox');
     } else if (e.kind === 'open-calendar') {
       useUi.getState().setView('calendar');
     } else if (e.kind === 'compose') {

@@ -34,7 +34,11 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve('packages/main/src/preload.ts') },
+        input: {
+          index: resolve('packages/main/src/preload.ts'),
+          // The notification overlay's DOM code (its page runs no script).
+          notify: resolve('packages/main/src/notify/overlay-preload.ts'),
+        },
       },
     },
   },

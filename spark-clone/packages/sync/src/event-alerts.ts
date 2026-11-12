@@ -15,6 +15,9 @@ export interface AlertableEvent {
   allDay: boolean;
   eventType: 'default' | 'outOfOffice';
   location?: string;
+  /** Carried through to the notification card (Join button, time range). */
+  endMs?: number;
+  meetingUrl?: string;
 }
 
 export type AlertStage = 'lead' | 'start';

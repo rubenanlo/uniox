@@ -692,6 +692,10 @@ export class AccountSync {
           title: msg.from?.name || msg.from?.email || 'New mail',
           body: msg.subject || '(no subject)',
           threadId: n.threadId,
+          accountId: this.account.id,
+          messageId: msg.id,
+          fromEmail: msg.from?.email,
+          snippet: msg.snippet || undefined,
         });
       }
     }
