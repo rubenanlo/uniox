@@ -264,27 +264,25 @@ export function TimeGrid({ days }: { days: number[] }) {
                   key={day}
                   title={holiday ? `Holiday · ${holiday.title}` : undefined}
                   className={cn(
-                    'relative flex items-center gap-1.5 px-2 py-1.5',
-                    holiday && 'holiday-day',
+                    'relative flex min-w-0 items-center gap-1.5 px-2 py-1.5',
+                    holiday && 'pr-3.5 pl-3',
                     focused && 'ring-accent/60 rounded-lg ring-2 ring-inset',
                   )}
                 >
-                  {holiday && (
-                    <span aria-hidden className="bg-accent absolute inset-x-0 top-0 h-0.5" />
-                  )}
-                  <span className="text-ink-muted text-[11px] font-semibold uppercase">
+                  {holiday && <span aria-hidden className="holiday-tile holiday-tile-top" />}
+                  <span className="text-ink-muted relative shrink-0 text-[11px] font-semibold uppercase">
                     {dayHeader(day)}
                   </span>
                   <span
                     className={cn(
-                      'flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[13px] font-semibold tabular-nums',
+                      'relative flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1 text-[13px] font-semibold tabular-nums',
                       today ? 'bg-danger text-white' : 'text-ink',
                     )}
                   >
                     {new Date(day).getDate()}
                   </span>
                   {holiday && (
-                    <span className="text-accent ml-auto shrink-0 text-[9.5px] font-semibold uppercase">
+                    <span className="text-accent relative ml-auto min-w-0 truncate text-[9.5px] font-semibold uppercase">
                       Holiday
                     </span>
                   )}
@@ -319,7 +317,7 @@ export function TimeGrid({ days }: { days: number[] }) {
                   <div
                     key={'free' + day}
                     aria-hidden
-                    className="holiday-day pointer-events-none"
+                    className="holiday-tile holiday-tile-mid relative"
                     style={{
                       gridColumn: `${i + 1}`,
                       gridRow: `1 / span ${Math.max(1, visibleLanes)}`,
@@ -407,7 +405,7 @@ export function TimeGrid({ days }: { days: number[] }) {
                     {holidays.has(day) && (
                       <div
                         aria-hidden
-                        className="holiday-day pointer-events-none absolute inset-0"
+                        className="holiday-tile holiday-tile-bottom"
                       />
                     )}
                     {/* Hour gridlines */}

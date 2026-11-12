@@ -547,3 +547,26 @@ body {
 .dark .holiday-day {
   background-color: color-mix(in srgb, var(--color-accent) 11%, transparent);
 }
+
+/* Holiday column in Week/Day: one soft tinted card (header, all-day lane,
+   hours) with rounded ends and a small inset, like an event card. */
+.holiday-tile {
+  position: absolute;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.dark .holiday-tile {
+  background-color: color-mix(in srgb, var(--color-accent) 11%, transparent);
+}
+.holiday-tile-top {
+  inset: 4px 3px 0;
+  border-radius: 10px 10px 0 0;
+}
+.holiday-tile-mid {
+  position: relative;
+  margin: 0 3px;
+}
+.holiday-tile-bottom {
+  inset: 0 3px 4px;
+  border-radius: 0 0 10px 10px;
+}
