@@ -674,6 +674,7 @@ body {
   margin: 0 3px;
 }
 .holiday-tile-bottom {
-  inset: 0 3px 4px;
+  /* The day column's 1px right border already eats into the box. */
+  inset: 0 2px 4px 3px;
   border-radius: 0 0 10px 10px;
 }
