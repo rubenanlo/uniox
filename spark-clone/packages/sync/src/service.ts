@@ -288,6 +288,10 @@ export class SyncService {
           due.stage === 'lead'
             ? `Starts in ${minutes} min · ${at}${where}`
             : `Starting now · ${at}${where}`,
+        startMs: due.event.startMs,
+        endMs: due.event.endMs,
+        location: due.event.location,
+        meetingUrl: due.event.meetingUrl,
       });
     }
 
@@ -1347,6 +1351,9 @@ export class SyncService {
             title: 'Snoozed email is back',
             body: thread?.subject || '(no subject)',
             threadId: t.threadId,
+            accountId: t.accountId,
+            snippet: thread?.snippet || undefined,
+            reason: 'snoozed',
           });
         }
         break;
@@ -1385,7 +1392,14 @@ export class SyncService {
         const messages = this.db.getMessagesByThread(t.threadId);
         const subject = messages[messages.length - 1]?.subject || '(no subject)';
         this.delta({ kind: 'threads-changed', accountIds: [t.accountId] });
-        this.delta({ kind: 'notify', title: 'Reminder', body: subject, threadId: t.threadId });
+        this.delta({
+          kind: 'notify',
+          title: 'Reminder',
+          body: subject,
+          threadId: t.threadId,
+          accountId: t.accountId,
+          reason: 'reminder',
+        });
         break;
       }
       case 'schedule-send': {

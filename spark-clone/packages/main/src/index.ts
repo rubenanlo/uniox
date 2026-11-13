@@ -21,6 +21,8 @@ import { basename, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   DEFAULT_NOTIFY_SOUND,
+  DEFAULT_NOTIFY_STYLE,
+  DEFAULT_SCHEDULING,
   GMAIL_ENDPOINTS,
   KANBAN_STATUSES,
   NOTIFY_SOUNDS,
@@ -31,8 +33,12 @@ import {
   type ComposerWindowState,
   type DeltaEvent,
   type MailtoDraft,
+  type NotifyContext,
+  type NotifyPayload,
   type NotifySound,
+  type NotifyStyle,
   type OutgoingDraft,
+  type SchedulingPresets,
   type Task,
 } from '@app/shared';
 import { AiService } from './ai';
@@ -50,6 +56,8 @@ import { fetchBoard, fetchPageBlocks, setPageStatus, validateToken } from './not
 import { authorizeNotion } from './notion-auth';
 import { printHtml } from './print';
 import { SyncBridge } from './sync-bridge';
+import { NotifyOverlay } from './notify/overlay';
+import type { CardAction } from './notify/card';
 
 // Only an unpackaged build may load a dev-server URL: a packaged app must never
 // trust ELECTRON_RENDERER_URL from the environment (it would grant a remote page
@@ -398,6 +406,8 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
     rendererListening = false;
+    // Elsewhere the app quits with its last window; a parked overlay mustn't keep it alive.
+    if (process.platform !== 'darwin') overlay?.destroy();
   });
 }
 
@@ -441,44 +451,127 @@ function osascriptNotify(title: string, body: string, sound: NotifySound): void 
 /** Hold shown notifications so they aren't garbage-collected before a click lands. */
 const liveNotifications = new Set<Notification>();
 
+/** Settings → Notifications → Style. Cached like the sound; invalidated on write. */
+let notifyStyleCache: NotifyStyle | null = null;
+async function notifyStyle(): Promise<NotifyStyle> {
+  if (notifyStyleCache) return notifyStyleCache;
+  try {
+    const v = (await bridge?.query('settings:get', { key: 'notificationStyle' })) as string | null;
+    if (v === 'uniox' || v === 'system') return (notifyStyleCache = v);
+  } catch {
+    /* fall through to default */
+  }
+  return DEFAULT_NOTIFY_STYLE;
+}
+
+/** Uniox's own notification cards; the window is created on first use. */
+let overlay: NotifyOverlay | null = null;
+function notifyOverlay(): NotifyOverlay {
+  overlay ??= new NotifyOverlay({
+    preload: join(__dirname, '../preload/notify.js'),
+    onAction: (payload, action) => void onNotifyAction(payload, action),
+  });
+  return overlay;
+}
+
+function focusMain(): void {
+  if (!mainWindow) createWindow();
+  mainWindow?.show();
+  mainWindow?.focus();
+}
+
+/** Play a macOS system sound; the native banner does this itself, our cards don't. */
+function playSound(sound: NotifySound): void {
+  if (sound === 'None' || process.platform !== 'darwin') return;
+  if (!(NOTIFY_SOUNDS as readonly string[]).includes(sound)) return;
+  execFile('afplay', [`/System/Library/Sounds/${sound}.aiff`]);
+}
+
+const SNOOZE_MEETING_MS = 5 * 60_000;
+
+async function onNotifyAction(p: NotifyPayload | null, action: CardAction): Promise<void> {
+  const send = (e: DeltaEvent) => mainWindow?.webContents.send('delta', e);
+  switch (action) {
+    case 'inbox':
+      focusMain();
+      send({ kind: 'open-inbox' });
+      return;
+    case 'open':
+    case 'reply':
+      focusMain();
+      if (p?.threadId) {
+        send({ kind: 'open-thread', threadId: p.threadId, accountId: p.accountId, reply: action === 'reply' });
+      } else if (p?.category === 'event') send({ kind: 'open-calendar' });
+      return;
+    case 'join':
+      if (p?.meetingUrl) openExternalGated(p.meetingUrl);
+      return;
+    case 'snooze':
+      if (p) setTimeout(() => void notifyOverlay().show(p), SNOOZE_MEETING_MS);
+      return;
+  }
+  if (!p?.accountId || !p.threadId || !bridge) return;
+  if (action === 'archive') {
+    await bridge.enqueueTask({ type: 'move-thread', accountId: p.accountId, threadId: p.threadId, toRole: 'archive' });
+  } else if (action === 'read' && p.messageId) {
+    await bridge.enqueueTask({ type: 'set-seen', accountId: p.accountId, messageIds: [p.messageId], seen: true });
+  } else if (action === 'later') {
+    const stored = (await bridge.query('settings:get', { key: 'scheduling' }).catch(() => null)) as
+      | Partial<SchedulingPresets>
+      | null;
+    const hours = stored?.laterTodayHours ?? DEFAULT_SCHEDULING.laterTodayHours;
+    await bridge.enqueueTask({
+      type: 'snooze-thread',
+      accountId: p.accountId,
+      threadId: p.threadId,
+      wakeAt: Date.now() + hours * 3_600_000,
+      alert: true,
+    });
+  }
+}
+
+/** The plain macOS banner (Settings → Notifications → Style → macOS). */
+function showSystemNotification(event: NotifyPayload, sound: NotifySound): void {
+  if (!Notification.isSupported()) return;
+  const n = new Notification({
+    title: event.title,
+    body: event.body,
+    silent: sound === 'None',
+    ...(sound !== 'None' ? { sound } : {}),
+  });
+  liveNotifications.add(n);
+  n.on('close', () => liveNotifications.delete(n));
+  n.on('click', () => {
+    liveNotifications.delete(n);
+    void onNotifyAction(event, 'open');
+  });
+  n.on('failed', () => {
+    liveNotifications.delete(n);
+    osascriptNotify(event.title, event.body, sound);
+  });
+  n.show();
+}
+
 const deltaCoalescer = new DeltaCoalescer((e) => mainWindow?.webContents.send('delta', e));
 
 function broadcastDelta(event: DeltaEvent): void {
   deltaCoalescer.push(event);
+  if (event.kind !== 'notify') return;
   // Mail notifications stay quiet while the app is focused (you're looking at
   // the inbox); meeting alerts always show — being in the app is exactly when
   // you need the 10-minute nudge.
-  const wantsBanner =
-    event.kind === 'notify' && (event.category === 'event' || !BrowserWindow.getFocusedWindow());
-  if (event.kind === 'notify' && Notification.isSupported() && wantsBanner) {
-    void (async () => {
-      const sound = await notifySound();
-      const n = new Notification({
-        title: event.title,
-        body: event.body,
-        silent: sound === 'None',
-        ...(sound !== 'None' ? { sound } : {}),
-      });
-      const threadId = event.threadId;
-      const isEventAlert = event.category === 'event';
-      liveNotifications.add(n);
-      n.on('close', () => liveNotifications.delete(n));
-      n.on('click', () => {
-        liveNotifications.delete(n);
-        mainWindow?.show();
-        mainWindow?.focus();
-        // Land on the email the notification was about, like any mail app;
-        // meeting alerts land on the calendar instead.
-        if (threadId) mainWindow?.webContents.send('delta', { kind: 'open-thread', threadId });
-        else if (isEventAlert) mainWindow?.webContents.send('delta', { kind: 'open-calendar' });
-      });
-      n.on('failed', () => {
-        liveNotifications.delete(n);
-        osascriptNotify(event.title, event.body, sound);
-      });
-      n.show();
-    })();
-  }
+  if (event.category !== 'event' && BrowserWindow.getFocusedWindow()) return;
+  void (async () => {
+    const [sound, style] = await Promise.all([notifySound(), notifyStyle()]);
+    if (style === 'system') return showSystemNotification(event, sound);
+    playSound(sound);
+    try {
+      await notifyOverlay().show(event);
+    } catch (err) {
+      console.error('[main] notification overlay failed', err);
+      showSystemNotification(event, 'None');
+    }
+  })();
 }
 
 function registerAppProtocol(attachmentsDir: string): void {
@@ -555,9 +648,9 @@ function registerIpc(): void {
 
   ipcMain.handle('command', async (event, channel: string, args: unknown) => {
     if (!validSender(event)) throw new Error('invalid sender');
-    if (channel === 'settings:set' && (args as { key?: string } | null)?.key === 'notificationSound') {
-      notifySoundCache = null;
-    }
+    const settingKey = channel === 'settings:set' ? (args as { key?: string } | null)?.key : undefined;
+    if (settingKey === 'notificationSound') notifySoundCache = null;
+    if (settingKey === 'notificationStyle') notifyStyleCache = null;
     switch (channel) {
       case 'mailto:make-default': {
         // macOS: needs the CFBundleURLTypes entry electron-builder writes
@@ -724,6 +817,17 @@ function registerIpc(): void {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       }
+      case 'notify:context':
+        notifyOverlay().setContext(args as NotifyContext);
+        return { ok: true };
+      case 'notify:preview':
+        await notifyOverlay().show({
+          title: 'Uniox',
+          body: 'This is how new mail will look',
+          mailCategory: 'personal',
+          snippet: 'Hover a notification to see quick actions: reply, archive, mark read or snooze.',
+        });
+        return { ok: true };
       case 'notify-sound:preview': {
         const { sound } = args as { sound: string };
         if (process.platform === 'darwin' && (NOTIFY_SOUNDS as readonly string[]).includes(sound)) {
@@ -906,6 +1010,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   bridge?.stop();
+  overlay?.destroy();
 });
 
 app.on('web-contents-created', (_event, contents) => {

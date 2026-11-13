@@ -11,5 +11,6 @@
     "packages/shared/src",
     "dev",
     "electron.vite.config.ts"
-  ]
+  ],
+  "exclude": ["packages/main/src/notify/overlay-preload.ts"]
 }

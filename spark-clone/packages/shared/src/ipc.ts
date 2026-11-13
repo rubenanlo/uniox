@@ -4,6 +4,7 @@ import type {
   Address,
   AutoReply,
   AutoReplyState,
+  Category,
   Folder,
   GatekeeperPending,
   MessageBodyPayload,
@@ -147,6 +148,10 @@ export interface Commands {
   'sync:now': { args: undefined; result: { ok: boolean } };
   /** Play a system sound in the main process so the settings picker can audition it. */
   'notify-sound:preview': { args: { sound: string }; result: { ok: boolean } };
+  /** The renderer keeps main's copy of account colours + theme current for notification cards. */
+  'notify:context': { args: NotifyContext; result: { ok: boolean } };
+  /** Settings: show a sample Uniox notification card. */
+  'notify:preview': { args: undefined; result: { ok: boolean } };
   'templates:save': { args: Template; result: { ok: boolean } };
   'templates:delete': { args: { id: string }; result: { ok: boolean } };
   'signatures:save': { args: Signature & { accountId?: string }; result: { ok: boolean } };
@@ -256,6 +261,40 @@ export interface Commands {
 
 export type CommandChannel = keyof Commands;
 
+/**
+ * A notification. title/body are what the plain macOS banner shows; the rest
+ * feeds Uniox's own notification card (avatar, preview, quick actions).
+ */
+export interface NotifyPayload {
+  title: string;
+  body: string;
+  threadId?: string;
+  /** 'event' = meeting alert: shown even while the window is focused. */
+  category?: 'event';
+  accountId?: string;
+  /** The new message, so "Mark read" can flag it. */
+  messageId?: string;
+  fromEmail?: string;
+  /** Mail preview text (empty until the body has been fetched). */
+  snippet?: string;
+  /** Smart Inbox category of the thread, and whether the sender is a priority sender. */
+  mailCategory?: Category;
+  priority?: boolean;
+  /** Why an old thread is back: a reminder fired or a snooze ended. */
+  reason?: 'reminder' | 'snoozed';
+  /** Meeting alerts only. */
+  startMs?: number;
+  endMs?: number;
+  location?: string;
+  meetingUrl?: string;
+}
+
+/** Per-account label and colour for notification cards, plus the app theme. */
+export interface NotifyContext {
+  dark: boolean;
+  accounts: { id: string; label: string; color: string }[];
+}
+
 /** Push events: sync → main → renderer. Coarse deltas; the renderer re-queries. */
 export type DeltaEvent =
   | { kind: 'threads-changed'; accountIds: string[] }
@@ -265,9 +304,11 @@ export type DeltaEvent =
   | { kind: 'accounts-changed' }
   | { kind: 'sync-status'; status: SyncStatus }
   /** category 'event' = meeting alert: shown even while the window is focused. */
-  | { kind: 'notify'; title: string; body: string; threadId?: string; category?: 'event' }
-  /** A system notification was clicked — the renderer opens that thread. */
-  | { kind: 'open-thread'; threadId: string }
+  | ({ kind: 'notify' } & NotifyPayload)
+  /** A notification was clicked — the renderer opens that thread (and a reply, from its Reply button). */
+  | { kind: 'open-thread'; threadId: string; accountId?: string; reply?: boolean }
+  /** The notification stack's "N more" was clicked. */
+  | { kind: 'open-inbox' }
   /** A meeting-alert notification was clicked — the renderer shows the calendar. */
   | { kind: 'open-calendar' }
   /** A mailto: link was opened (browser, another app, or a link in an email). */

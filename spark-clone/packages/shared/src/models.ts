@@ -301,3 +301,7 @@ export interface SyncStatus {
 export const NOTIFY_SOUNDS = ['Glass', 'Ping', 'Pop', 'Purr', 'Hero', 'Submarine', 'Tink'] as const;
 export type NotifySound = (typeof NOTIFY_SOUNDS)[number] | 'None';
 export const DEFAULT_NOTIFY_SOUND: NotifySound = 'Glass';
+
+/** Who draws notifications: Uniox's own cards, or the macOS banner. */
+export type NotifyStyle = 'uniox' | 'system';
+export const DEFAULT_NOTIFY_STYLE: NotifyStyle = 'uniox';

@@ -1,10 +1,12 @@
 import {
   DEFAULT_NOTIFY_SOUND,
+  DEFAULT_NOTIFY_STYLE,
   DEFAULT_SCHEDULING,
   normalizeAvailability,
   NOTIFY_SOUNDS,
   type AvailabilityPrefs,
   type NotifySound,
+  type NotifyStyle,
   type SchedulingPresets,
   type Template,
 } from '@app/shared';
@@ -199,6 +201,61 @@ function DefaultMailAppRow() {
           </button>
         </div>
       )}
+    </Field>
+  );
+}
+
+/** Who draws notifications: Uniox's own cards (default) or the macOS banner. */
+function NotificationStyleField() {
+  const [style, setStyle] = useState<NotifyStyle>(DEFAULT_NOTIFY_STYLE);
+  useEffect(() => {
+    void api.query('settings:get', { key: 'notificationStyle' }).then((v) => {
+      if (v === 'uniox' || v === 'system') setStyle(v);
+    });
+  }, []);
+  const pick = (next: NotifyStyle) => {
+    setStyle(next);
+    void api.command('settings:set', { key: 'notificationStyle', value: next });
+  };
+  const options: { id: NotifyStyle; label: string }[] = [
+    { id: 'uniox', label: 'Uniox' },
+    { id: 'system', label: 'macOS' },
+  ];
+  return (
+    <Field
+      label="Notification style"
+      hint={
+        style === 'uniox'
+          ? 'Uniox cards with a preview and quick actions. They show even when macOS Focus is on.'
+          : 'The standard macOS banner, managed in System Settings → Notifications.'
+      }
+    >
+      <div className="flex items-center gap-2">
+        <div className="bg-sunken flex items-center rounded-lg p-0.5" role="radiogroup" aria-label="Notification style">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              role="radio"
+              aria-checked={style === o.id}
+              onClick={() => pick(o.id)}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-[12px]',
+                style === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {style === 'uniox' && (
+          <button
+            onClick={() => void api.command('notify:preview', undefined)}
+            className="border-hairline text-ink-muted hover:text-ink rounded-lg border px-2.5 py-1 text-[12px]"
+          >
+            Show a preview
+          </button>
+        )}
+      </div>
     </Field>
   );
 }
@@ -521,6 +578,7 @@ function AppearanceTab() {
       </Field>
       <DefaultMailAppRow />
       <NotificationsRow />
+      <NotificationStyleField />
       <NotificationSoundField />
     </div>
   );
