@@ -57,19 +57,18 @@ body {
 .card {
   position: relative;
   z-index: 1;
-  background: var(--surface);
+  /* The daylight edge (amber for a priority sender) is a background layer
+     painted from the border box, so the card's own radius clips it and it
+     runs the full height. */
+  --edge: linear-gradient(180deg, var(--aqua), var(--azure) 55%, var(--violet));
+  background: var(--edge) left top / 4px 100% no-repeat border-box, var(--surface);
   border: 0.5px solid var(--hairline);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 13px 14px 12px 18px;
   transition: transform 320ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 220ms ease-out;
 }
-/* The daylight edge (amber for a priority sender). */
-.card::before {
-  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 16px 0 0 16px;
-  background: linear-gradient(180deg, var(--aqua), var(--azure) 55%, var(--violet));
-}
-.card.priority::before { background: var(--priority); }
+.card.priority { --edge: linear-gradient(var(--priority), var(--priority)); }
 .card.enter { transform: translateX(calc(100% + 24px)); opacity: 0; }
 /* The next mail rising off the deck. */
 .card.rise { transform: translateY(-10px) scale(0.97); opacity: 0.4; transition-duration: 260ms, 200ms; }
