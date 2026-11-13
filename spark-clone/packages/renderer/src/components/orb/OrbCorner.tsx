@@ -1,10 +1,12 @@
+import { MessageSquare } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { runAssistantAction, type AssistantAction } from '../../lib/assistantContext';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
 import { useUi } from '../../state/store';
 import { LanguagePicker } from './LanguagePicker';
-import { orbActionsFor } from './orbActions';
+import { Keycaps } from '../ui/Keycap';
+import { orbActionsFor, type OrbAction } from './orbActions';
 import SpecterOrb from './SpecterOrb';
 
 const IDLE_OPACITY = 0.45;
@@ -44,8 +46,18 @@ export function OrbCorner() {
   const [languageFor, setLanguageFor] = useState<AssistantAction | null>(null);
   const [opacity, setOpacity] = useState(IDLE_OPACITY);
 
-  const actions = orbActionsFor(view, composerOpen, selectedThreadId);
-  const menuOpen = hovered || pinned;
+  const keyboardOpen = useAssistant((s) => s.orbMenuOpen);
+  const setKeyboardOpen = useAssistant((s) => s.setOrbMenuOpen);
+  const [active, setActive] = useState(0);
+  const chat: OrbAction = {
+    label: 'Open the assistant chat',
+    icon: MessageSquare,
+    run: () => useAssistant.getState().setOpen(true),
+  };
+  const suggested = orbActionsFor(view, composerOpen, selectedThreadId);
+  // From the keyboard there's no orb to click for the chat, so it joins the list.
+  const actions = keyboardOpen ? [...suggested, chat] : suggested;
+  const menuOpen = hovered || pinned || keyboardOpen;
   // The picker belongs to the composer it was opened for: drop it (and the
   // pin holding it open) when the composer opens or closes.
   const [prevComposerOpen, setPrevComposerOpen] = useState(composerOpen);
@@ -55,26 +67,64 @@ export function OrbCorner() {
     setPinned(false);
   }
   const closeMenu = () => {
+    setKeyboardOpen(false);
+    setActive(0);
     setPinned(false);
     setHovered(false);
     setLanguageFor(null);
   };
+  const pick = ({ action, run, pickLanguage }: OrbAction) => {
+    if (action && pickLanguage) {
+      // Typing in the picker moves focus off the orb, so pin
+      // the menu open until a language is picked.
+      setPinned(true);
+      setLanguageFor(action);
+      return;
+    }
+    closeMenu();
+    if (action) void runAssistantAction(action);
+    else run?.();
+  };
+
+  // ⌘. opened the menu: ↑/↓ walk it, ↩ runs, 1–9 jump straight to a row,
+  // Esc closes. Captured ahead of the composer so its caret stays put.
+  useEffect(() => {
+    if (!keyboardOpen || languageFor) return;
+    const onKey = (e: KeyboardEvent) => {
+      const n = Number(e.key);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const step = e.key === 'ArrowDown' ? 1 : -1;
+        setActive((i) => (i + step + actions.length) % actions.length);
+      } else if (e.key === 'Enter') {
+        pick(actions[Math.min(active, actions.length - 1)]!);
+      } else if (!e.metaKey && !e.ctrlKey && n >= 1 && n <= actions.length) {
+        pick(actions[n - 1]!);
+      } else if (e.key === 'Escape') {
+        closeMenu();
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+
   // A click anywhere else dismisses the (pinned) language picker.
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!languageFor) return;
+    if (!languageFor && !keyboardOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) closeMenu();
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [languageFor]);
+  }, [languageFor, keyboardOpen]);
 
   // Hover brightens the shader opacity over a fixed 700ms (ease-out cubic),
   // resuming from wherever a half-finished fade left off.
   const opacityRef = useRef(IDLE_OPACITY);
   useEffect(() => {
-    const target = hovered || pinned ? 1 : IDLE_OPACITY;
+    const target = menuOpen ? 1 : IDLE_OPACITY;
     const from = opacityRef.current;
     if (from === target) return;
     const start = performance.now();
@@ -89,7 +139,7 @@ export function OrbCorner() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [hovered, pinned]);
+  }, [menuOpen]);
 
   // Opening/closing/expanding the composer teleports the orb rather than
   // sliding it: fade out in place, jump while invisible, fade back in.
@@ -157,36 +207,58 @@ export function OrbCorner() {
               }}
             />
           ) : (
-            actions.map(({ label, icon: Icon, action, run, pickLanguage }) => (
-              <button
-                key={label}
-                role="menuitem"
-                onClick={() => {
-                  if (action && pickLanguage) {
-                    // Typing in the picker moves focus off the orb, so pin
-                    // the menu open until a language is picked.
-                    setPinned(true);
-                    setLanguageFor(action);
-                    return;
-                  }
-                  closeMenu();
-                  if (action) void runAssistantAction(action);
-                  else run?.();
-                }}
-                className="text-ink-muted hover:bg-accent-soft/40 hover:text-ink flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]"
-              >
-                <Icon size={14} className="text-accent shrink-0" />
-                {label}
-              </button>
-            ))
+            <>
+              {actions.map((item, i) => {
+                const Icon = item.icon;
+                const current = keyboardOpen && i === Math.min(active, actions.length - 1);
+                return [
+                  item === chat && (
+                    <div key="divider" className="border-hairline mx-2 my-1 border-t" />
+                  ),
+                  <button
+                    key={item.label}
+                    role="menuitem"
+                    onMouseEnter={() => keyboardOpen && setActive(i)}
+                    onClick={() => pick(item)}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]',
+                      current
+                        ? 'bg-accent-soft/40 text-ink'
+                        : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink',
+                    )}
+                  >
+                    <Icon size={14} className="text-accent shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {keyboardOpen && i < 9 && <Keycaps keys={[String(i + 1)]} />}
+                  </button>,
+                ];
+              })}
+              {keyboardOpen ? (
+                <div className="text-ink-faint border-hairline mt-1 flex items-center gap-3 border-t px-3 pt-2 pb-1 text-[11px]">
+                  <span className="flex items-center gap-1">
+                    <Keycaps keys={['↑', '↓']} /> move
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Keycaps keys={['↩']} /> run
+                  </span>
+                  <span className="ml-auto flex items-center gap-1">
+                    <Keycaps keys={['esc']} /> close
+                  </span>
+                </div>
+              ) : (
+                <div className="text-ink-faint border-hairline mt-1 flex items-center justify-between border-t px-3 pt-2 pb-1 text-[11px]">
+                  <span>Open from the keyboard</span>
+                  <Keycaps keys={['⌘', '.']} />
+                </div>
+              )}
+            </>
           )}
           </div>
         </div>
       )}
       <button
         onClick={() => {
-          setPinned(false);
-          setHovered(false);
+          closeMenu();
           useAssistant.getState().setOpen(true);
         }}
         onFocus={() => setHovered(true)}
@@ -211,7 +283,7 @@ export function OrbCorner() {
               height={120}
               opacity={opacity}
               backgroundColor="transparent"
-              paused={!hovered && !pinned}
+              paused={!menuOpen}
             />
           </span>
           <span

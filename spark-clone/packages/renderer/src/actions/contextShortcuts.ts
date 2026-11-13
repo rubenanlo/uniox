@@ -100,6 +100,15 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
+    section: 'Assistant menu (⌘.)',
+    rows: [
+      { label: 'Move between actions', keys: [['↑', '↓']] },
+      { label: 'Run the highlighted action', keys: [['↩']] },
+      { label: 'Run an action by its number', keys: [['1'], ['2'], ['3']] },
+      { label: 'Close', keys: [['Esc']] },
+    ],
+  },
+  {
     section: 'Assistant',
     rows: [
       { label: 'Send', keys: [['↩']] },
