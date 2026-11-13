@@ -44,6 +44,113 @@
   --color-priority: #eba13f;
 }
 
+/* Color themes (Settings → Appearance), VS Code style: one palette for dark
+   mode and one for light. useTheme sets data-palette on <html> to the active
+   one, so these beat the plain .dark / @theme values. A custom accent is an
+   inline var on <html> and still wins over the palette accent. */
+:root[data-palette='midnight'] {
+  --color-app: #0b1020;
+  --color-surface: #121a2e;
+  --color-paper: #152037;
+  --color-sunken: #070b16;
+  --color-ink: #e3e9f5;
+  --color-ink-muted: #8d9ab5;
+  --color-ink-faint: #56627d;
+  --color-hairline: #1f2a44;
+  --color-accent: #5cc8ff;
+  --color-accent-soft: #123049;
+  --color-danger: #ff6b6b;
+  --color-aqua: oklch(0.84 0.12 195);
+  --color-azure: oklch(0.74 0.14 235);
+  --color-violet: oklch(0.7 0.15 275);
+  --color-priority: #f5b84a;
+}
+:root[data-palette='ember'] {
+  --color-app: #17130f;
+  --color-surface: #211b16;
+  --color-paper: #271f19;
+  --color-sunken: #100d0a;
+  --color-ink: #f1e7db;
+  --color-ink-muted: #ae9e8c;
+  --color-ink-faint: #6f6153;
+  --color-hairline: #342a20;
+  --color-accent: #ff9d5c;
+  --color-accent-soft: #3f2717;
+  --color-danger: #ef6a5a;
+  --color-aqua: oklch(0.85 0.13 88);
+  --color-azure: oklch(0.76 0.15 58);
+  --color-violet: oklch(0.67 0.17 28);
+  --color-priority: #f2c14e;
+}
+:root[data-palette='aubergine'] {
+  --color-app: #16101b;
+  --color-surface: #201727;
+  --color-paper: #251c2e;
+  --color-sunken: #0f0a13;
+  --color-ink: #efe6f4;
+  --color-ink-muted: #a797b4;
+  --color-ink-faint: #695a77;
+  --color-hairline: #31253c;
+  --color-accent: #f28bc0;
+  --color-accent-soft: #45213b;
+  --color-danger: #ff6f7d;
+  --color-aqua: oklch(0.82 0.11 345);
+  --color-azure: oklch(0.72 0.16 320);
+  --color-violet: oklch(0.66 0.17 290);
+  --color-priority: #f0b65a;
+}
+:root[data-palette='linen'] {
+  --color-app: #f3eee5;
+  --color-surface: #fffcf7;
+  --color-paper: #fbf6ed;
+  --color-sunken: #e8e1d4;
+  --color-ink: #2a241d;
+  --color-ink-muted: #7b6f60;
+  --color-ink-faint: #aea293;
+  --color-hairline: #e2d9ca;
+  --color-accent: #c0532b;
+  --color-accent-soft: #f7e4d9;
+  --color-danger: #b23a2a;
+  --color-aqua: oklch(0.7 0.13 75);
+  --color-azure: oklch(0.62 0.15 48);
+  --color-violet: oklch(0.53 0.15 22);
+  --color-priority: #b06f08;
+}
+:root[data-palette='glacier'] {
+  --color-app: #edf1f7;
+  --color-surface: #ffffff;
+  --color-paper: #f8fafd;
+  --color-sunken: #e0e7f0;
+  --color-ink: #17202e;
+  --color-ink-muted: #5e6a80;
+  --color-ink-faint: #98a3b7;
+  --color-hairline: #d9e1ec;
+  --color-accent: #4f46e5;
+  --color-accent-soft: #e7e6fd;
+  --color-danger: #d03b3b;
+  --color-aqua: oklch(0.72 0.12 215);
+  --color-azure: oklch(0.58 0.17 262);
+  --color-violet: oklch(0.55 0.2 298);
+  --color-priority: #c47b0a;
+}
+:root[data-palette='sage'] {
+  --color-app: #edf0ea;
+  --color-surface: #fbfcf9;
+  --color-paper: #f5f7f1;
+  --color-sunken: #dfe5dc;
+  --color-ink: #1c261e;
+  --color-ink-muted: #606e5c;
+  --color-ink-faint: #9ca898;
+  --color-hairline: #d8dfd3;
+  --color-accent: #2d7a58;
+  --color-accent-soft: #dcede3;
+  --color-danger: #bb4332;
+  --color-aqua: oklch(0.74 0.12 150);
+  --color-azure: oklch(0.62 0.11 180);
+  --color-violet: oklch(0.56 0.1 210);
+  --color-priority: #b3750b;
+}
+
 /* The shell backdrop: plain app colour. Home layers its day sun on top. */
 .app-backdrop {
   background-color: var(--color-app);

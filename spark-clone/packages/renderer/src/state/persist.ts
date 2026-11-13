@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { DarkPalette, LightPalette } from '@app/shared';
 import { api } from '../lib/api';
 import { loadPrioritySenders, seedLegacyPriorityEmails, wirePriorityDeltaRefresh } from './priority';
 import { useUi, type ListDensity, type ListLayout, type ThemePref } from './store';
@@ -7,6 +8,8 @@ const KEY = 'ui-prefs';
 
 interface UiPrefs {
   theme: ThemePref;
+  darkPalette: DarkPalette;
+  lightPalette: LightPalette;
   listLayout: ListLayout;
   density: ListDensity;
   split: boolean;
@@ -22,6 +25,8 @@ interface UiPrefs {
 
 const pick = (s: ReturnType<typeof useUi.getState>): UiPrefs => ({
   theme: s.theme,
+  darkPalette: s.darkPalette,
+  lightPalette: s.lightPalette,
   listLayout: s.listLayout,
   density: s.density,
   split: s.split,
