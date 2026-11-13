@@ -245,8 +245,9 @@ export function TimeGrid({ days }: { days: number[] }) {
 
   return (
     <div ref={rootRef} className="flex h-full min-w-0 flex-1 flex-col">
-      {/* Header: GMT gutter + per-day columns */}
-      <div className="border-hairline flex border-b">
+      {/* Header: GMT gutter + per-day columns. Every section reserves the
+          hour body's scrollbar gutter so the day columns line up. */}
+      <div className="border-hairline flex overflow-y-hidden border-b [scrollbar-gutter:stable]">
         <div
           className="text-ink-faint flex shrink-0 items-end justify-end px-1.5 pb-1 text-[10px] font-medium"
           style={{ width: GUTTER }}
@@ -295,7 +296,7 @@ export function TimeGrid({ days }: { days: number[] }) {
 
       {/* All-day lane (pinned, collapsible) */}
       {maxLane >= 0 && (
-        <div className="border-hairline flex border-b">
+        <div className="border-hairline flex overflow-y-hidden border-b [scrollbar-gutter:stable]">
           <div
             className="flex shrink-0 items-start justify-end gap-1 px-1.5 py-1"
             style={{ width: GUTTER }}
@@ -362,7 +363,7 @@ export function TimeGrid({ days }: { days: number[] }) {
       )}
 
       {/* Scrollable hour body */}
-      <div ref={bodyRef} data-timegrid className="relative min-h-0 flex-1 overflow-y-auto">
+      <div ref={bodyRef} data-timegrid className="relative min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <div ref={gridRef} className="relative flex" style={{ height: 24 * HOUR_PX }}>
           {/* Gutter with hour labels */}
           <div className="border-hairline relative shrink-0 border-r" style={{ width: GUTTER }}>
