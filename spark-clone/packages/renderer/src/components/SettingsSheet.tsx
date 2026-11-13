@@ -31,6 +31,8 @@ import { useEscapeClose } from '../hooks/useEscapeClose';
 import { api } from '../lib/api';
 import { minutesLabel } from '../lib/availability';
 import { fileToAvatarDataUrl } from '../lib/avatar';
+import { DARK_PALETTE_INFO, LIGHT_PALETTE_INFO, type PaletteInfo } from '../lib/palettes';
+import { useIsDark } from '../lib/useIsDark';
 import {
   buildStyleProfile,
   forgetStyleProfile,
@@ -474,10 +476,85 @@ function NameRow() {
   );
 }
 
+/** A row of color-theme cards; each card is a tiny window drawn in its palette. */
+function PalettePicker<Id extends string>({
+  label,
+  options,
+  value,
+  onSelect,
+}: {
+  label: string;
+  options: PaletteInfo<Id>[];
+  value: Id;
+  onSelect: (id: Id) => void;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label={label}>
+      {options.map((p) => (
+        <button
+          key={p.id}
+          role="radio"
+          aria-checked={value === p.id}
+          onClick={() => onSelect(p.id)}
+          title={p.blurb}
+          className={cn(
+            'flex flex-col gap-1.5 rounded-xl p-1.5 text-left',
+            value === p.id ? 'bg-accent-soft' : 'hover:bg-sunken',
+          )}
+        >
+          <span
+            className="border-hairline flex h-12 overflow-hidden rounded-lg border"
+            style={{ background: p.app }}
+            aria-hidden
+          >
+            <span className="flex w-1/3 flex-col gap-1 p-1.5">
+              <span className="h-1 w-full rounded-full" style={{ background: p.accent }} />
+              <span className="h-1 w-3/4 rounded-full opacity-40" style={{ background: p.ink }} />
+              <span className="h-1 w-2/3 rounded-full opacity-40" style={{ background: p.ink }} />
+            </span>
+            <span
+              className="m-1 ml-0 flex flex-1 flex-col gap-1 rounded-md p-1.5"
+              style={{ background: p.surface }}
+            >
+              <span className="h-1 w-3/4 rounded-full opacity-70" style={{ background: p.ink }} />
+              <span className="h-1 w-full rounded-full opacity-30" style={{ background: p.ink }} />
+              <span
+                className="mt-auto h-1.5 w-5 self-end rounded-full"
+                style={{ background: p.accent }}
+              />
+            </span>
+          </span>
+          <span
+            className={cn(
+              'px-0.5 text-[12px]',
+              value === p.id ? 'font-semibold' : 'text-ink-muted',
+            )}
+          >
+            {p.name}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AppearanceTab() {
   const { theme, setTheme } = useUi(useShallow((s) => ({ theme: s.theme, setTheme: s.setTheme })));
+  const { darkPalette, lightPalette, setDarkPalette, setLightPalette } = useUi(
+    useShallow((s) => ({
+      darkPalette: s.darkPalette,
+      lightPalette: s.lightPalette,
+      setDarkPalette: s.setDarkPalette,
+      setLightPalette: s.setLightPalette,
+    })),
+  );
   const accentColor = useUi((s) => s.accentColor);
   const setAccentColor = useUi((s) => s.setAccentColor);
+  const dark = useIsDark();
+  // Reset in the accent picker goes back to the current theme's own accent.
+  const themeAccent = dark
+    ? DARK_PALETTE_INFO.find((p) => p.id === darkPalette)?.accent
+    : LIGHT_PALETTE_INFO.find((p) => p.id === lightPalette)?.accent;
   const options: { id: ThemePref; label: string }[] = [
     { id: 'system', label: 'System' },
     { id: 'light', label: 'Light' },
@@ -510,11 +587,30 @@ function AppearanceTab() {
           ))}
         </div>
       </Row>
-      <Field label="Accent color" hint="Tints buttons, links, and selected rows across the app.">
+      <Field label="Dark theme" hint="Colors used when the app is dark.">
+        <PalettePicker
+          label="Dark theme"
+          options={DARK_PALETTE_INFO}
+          value={darkPalette}
+          onSelect={setDarkPalette}
+        />
+      </Field>
+      <Field label="Light theme" hint="Colors used when the app is light.">
+        <PalettePicker
+          label="Light theme"
+          options={LIGHT_PALETTE_INFO}
+          value={lightPalette}
+          onSelect={setLightPalette}
+        />
+      </Field>
+      <Field
+        label="Accent color"
+        hint="Tints buttons, links, and selected rows across the app. Overrides the theme's accent."
+      >
         <ColorPicker
           ariaLabel="Accent color"
           value={accentColor}
-          defaultColor="#2f63e7"
+          defaultColor={themeAccent ?? '#2f63e7'}
           onSelect={(hex) => setAccentColor(hex)}
           onReset={() => setAccentColor(null)}
         />

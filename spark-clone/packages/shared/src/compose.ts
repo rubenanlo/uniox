@@ -38,4 +38,12 @@ export interface ComposerWindowState {
   state: ComposerState;
   theme: 'system' | 'light' | 'dark';
   accentColor: string | null;
+  darkPalette?: DarkPalette;
+  lightPalette?: LightPalette;
 }
+
+/** Color themes, VS Code style: one is picked for dark mode and one for light. */
+export const DARK_PALETTES = ['classic', 'midnight', 'ember', 'aubergine'] as const;
+export type DarkPalette = (typeof DARK_PALETTES)[number];
+export const LIGHT_PALETTES = ['classic', 'linen', 'glacier', 'sage'] as const;
+export type LightPalette = (typeof LIGHT_PALETTES)[number];

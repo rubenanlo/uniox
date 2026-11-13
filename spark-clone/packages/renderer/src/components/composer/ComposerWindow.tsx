@@ -31,6 +31,8 @@ export function ComposerWindow() {
       useUi.setState({
         theme: popped.theme,
         accentColor: popped.accentColor,
+        darkPalette: popped.darkPalette ?? 'classic',
+        lightPalette: popped.lightPalette ?? 'classic',
         composer: popped.state,
       });
       setState(popped.state);

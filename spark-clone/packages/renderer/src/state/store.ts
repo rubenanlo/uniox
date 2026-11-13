@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import type { Category, ComposerState, MailView, ThreadSummary } from '@app/shared';
+import type {
+  Category,
+  ComposerState,
+  DarkPalette,
+  LightPalette,
+  MailView,
+  ThreadSummary,
+} from '@app/shared';
 
 export type ListLayout = 'focused' | 'cards' | 'simple';
 /** Row spacing: compressed = flush rows with hairline dividers; expanded = spaced cards. */
@@ -38,6 +45,10 @@ interface UiState {
   split: boolean;
   sidebarExpanded: boolean;
   theme: ThemePref;
+  /** Color theme used while dark (Settings → Appearance). */
+  darkPalette: DarkPalette;
+  /** Color theme used while light. */
+  lightPalette: LightPalette;
   selectedThreadId: string | null;
   hoveredThreadId: string | null;
   searchQuery: string;
@@ -101,6 +112,8 @@ interface UiState {
   toggleSplit(): void;
   toggleSidebar(): void;
   setTheme(theme: ThemePref): void;
+  setDarkPalette(palette: DarkPalette): void;
+  setLightPalette(palette: LightPalette): void;
   selectThread(id: string | null, auto?: boolean): void;
   setPriorityExpanded(expanded: boolean): void;
   setUserName(name: string | null): void;
@@ -140,6 +153,8 @@ export const useUi = create<UiState>((set) => ({
   split: true,
   sidebarExpanded: false,
   theme: 'system',
+  darkPalette: 'classic',
+  lightPalette: 'classic',
   selectedThreadId: null,
   hoveredThreadId: null,
   searchQuery: '',
@@ -187,6 +202,8 @@ export const useUi = create<UiState>((set) => ({
   toggleSplit: () => set((s) => ({ split: !s.split })),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   setTheme: (theme) => set({ theme }),
+  setDarkPalette: (darkPalette) => set({ darkPalette }),
+  setLightPalette: (lightPalette) => set({ lightPalette }),
   // Any single selection (click, plain arrows, triage advance) ends a multi-pick.
   selectThread: (selectedThreadId, auto = false) =>
     set({ selectedThreadId, selectionAuto: auto, ...NO_MULTI }),

@@ -1,20 +1,30 @@
 import { useEffect } from 'react';
 import { useUi } from '../state/store';
+import { activePalette } from './palettes';
 import { softTint } from './utils';
 
-/** Follow the theme preference (and the system appearance under "system"). */
+/**
+ * Follow the theme preference (and the system appearance under "system"), and
+ * mark <html> with the color theme picked for the current mode.
+ */
 export function useTheme() {
   const theme = useUi((s) => s.theme);
+  const darkPalette = useUi((s) => s.darkPalette);
+  const lightPalette = useUi((s) => s.lightPalette);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       const dark = theme === 'dark' || (theme === 'system' && mq.matches);
-      document.documentElement.classList.toggle('dark', dark);
+      const root = document.documentElement;
+      const palette = activePalette(dark, darkPalette, lightPalette);
+      if (palette) root.dataset.palette = palette;
+      else delete root.dataset.palette;
+      root.classList.toggle('dark', dark);
     };
     apply();
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
-  }, [theme]);
+  }, [theme, darkPalette, lightPalette]);
 }
 
 /**

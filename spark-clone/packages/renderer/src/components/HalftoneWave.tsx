@@ -8,7 +8,7 @@ import { useUi } from '../state/store';
  * bending surface, each stroke growing in around its own centre on arrival
  * and lit where the crest passes. The surface math is the original's; the
  * palette runs aqua -> accent -> violet so it echoes the greeting and follows
- * the accent picked in Settings. It only moves while the window has focus;
+ * the accent and color theme picked in Settings. It only moves while the window has focus;
  * in the background it holds its last frame and costs nothing.
  */
 const VS = `
@@ -123,6 +123,8 @@ function rgbOf(probe: CanvasRenderingContext2D, css: string): [number, number, n
 export function HalftoneWave({ className }: { className?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const accent = useUi((s) => s.accentColor);
+  const darkPalette = useUi((s) => s.darkPalette);
+  const lightPalette = useUi((s) => s.lightPalette);
   const dark = useIsDark();
   // Colours are re-read on the next frame rather than in this effect: App's
   // effect that writes --color-accent runs after ours (parents last).
@@ -132,7 +134,7 @@ export function HalftoneWave({ className }: { className?: string }) {
   useEffect(() => {
     paletteDirty.current = true;
     redraw.current();
-  }, [accent, dark]);
+  }, [accent, dark, darkPalette, lightPalette]);
 
   useEffect(() => {
     const cv = ref.current;

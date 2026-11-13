@@ -556,6 +556,8 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
         },
         theme: ui.theme,
         accentColor: ui.accentColor,
+        darkPalette: ui.darkPalette,
+        lightPalette: ui.lightPalette,
       })
       .then((r) => {
         if (r.ok) closeInline();
