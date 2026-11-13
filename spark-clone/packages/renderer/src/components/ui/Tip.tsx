@@ -16,6 +16,7 @@ export function Tip({
   side = 'bottom',
   align = 'center',
   className,
+  hidden = false,
   children,
 }: {
   label: string;
@@ -23,6 +24,8 @@ export function Tip({
   side?: 'top' | 'bottom';
   align?: 'center' | 'end';
   className?: string;
+  /** Suppress the tooltip, e.g. while the control's own popover is open. */
+  hidden?: boolean;
   children: React.ReactNode;
 }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -41,6 +44,7 @@ export function Tip({
     >
       {children}
       {box &&
+        !hidden &&
         createPortal(
           <span
             role="tooltip"

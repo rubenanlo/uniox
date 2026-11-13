@@ -1,5 +1,5 @@
 import { MessageSquare } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { runAssistantAction, type AssistantAction } from '../../lib/assistantContext';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
@@ -35,9 +35,14 @@ export function RobotIcon({ size = 26 }: { size?: number }) {
  * of context actions: Home, mail list/thread, or the open composer (the orb
  * steps left of the composer dialog so both stay visible). Clicking the orb
  * pins the menu open.
+ *
+ * Outside the calendar the corner stays empty: the top bar's robot button
+ * (next to Compose) is the entry point, and the menu docks just below it.
  */
 export function OrbCorner() {
   const view = useUi((s) => s.view);
+  // The calendar has no top bar, so only there does the orb keep its corner.
+  const docked = view !== 'calendar';
   const composerOpen = useUi((s) => !!s.composer);
   const selectedThreadId = useUi((s) => s.selectedThreadId);
   const [hovered, setHovered] = useState(false);
@@ -57,7 +62,7 @@ export function OrbCorner() {
   const suggested = orbActionsFor(view, composerOpen, selectedThreadId);
   // From the keyboard there's no orb to click for the chat, so it joins the list.
   const actions = keyboardOpen ? [...suggested, chat] : suggested;
-  const menuOpen = hovered || pinned || keyboardOpen;
+  const menuOpen = docked ? keyboardOpen || pinned : hovered || pinned || keyboardOpen;
   // The picker belongs to the composer it was opened for: drop it (and the
   // pin holding it open) when the composer opens or closes.
   const [prevComposerOpen, setPrevComposerOpen] = useState(composerOpen);
@@ -114,7 +119,11 @@ export function OrbCorner() {
   useEffect(() => {
     if (!languageFor && !keyboardOpen) return;
     const onDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) closeMenu();
+      const target = e.target as Element;
+      // The top-bar button toggles the menu itself; closing here first would
+      // make its click reopen it.
+      if (target.closest?.('[data-assistant-toggle]')) return;
+      if (!rootRef.current?.contains(target)) closeMenu();
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
@@ -124,6 +133,7 @@ export function OrbCorner() {
   // resuming from wherever a half-finished fade left off.
   const opacityRef = useRef(IDLE_OPACITY);
   useEffect(() => {
+    if (docked) return; // no orb on screen to brighten
     const target = menuOpen ? 1 : IDLE_OPACITY;
     const from = opacityRef.current;
     if (from === target) return;
@@ -139,7 +149,7 @@ export function OrbCorner() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [menuOpen]);
+  }, [menuOpen, docked]);
 
   // Opening/closing/expanding the composer teleports the orb rather than
   // sliding it: fade out in place, jump while invisible, fade back in.
@@ -147,11 +157,8 @@ export function OrbCorner() {
   const [slot, setSlot] = useState<'corner' | 'beside-composer' | 'beside-expanded'>('corner');
   const [veiled, setVeiled] = useState(false);
   useEffect(() => {
-    const target = !composerOpen
-      ? 'corner'
-      : composerExpanded
-        ? 'beside-expanded'
-        : 'beside-composer';
+    const target =
+      docked || !composerOpen ? 'corner' : composerExpanded ? 'beside-expanded' : 'beside-composer';
     if (target === slot) return;
     const raf = requestAnimationFrame(() => setVeiled(true));
     const timer = window.setTimeout(() => {
@@ -162,7 +169,97 @@ export function OrbCorner() {
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
     };
-  }, [composerOpen, composerExpanded, slot]);
+  }, [composerOpen, composerExpanded, slot, docked]);
+
+  // Docked: hang the menu from the top-bar button, right edges aligned.
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!docked || !menuOpen) return;
+    const place = () => {
+      const r = document.querySelector('[data-assistant-toggle]')?.getBoundingClientRect();
+      setAnchor(r ? { top: r.bottom + 6, right: window.innerWidth - r.right } : null);
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [docked, menuOpen]);
+
+  // The visual gap below the card is padding, not margin, so the hover area
+  // is continuous — crossing from orb to menu never closes it.
+  const menu = (placement: string) => (
+    <div role="menu" aria-label="Assistant actions" className={cn('orb-menu-in', placement)}>
+      <div className="border-hairline bg-surface rounded-2xl border p-1.5 shadow-2xl">
+        {languageFor ? (
+          <LanguagePicker
+            onBack={() => {
+              setPinned(false);
+              setLanguageFor(null);
+            }}
+            onPick={(language) => {
+              const action = languageFor;
+              closeMenu();
+              void runAssistantAction(action, { language });
+            }}
+          />
+        ) : (
+          <>
+            {actions.map((item, i) => {
+              const Icon = item.icon;
+              const current = keyboardOpen && i === Math.min(active, actions.length - 1);
+              return [
+                item === chat && (
+                  <div key="divider" className="border-hairline mx-2 my-1 border-t" />
+                ),
+                <button
+                  key={item.label}
+                  role="menuitem"
+                  onMouseEnter={() => keyboardOpen && setActive(i)}
+                  onClick={() => pick(item)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]',
+                    current
+                      ? 'bg-accent-soft/40 text-ink'
+                      : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink',
+                  )}
+                >
+                  <Icon size={14} className="text-accent shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {keyboardOpen && i < 9 && <Keycaps keys={[String(i + 1)]} />}
+                </button>,
+              ];
+            })}
+            {keyboardOpen ? (
+              <div className="text-ink-faint border-hairline mt-1 flex items-center gap-3 border-t px-3 pt-2 pb-1 text-[11px]">
+                <span className="flex items-center gap-1">
+                  <Keycaps keys={['↑', '↓']} /> move
+                </span>
+                <span className="flex items-center gap-1">
+                  <Keycaps keys={['↩']} /> run
+                </span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Keycaps keys={['esc']} /> close
+                </span>
+              </div>
+            ) : (
+              <div className="text-ink-faint border-hairline mt-1 flex items-center justify-between border-t px-3 pt-2 pb-1 text-[11px]">
+                <span>Open from the keyboard</span>
+                <Keycaps keys={['⌘', '.']} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  if (docked) {
+    if (!menuOpen || !anchor) return null;
+    return (
+      <div ref={rootRef} className="fixed z-50" style={{ top: anchor.top, right: anchor.right }}>
+        {menu('absolute right-0 top-0 w-72')}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -185,77 +282,7 @@ export function OrbCorner() {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {menuOpen && (
-        // The visual gap below the card is padding, not margin, so the hover
-        // area is continuous — crossing from orb to menu never closes it.
-        <div
-          role="menu"
-          aria-label="Assistant actions"
-          className="orb-menu-in absolute right-0 bottom-full w-72 pb-2"
-        >
-          <div className="border-hairline bg-surface rounded-2xl border p-1.5 shadow-2xl">
-          {languageFor ? (
-            <LanguagePicker
-              onBack={() => {
-                setPinned(false);
-                setLanguageFor(null);
-              }}
-              onPick={(language) => {
-                const action = languageFor;
-                closeMenu();
-                void runAssistantAction(action, { language });
-              }}
-            />
-          ) : (
-            <>
-              {actions.map((item, i) => {
-                const Icon = item.icon;
-                const current = keyboardOpen && i === Math.min(active, actions.length - 1);
-                return [
-                  item === chat && (
-                    <div key="divider" className="border-hairline mx-2 my-1 border-t" />
-                  ),
-                  <button
-                    key={item.label}
-                    role="menuitem"
-                    onMouseEnter={() => keyboardOpen && setActive(i)}
-                    onClick={() => pick(item)}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]',
-                      current
-                        ? 'bg-accent-soft/40 text-ink'
-                        : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink',
-                    )}
-                  >
-                    <Icon size={14} className="text-accent shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {keyboardOpen && i < 9 && <Keycaps keys={[String(i + 1)]} />}
-                  </button>,
-                ];
-              })}
-              {keyboardOpen ? (
-                <div className="text-ink-faint border-hairline mt-1 flex items-center gap-3 border-t px-3 pt-2 pb-1 text-[11px]">
-                  <span className="flex items-center gap-1">
-                    <Keycaps keys={['↑', '↓']} /> move
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Keycaps keys={['↩']} /> run
-                  </span>
-                  <span className="ml-auto flex items-center gap-1">
-                    <Keycaps keys={['esc']} /> close
-                  </span>
-                </div>
-              ) : (
-                <div className="text-ink-faint border-hairline mt-1 flex items-center justify-between border-t px-3 pt-2 pb-1 text-[11px]">
-                  <span>Open from the keyboard</span>
-                  <Keycaps keys={['⌘', '.']} />
-                </div>
-              )}
-            </>
-          )}
-          </div>
-        </div>
-      )}
+      {menuOpen && menu('absolute right-0 bottom-full w-72 pb-2')}
       <button
         onClick={() => {
           closeMenu();

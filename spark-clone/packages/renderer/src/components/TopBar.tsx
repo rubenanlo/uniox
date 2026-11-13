@@ -18,6 +18,8 @@ import { NO_RECENT, nextRecentIndex } from '../lib/searchNav';
 import { cn } from '../lib/utils';
 import { useUi, type ListDensity, type ListLayout } from '../state/store';
 import { Tip } from './ui/Tip';
+import { RobotIcon } from './orb/OrbCorner';
+import { useAssistant } from '../state/assistant';
 import { useShallow } from 'zustand/react/shallow';
 
 const VIEW_TITLES: Record<string, string> = {
@@ -406,15 +408,44 @@ export function TopBar() {
           </Tip>
         </div>
       </div>
-      <Tip label="New email" keys={keysFor('compose')} align="end">
-        <button
-          onClick={() => ACTIONS.find((a) => a.id === 'compose')?.perform(null)}
-          className="bg-accent flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold text-white hover:opacity-90"
-        >
-          <SquarePen size={13} />
-          Compose
-        </button>
-      </Tip>
+      <div className="flex items-center gap-2">
+        <AssistantButton />
+        <Tip label="New email" keys={keysFor('compose')} align="end">
+          <button
+            onClick={() => ACTIONS.find((a) => a.id === 'compose')?.perform(null)}
+            className="bg-accent flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold text-white hover:opacity-90"
+          >
+            <SquarePen size={13} />
+            Compose
+          </button>
+        </Tip>
+      </div>
     </header>
+  );
+}
+
+/**
+ * The assistant's entry point wherever the top bar shows (Home and mail; the
+ * calendar keeps its corner orb). It toggles the same menu as ⌘., which
+ * OrbCorner then docks just below this button.
+ */
+function AssistantButton() {
+  const open = useAssistant((s) => s.orbMenuOpen);
+  return (
+    <Tip label="Assistant" keys={keysFor('assistant-menu')} hidden={open}>
+      <button
+        data-assistant-toggle
+        onClick={() => useAssistant.getState().setOrbMenuOpen(!open)}
+        aria-label="Assistant"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={cn(
+          'text-accent flex h-7 w-7 items-center justify-center rounded-lg transition-colors',
+          open ? 'bg-accent-soft' : 'bg-accent-soft/60 hover:bg-accent-soft',
+        )}
+      >
+        <RobotIcon size={17} />
+      </button>
+    </Tip>
   );
 }
