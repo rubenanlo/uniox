@@ -164,12 +164,12 @@ export const useAssistant = create<AssistantState>((set, get) => ({
 }));
 
 /**
- * True while the assistant's chat panel or ⌘I palette is up. Esc closes those
- * first, so every "Esc steps back / goes Home" handler must stand down.
+ * True while the assistant's chat panel, ⌘I palette or ⌘. menu is up. Esc
+ * closes those first, so every "Esc steps back / goes Home" handler must stand down.
  */
 export function assistantOwnsEscape(): boolean {
   const a = useAssistant.getState();
-  return a.open || a.paletteOpen;
+  return a.open || a.paletteOpen || a.orbMenuOpen;
 }
 
 /** Wire the streaming push channel once, app-level (call from App effect). */
