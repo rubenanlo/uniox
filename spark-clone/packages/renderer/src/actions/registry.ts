@@ -409,6 +409,17 @@ export const ACTIONS: AppAction[] = [
     },
   },
   {
+    id: 'assistant-menu',
+    label: 'Open the assistant menu',
+    combo: { key: '.', meta: true },
+    context: 'global',
+    section: 'Respond',
+    perform: () => {
+      const a = useAssistant.getState();
+      a.setOrbMenuOpen(!a.orbMenuOpen);
+    },
+  },
+  {
     id: 'compose',
     label: 'New email',
     combo: { key: 'n', meta: true },

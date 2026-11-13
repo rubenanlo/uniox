@@ -19,6 +19,8 @@ interface AssistantState {
   open: boolean;
   /** The ⌘I palette of suggested actions for the current page. */
   paletteOpen: boolean;
+  /** The corner orb's action menu, opened from the keyboard (⌘.). */
+  orbMenuOpen: boolean;
   configured: boolean;
   model: string;
   messages: ChatMessage[];
@@ -26,6 +28,7 @@ interface AssistantState {
   streamingId: string | null;
   setOpen(open: boolean): void;
   setPaletteOpen(open: boolean): void;
+  setOrbMenuOpen(open: boolean): void;
   refreshStatus(): void;
   /** Stream a user turn into the visible conversation. */
   send(text: string, system?: string): void;
@@ -47,6 +50,7 @@ function newId(): string {
 export const useAssistant = create<AssistantState>((set, get) => ({
   open: false,
   paletteOpen: false,
+  orbMenuOpen: false,
   configured: false,
   model: 'claude-opus-4-8',
   messages: [],
@@ -60,6 +64,11 @@ export const useAssistant = create<AssistantState>((set, get) => ({
   setPaletteOpen: (paletteOpen) => {
     set({ paletteOpen });
     if (paletteOpen) get().refreshStatus();
+  },
+
+  setOrbMenuOpen: (orbMenuOpen) => {
+    set({ orbMenuOpen });
+    if (orbMenuOpen) get().refreshStatus();
   },
 
   refreshStatus: () => {
