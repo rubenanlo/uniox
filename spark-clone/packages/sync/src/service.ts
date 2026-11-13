@@ -1353,6 +1353,7 @@ export class SyncService {
             threadId: t.threadId,
             accountId: t.accountId,
             snippet: thread?.snippet || undefined,
+            reason: 'snoozed',
           });
         }
         break;
@@ -1397,6 +1398,7 @@ export class SyncService {
           body: subject,
           threadId: t.threadId,
           accountId: t.accountId,
+          reason: 'reminder',
         });
         break;
       }

@@ -6,25 +6,30 @@
 /** 'inbox' = the "N more" pill: open the app on the inbox. */
 export type CardAction = 'open' | 'inbox' | 'reply' | 'archive' | 'read' | 'later' | 'join' | 'snooze' | 'dismiss';
 
+/** Chip colour: Smart Inbox people, priority sender (amber), meeting, everything else. */
+export type CardTone = 'people' | 'priority' | 'meeting' | 'quiet';
+
 export interface NotifyCard {
   id: string;
   /** Cards with the same key replace each other (a meeting's lead → start alert). */
   key: string;
   kind: 'mail' | 'event';
+  /** Mail: sender. Event: meeting title. */
   title: string;
-  /** Mail: subject. Event: time range · place. */
-  line: string;
+  /** Mail: subject. */
+  line?: string;
   snippet?: string;
-  /** Header: "Work", "Calendar"… with its colour dot. */
+  /** "People", "Priority", "Meeting"… */
+  chip: string;
+  tone: CardTone;
+  /** Account (mail) or "Calendar", next to the chip. */
   source: string;
-  sourceColor: string;
-  /** Header right-hand side: "now", "in 10 min". */
+  /** Header right-hand side: "now" (mail), the start time (meetings). */
   when: string;
-  /** Avatar initials + hue (mail), or the calendar date tile (event). */
-  initials?: string;
-  hue?: number;
-  month?: string;
-  day?: string;
+  /** Meetings: start time, place, and the lead window the countdown bar drains over. */
+  startsAt?: number;
+  where?: string;
+  leadMs?: number;
   actions: CardAction[];
   /** ms on screen; 0 = stays until dismissed. */
   ttl: number;

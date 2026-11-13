@@ -824,6 +824,7 @@ function registerIpc(): void {
         await notifyOverlay().show({
           title: 'Uniox',
           body: 'This is how new mail will look',
+          mailCategory: 'personal',
           snippet: 'Hover a notification to see quick actions: reply, archive, mark read or snooze.',
         });
         return { ok: true };

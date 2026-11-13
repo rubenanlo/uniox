@@ -4,6 +4,7 @@ import type {
   Address,
   AutoReply,
   AutoReplyState,
+  Category,
   Folder,
   GatekeeperPending,
   MessageBodyPayload,
@@ -276,6 +277,11 @@ export interface NotifyPayload {
   fromEmail?: string;
   /** Mail preview text (empty until the body has been fetched). */
   snippet?: string;
+  /** Smart Inbox category of the thread, and whether the sender is a priority sender. */
+  mailCategory?: Category;
+  priority?: boolean;
+  /** Why an old thread is back: a reminder fired or a snooze ended. */
+  reason?: 'reminder' | 'snoozed';
   /** Meeting alerts only. */
   startMs?: number;
   endMs?: number;
