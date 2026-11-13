@@ -23,7 +23,7 @@ import type {
   Template,
   ThreadQuery,
 } from '@app/shared';
-import { EMPTY_AUTO_REPLY, parseSearchQuery } from '@app/shared';
+import { dedupeMirroredEvents, EMPTY_AUTO_REPLY, parseSearchQuery } from '@app/shared';
 import { AccountSync } from './account-sync';
 import {
   getGmailAutoReply,
@@ -265,8 +265,10 @@ export class SyncService {
     this.eventAlertTimer = null;
     const now = Date.now();
     // Visible calendars only; the horizon just bounds the query — the timer
-    // re-arms well before it runs out.
-    const events = this.db.listEvents(now - START_GRACE_MS, now + 24 * 60 * 60_000);
+    // re-arms well before it runs out. Same dedupe as the calendar view: a
+    // "Busy" mirror in another account, or the same invite in two calendars,
+    // alerts once.
+    const events = dedupeMirroredEvents(this.db.listEvents(now - START_GRACE_MS, now + 24 * 60 * 60_000));
 
     for (const [key, startMs] of this.firedEventAlerts) {
       if (startMs < now - 24 * 60 * 60_000) this.firedEventAlerts.delete(key);

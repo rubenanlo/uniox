@@ -1,10 +1,11 @@
 import type { Category, NotifyContext, NotifyPayload } from '@app/shared';
 import type { CardAction, CardTone, NotifyCard } from './card';
 
-/** How long a mail card stays (paused while hovered). */
-export const MAIL_TTL_MS = 7_000;
-/** A "starting now" meeting card leaves on its own after this; a heads-up stays until then. */
-export const EVENT_START_TTL_MS = 5 * 60_000;
+/**
+ * How long any card stays: about a second fully on screen after its ~0.3 s
+ * slide-in. Hovering pauses it (and a card lingers 2.5 s after the pointer leaves).
+ */
+export const NOTIFY_TTL_MS = 1_300;
 /** The heads-up window (matches the sync side's LEAD_MS): the countdown bar drains over it. */
 export const EVENT_LEAD_MS = 10 * 60_000;
 
@@ -30,7 +31,6 @@ function mailChip(p: NotifyPayload): { chip: string; tone: CardTone } {
 export function buildCard(id: string, p: NotifyPayload, ctx: NotifyContext | null, now: number): NotifyCard {
   if (p.category === 'event') {
     const start = p.startMs ?? now;
-    const upcoming = start - now >= 60_000;
     return {
       id,
       key: `event:${start}:${p.title}`,
@@ -44,7 +44,7 @@ export function buildCard(id: string, p: NotifyPayload, ctx: NotifyContext | nul
       where: p.location || (p.meetingUrl ? 'Video call' : undefined),
       leadMs: EVENT_LEAD_MS,
       actions: p.meetingUrl ? ['snooze', 'join'] : ['snooze'],
-      ttl: upcoming ? 0 : EVENT_START_TTL_MS,
+      ttl: NOTIFY_TTL_MS,
     };
   }
 
@@ -63,6 +63,6 @@ export function buildCard(id: string, p: NotifyPayload, ctx: NotifyContext | nul
     source: account?.label ?? '',
     when: 'now',
     actions,
-    ttl: MAIL_TTL_MS,
+    ttl: NOTIFY_TTL_MS,
   };
 }

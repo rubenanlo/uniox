@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCard, EVENT_LEAD_MS, EVENT_START_TTL_MS, MAIL_TTL_MS } from '../src/notify/build-card';
+import { buildCard, EVENT_LEAD_MS, NOTIFY_TTL_MS } from '../src/notify/build-card';
 
 const ctx = { dark: false, accounts: [{ id: 'a1', label: 'me@work.com', color: '#2f9e6b' }] };
 const now = new Date('2026-11-12T13:20:00').getTime();
@@ -26,7 +26,7 @@ describe('notification cards', () => {
       tone: 'people',
       source: 'me@work.com',
       when: 'now',
-      ttl: MAIL_TTL_MS,
+      ttl: NOTIFY_TTL_MS,
     });
     expect(card.actions).toEqual(['open', 'reply', 'archive', 'later']);
   });
@@ -53,7 +53,7 @@ describe('notification cards', () => {
     expect(card.actions).toEqual([]);
   });
 
-  it('keeps a meeting heads-up until it starts, then lets the start alert expire', () => {
+  it('builds meeting cards that replace each other and leave like mail', () => {
     const base = {
       title: 'Design sync',
       body: '',
@@ -70,13 +70,12 @@ describe('notification cards', () => {
       startsAt: base.startMs,
       leadMs: EVENT_LEAD_MS,
       where: 'Video call',
-      ttl: 0,
+      ttl: NOTIFY_TTL_MS,
     });
     expect(lead.actions).toEqual(['snooze', 'join']);
 
     const start = buildCard('e2', base, ctx, base.startMs);
     expect(start.key).toBe(lead.key);
-    expect(start.ttl).toBe(EVENT_START_TTL_MS);
 
     const room = buildCard('e3', { ...base, meetingUrl: undefined, location: 'Room 4' }, ctx, now);
     expect(room.actions).toEqual(['snooze']);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dedupeMirroredEvents, type CalendarEvent } from '@app/shared';
 import {
   alertKey,
   dueAlerts,
@@ -79,5 +80,35 @@ describe('nextAlertDeadline', () => {
     expect(nextAlertDeadline([], NOW, none)).toBeNull();
     const past = ev({ startMs: NOW - min(10) });
     expect(nextAlertDeadline([past], NOW, none)).toBeNull();
+  });
+});
+
+describe('meeting alerts across mirrored calendars', () => {
+  const cal = (over: Partial<CalendarEvent>): CalendarEvent => ({
+    id: 'x',
+    calendarId: 'work',
+    source: 'google',
+    title: 'Design sync',
+    startMs: NOW + min(7),
+    endMs: NOW + min(37),
+    allDay: false,
+    eventType: 'default',
+    ...over,
+  });
+
+  it('alerts once when another account holds a "Busy" mirror of the event', () => {
+    const events = dedupeMirroredEvents([
+      cal({ id: 'real', calendarId: 'work' }),
+      cal({ id: 'mirror', calendarId: 'personal', title: 'Busy' }),
+    ]);
+    expect(dueAlerts(events, NOW, none).map((d) => d.event.id)).toEqual(['real']);
+  });
+
+  it('alerts once for the same invite in two calendars', () => {
+    const events = dedupeMirroredEvents([
+      cal({ id: 'a', calendarId: 'work' }),
+      cal({ id: 'b', calendarId: 'personal' }),
+    ]);
+    expect(dueAlerts(events, NOW, none)).toHaveLength(1);
   });
 });
