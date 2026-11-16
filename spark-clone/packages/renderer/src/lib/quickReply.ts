@@ -197,3 +197,32 @@ export function shortAgo(at: number, now: number): string {
   if (h < 24) return `${h}h`;
   return new Date(at).toLocaleDateString(undefined, { weekday: 'short' });
 }
+
+/** The ⌥⌘N list's tabs, in the order they show. */
+export type ListTab = 'important' | 'calendar' | 'docs' | 'other';
+export const LIST_TABS: { id: ListTab; label: string }[] = [
+  { id: 'important', label: 'Important' },
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'docs', label: 'Docs' },
+  { id: 'other', label: 'Other' },
+];
+
+/**
+ * Which tab a notification lives in (each in exactly one): meetings, then
+ * priority senders, then mail with files, then other people's mail, and
+ * everything automated last.
+ */
+export function listTab(item: QuickReplyItem): ListTab {
+  if (item.category === 'event') return 'calendar';
+  if (item.priority) return 'important';
+  if (item.hasAttachments) return 'docs';
+  if (item.mailCategory === 'personal' || item.mailCategory === 'invites' || item.reason) return 'important';
+  return 'other';
+}
+
+/** The tab to open on: the one holding `startId`, else the first with anything in it. */
+export function startTab(items: QuickReplyItem[], startId: string | null): ListTab {
+  const start = items.find((i) => i.id === startId);
+  if (start) return listTab(start);
+  return LIST_TABS.find((t) => items.some((i) => listTab(i) === t.id))?.id ?? 'important';
+}

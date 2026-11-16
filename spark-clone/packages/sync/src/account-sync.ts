@@ -697,6 +697,7 @@ export class AccountSync {
           fromEmail: msg.from?.email,
           snippet: msg.snippet || undefined,
           mailCategory: this.db.getThreadSummary(n.threadId)?.category,
+          hasAttachments: msg.hasAttachments || undefined,
           priority: msg.from?.email ? this.db.isPrioritySender(this.account.id, msg.from.email) : false,
         });
       }

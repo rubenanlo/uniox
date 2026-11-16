@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageMeta, QuickReplyItem } from '@app/shared';
 import {
+  listTab,
+  startTab,
   cardAttachments,
   parseAddressList,
   parseReplyIdeas,
@@ -139,5 +141,24 @@ describe('shortAgo', () => {
     expect(shortAgo(0, 30_000)).toBe('now');
     expect(shortAgo(0, 5 * 60_000)).toBe('5m');
     expect(shortAgo(0, 3 * 3_600_000)).toBe('3h');
+  });
+});
+
+describe('list tabs', () => {
+  const base = { title: 'A', body: 'S', at: 0 };
+  it('files each notification in one tab', () => {
+    expect(listTab({ ...base, id: '1', category: 'event' })).toBe('calendar');
+    expect(listTab({ ...base, id: '2', priority: true, hasAttachments: true })).toBe('important');
+    expect(listTab({ ...base, id: '3', hasAttachments: true, mailCategory: 'personal' })).toBe('docs');
+    expect(listTab({ ...base, id: '4', mailCategory: 'personal' })).toBe('important');
+    expect(listTab({ ...base, id: '5', mailCategory: 'newsletters' })).toBe('other');
+  });
+  it('opens on the tab of the start item, else the first non-empty one', () => {
+    const items = [
+      { ...base, id: 'n', mailCategory: 'newsletters' as const },
+      { ...base, id: 'e', category: 'event' as const },
+    ];
+    expect(startTab(items, 'n')).toBe('other');
+    expect(startTab(items, null)).toBe('calendar');
   });
 });
