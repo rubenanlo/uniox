@@ -90,6 +90,7 @@ export function QuickReplyWindow() {
             key={current.id}
             item={current}
             position={queuePosition(state.items, current.id)}
+            send={state.send?.id === current.id ? state.send : null}
             onStep={(dir) => {
               const next = stepItem(state.items, current.id, dir);
               if (next) show('reply', next);

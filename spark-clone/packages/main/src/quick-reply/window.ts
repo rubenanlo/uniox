@@ -32,6 +32,9 @@ export class QuickReplyWindow {
   private shown = false;
   private mode: QuickReplyMode = 'list';
   private currentId: string | null = null;
+  /** A reply typed in Notification Center, for the widget to send (with Undo). */
+  private pendingSend: QuickReplyState['send'] = null;
+  private sendSeq = 0;
 
   constructor(
     private readonly opts: {
@@ -50,16 +53,22 @@ export class QuickReplyWindow {
   state(): QuickReplyState {
     const items = this.queue.list();
     const current = this.queue.get(this.currentId) ? this.currentId : (items[0]?.id ?? null);
-    return { mode: this.mode, items, currentId: current, shown: this.shown };
+    return { mode: this.mode, items, currentId: current, shown: this.shown, send: this.pendingSend };
   }
 
-  /** Open (or switch) the overlay. A payload picks the email to reply to. */
-  open(mode: QuickReplyMode, current?: string | NotifyPayload | null): void {
+  /**
+   * Open (or switch) the overlay. A payload picks the email to reply to;
+   * `send` is a reply already written (in Notification Center) that the
+   * widget sends straight away, Undo included.
+   */
+  open(mode: QuickReplyMode, current?: string | NotifyPayload | null, opts?: { send?: string }): void {
     this.clearTimers();
     this.shown = true;
     this.mode = mode;
     if (typeof current === 'string' || current === null) this.currentId = current;
     else if (current) this.currentId = (this.queue.find(current) ?? this.queue.record(current)).id;
+    this.pendingSend =
+      opts?.send && this.currentId ? { id: this.currentId, text: opts.send, seq: ++this.sendSeq } : null;
     const win = this.ensureWindow();
     if (!win.isVisible()) {
       this.place(win);

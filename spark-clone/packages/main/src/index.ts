@@ -61,6 +61,7 @@ import { printHtml } from './print';
 import { SyncBridge } from './sync-bridge';
 import { NotifyOverlay } from './notify/overlay';
 import type { CardAction } from './notify/card';
+import { nativeEntry } from './notify/native';
 import { QuickReplyWindow } from './quick-reply/window';
 
 /** Opens the quick-reply notification list from any app. */
@@ -569,24 +570,58 @@ async function onNotifyAction(p: NotifyPayload | null, action: CardAction): Prom
   }
 }
 
-/** The plain macOS banner (Settings → Notifications → Style → macOS). */
-function showSystemNotification(event: NotifyPayload, sound: NotifySound): void {
+/** Entries kept alive for clicks from Notification Center; the oldest beyond this are let go. */
+const LIVE_NOTIFICATIONS_MAX = 100;
+
+/**
+ * The macOS notification for a Uniox notification, so it is listed in
+ * Notification Center: sender, subject and preview, an inline Reply (sent from
+ * the quick-reply widget, with its Undo), Mark read and Done; Join and Snooze
+ * for meetings. Clicking it opens quick reply, like the toast.
+ *
+ * Style "macOS" uses it as the banner (with sound). Style "Uniox" posts it
+ * silently next to the Uniox toast: it lands in Notification Center, and
+ * setting Uniox to "None" in System Settings → Notifications keeps macOS from
+ * also drawing a banner.
+ */
+function showNativeNotification(event: NotifyPayload, sound: NotifySound, opts: { fallback: boolean }): void {
   if (!Notification.isSupported()) return;
+  const entry = nativeEntry(event);
   const n = new Notification({
-    title: event.title,
-    body: event.body,
+    title: entry.title,
+    ...(entry.subtitle ? { subtitle: entry.subtitle } : {}),
+    body: entry.body,
     silent: sound === 'None',
     ...(sound !== 'None' ? { sound } : {}),
+    actions: entry.actions.map((a) => ({ type: 'button' as const, text: a.text })),
+    hasReply: entry.hasReply,
+    ...(entry.replyPlaceholder ? { replyPlaceholder: entry.replyPlaceholder } : {}),
   });
+  const release = () => liveNotifications.delete(n);
   liveNotifications.add(n);
-  n.on('close', () => liveNotifications.delete(n));
+  if (liveNotifications.size > LIVE_NOTIFICATIONS_MAX) {
+    liveNotifications.delete(liveNotifications.values().next().value!);
+  }
+  n.on('close', release);
   n.on('click', () => {
-    liveNotifications.delete(n);
+    release();
     void onNotifyAction(event, 'open');
   });
+  // Electron passes the index directly on older versions and a details object on newer ones.
+  n.on('action', (_e, detail: unknown) => {
+    release();
+    const index = typeof detail === 'number' ? detail : (detail as { actionIndex?: number } | null)?.actionIndex;
+    const action = index != null ? entry.actions[index]?.action : undefined;
+    if (action) void onNotifyAction(event, action);
+  });
+  n.on('reply', (_e, detail: unknown) => {
+    release();
+    const text = typeof detail === 'string' ? detail : (detail as { reply?: string } | null)?.reply;
+    if (event.threadId && text?.trim()) quickReplyWin().open('reply', event, { send: text.trim() });
+  });
   n.on('failed', () => {
-    liveNotifications.delete(n);
-    osascriptNotify(event.title, event.body, sound);
+    release();
+    if (opts.fallback) osascriptNotify(event.title, event.body, sound);
   });
   n.show();
 }
@@ -607,13 +642,14 @@ function broadcastDelta(event: DeltaEvent): void {
   if (event.category !== 'event' && BrowserWindow.getFocusedWindow()) return;
   void (async () => {
     const [sound, style] = await Promise.all([notifySound(), notifyStyle()]);
-    if (style === 'system') return showSystemNotification(event, sound);
+    if (style === 'system') return showNativeNotification(event, sound, { fallback: true });
     playSound(sound);
+    // A silent copy for Notification Center's history (the toast is the alert).
+    showNativeNotification(event, 'None', { fallback: false });
     try {
       await notifyOverlay().show(event);
     } catch (err) {
       console.error('[main] notification overlay failed', err);
-      showSystemNotification(event, 'None');
     }
   })();
 }

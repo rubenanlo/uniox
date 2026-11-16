@@ -172,15 +172,21 @@ function Bubble({ message, body, mine }: { message: MessageMeta; body?: MessageB
  * it with reply ideas, suggested times and files as cards, and a reply field
  * that sends with Undo. The rail on the right holds the quick actions.
  */
+/** Notification Center replies already sent, by seq: a remount or a later state push mustn't send twice. */
+const sentFromNotificationCenter = new Set<number>();
+
 export function ReplyWidget({
   item,
   position,
+  send: written,
   onStep,
   onClose,
   onDone,
 }: {
   item: QuickReplyItem;
   position: { index: number; total: number };
+  /** A reply typed in Notification Center: sent as soon as the thread is loaded, with Undo. */
+  send?: { text: string; seq: number } | null;
   /** 1 = older email in the queue, -1 = newer. */
   onStep: (dir: 1 | -1) => void;
   onClose: () => void;
@@ -192,6 +198,8 @@ export function ReplyWidget({
   const [bodies, setBodies] = useState<Record<string, MessageBodyPayload>>({});
   const [own, setOwn] = useState<Set<string>>(() => new Set());
   const [signatures, setSignatures] = useState<Record<string, string>>({});
+  // Accounts and signatures have arrived: a Notification Center reply waits for both.
+  const [ready, setReady] = useState({ own: false, sigs: false });
   const [ideas, setIdeas] = useState<ReplyIdeas | 'loading' | 'error' | null>(null);
   const [times, setTimes] = useState<Times>(null);
   const [picks, setPicks] = useState<GroupSlot[]>([]);
@@ -227,9 +235,13 @@ export function ReplyWidget({
         void api.command('task:enqueue', { type: 'set-seen', accountId, messageIds, seen: true });
       }
     });
-    void api.query('accounts:list', undefined).then((a) => setOwn(new Set(a.map((x) => x.email.toLowerCase()))));
+    void api.query('accounts:list', undefined).then((a) => {
+      setOwn(new Set(a.map((x) => x.email.toLowerCase())));
+      setReady((r) => ({ ...r, own: true }));
+    });
     void api.query('signatures:list', undefined).then((sigs) => {
       setSignatures(Object.fromEntries(sigs.map((s) => [s.id, normalizeSignatureHtml(s.bodyHtml)])));
+      setReady((r) => ({ ...r, sigs: true }));
     });
   }, [threadId, applyThread]);
 
@@ -319,17 +331,17 @@ export function ReplyWidget({
     );
 
   /** The reply text as sent: what was typed, plus any picked times not already in it. */
-  const replyText = (): string => {
-    const typed = draft.trim();
+  const replyText = (typedText = draft): string => {
+    const typed = typedText.trim();
     if (!picks.length) return typed;
     if (!typed) return templateGroupReply(picks, people, people.length === 1 ? firstName(people[0]) : undefined);
     const missing = timeLines.filter((l) => !typed.includes(l.slice(2)));
     return missing.length ? `${typed}\n\n${missing.join('\n')}` : typed;
   };
 
-  const send = () => {
+  const send = (typedText?: string) => {
     if (!latest) return;
-    const text = replyText();
+    const text = replyText(typedText);
     if (!text) return fieldRef.current?.focus();
     if (!recipients.to.length) return void toast('Nobody to reply to on this email');
     const sig = signatures[accountId] ?? '';
@@ -345,8 +357,10 @@ export function ReplyWidget({
       attachments: [],
     };
     queue('reply', draftOut, text, recipients.to.map((a) => firstName(a)).join(', '));
-    setDraft('');
-    setPicks([]);
+    if (typedText === undefined) {
+      setDraft('');
+      setPicks([]);
+    }
   };
 
   const queue = (kind: Outgoing['kind'], out: OutgoingDraft, text: string, label: string) => {
@@ -365,6 +379,17 @@ export function ReplyWidget({
       fieldRef.current?.focus();
     } else setForwarding(true);
   };
+
+  // A reply typed in Notification Center goes out once the thread, accounts and signatures are in.
+  useEffect(() => {
+    if (!written || !latest || !ready.own || !ready.sigs) return;
+    if (sentFromNotificationCenter.has(written.seq)) return;
+    const t = setTimeout(() => {
+      sentFromNotificationCenter.add(written.seq);
+      send(written.text);
+    }, 0);
+    return () => clearTimeout(t);
+  });
 
   const writeFromIntent = async (intent: string) => {
     if (!configured) return void toast('Add your Claude API key in Settings to use the assistant.');
@@ -815,7 +840,7 @@ export function ReplyWidget({
               <Keycaps keys={['⌘', '↩']} /> send
             </span>
             <button
-              onClick={send}
+              onClick={() => send()}
               aria-label="Send"
               disabled={writing || (!draft.trim() && !picks.length)}
               className="bg-accent mb-0.5 flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] text-white disabled:opacity-50"
