@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageMeta, QuickReplyItem } from '@app/shared';
 import {
+  htmlNeedsRender,
+  looksLikeMarkup,
   listTab,
   startTab,
   cardAttachments,
@@ -160,5 +162,19 @@ describe('list tabs', () => {
     ];
     expect(startTab(items, 'n')).toBe('other');
     expect(startTab(items, null)).toBe('calendar');
+  });
+});
+
+describe('rendering hard emails', () => {
+  it('spots HTML or CSS source posing as text', () => {
+    expect(looksLikeMarkup('<html><body><div>Hi</div></body></html>')).toBe(true);
+    expect(looksLikeMarkup('.a { color: red; } .b { margin: 0; } Hello')).toBe(true);
+    expect(looksLikeMarkup('Hi Ruben, 3 < 5 and that is fine.\n\nBest')).toBe(false);
+  });
+  it('renders layout and image-led mail, keeps plain mail as text', () => {
+    expect(htmlNeedsRender('<table><tr><td><table><tr><td><table></table></td></tr></table></td></tr></table>')).toBe(true);
+    expect(htmlNeedsRender('<img src="a"><img src="b"><p>Sale!</p>')).toBe(true);
+    expect(htmlNeedsRender(`<div>${'Thanks for the deck, looks great. '.repeat(5)}</div><img src="sig.png">`)).toBe(false);
+    expect(htmlNeedsRender('<p>Hi Ruben,</p><p>See you Tuesday.</p>')).toBe(false);
   });
 });

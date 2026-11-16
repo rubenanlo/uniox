@@ -769,6 +769,10 @@ html.quick-reply body {
 .dark .qr-bubble-in {
   background: rgb(255 255 255 / 0.06);
 }
+/* The fade over a folded rendered email. */
+.qr-fold {
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
+}
 .qr-bubble-out {
   background: color-mix(in oklch, var(--color-accent) 15%, transparent);
 }

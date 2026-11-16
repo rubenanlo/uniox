@@ -41,7 +41,10 @@ export function visibleText(text: string): string {
     if (t.startsWith('>')) continue;
     out.push(line);
   }
-  const trimmed = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const trimmed = out
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   return trimmed || text.trim();
 }
 
@@ -154,7 +157,9 @@ export function parseReplyIdeas(raw: string): ReplyIdeas {
       : null;
     const minutes = Number(v.meetingMinutes);
     const meetingMinutes =
-      v.meetingMinutes == null || !Number.isFinite(minutes) ? null : Math.min(240, Math.max(15, Math.round(minutes / 15) * 15));
+      v.meetingMinutes == null || !Number.isFinite(minutes)
+        ? null
+        : Math.min(240, Math.max(15, Math.round(minutes / 15) * 15));
     return { summary, suggestions, forwardTo, meetingMinutes };
   } catch {
     return none;
@@ -225,4 +230,31 @@ export function startTab(items: QuickReplyItem[], startId: string | null): ListT
   const start = items.find((i) => i.id === startId);
   if (start) return listTab(start);
   return LIST_TABS.find((t) => items.some((i) => listTab(i) === t.id))?.id ?? 'important';
+}
+
+const TAG = /<\/?[a-z][a-z0-9-]*(\s[^<>]*)?\/?>/gi;
+const CSS_RULE = /[.#@a-z][\w\s.#:,>*-]*\{[^{}]*:[^{}]*\}/gi;
+
+/** Text that is really HTML or CSS source (a mislabelled text part, or a style block leaking through). */
+export function looksLikeMarkup(text: string): boolean {
+  return (text.match(TAG)?.length ?? 0) >= 3 || (text.match(CSS_RULE)?.length ?? 0) >= 2;
+}
+
+/**
+ * An HTML email that won't read as a chat bubble: a designed layout
+ * (newsletter tables, image-led mail) whose words alone lose the point.
+ * Those are shown rendered, in a sandboxed frame, instead.
+ */
+export function htmlNeedsRender(html: string): boolean {
+  const images = html.match(/<img\b/gi)?.length ?? 0;
+  const tables = html.match(/<table\b/gi)?.length ?? 0;
+  const words = html
+    .replace(/<(style|script|head|title)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(TAG, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim().length;
+  if (tables >= 3) return true;
+  if (images >= 2 && words < 600) return true;
+  return images >= 1 && words < 80;
 }
