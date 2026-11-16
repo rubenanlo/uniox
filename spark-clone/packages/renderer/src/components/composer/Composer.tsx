@@ -39,7 +39,7 @@ import {
 } from '../../lib/composerBridge';
 import { fileVisual } from '../../lib/fileVisual';
 import { inlineEmailStyles } from '../../lib/emailHtml';
-import { normalizeSignatureHtml, signatureText } from '../../lib/signature';
+import { normalizeSignatureHtml, signatureBlock, signatureText } from '../../lib/signature';
 import { fmtWake } from '../../lib/schedule';
 import { sendWithUndo } from '../../lib/sendDraft';
 import { cn, formatSize, isMac } from '../../lib/utils';
@@ -181,11 +181,6 @@ function replySubject(mode: ComposerState['mode'], subject: string): string {
   if (mode === 'forward') return `Fwd: ${bare}`;
   if (mode === 'reply' || mode === 'reply-all') return `Re: ${bare}`;
   return subject;
-}
-
-/** The signature as sent: the standard "-- " delimiter, then the pasted HTML. */
-function signatureBlock(html: string): string {
-  return html ? `<br><div class="uniox-signature">--&nbsp;<br>${html}</div>` : '';
 }
 
 /**

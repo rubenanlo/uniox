@@ -26,6 +26,11 @@ export function normalizeSignatureHtml(stored: string): string {
 }
 
 /** The signature's text, for the plain-text part of an outgoing message. */
+/** The signature as sent: the standard "-- " delimiter, then the pasted HTML. */
+export function signatureBlock(html: string): string {
+  return html ? `<br><div class="uniox-signature">--&nbsp;<br>${html}</div>` : '';
+}
+
 export function signatureText(html: string): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   for (const br of Array.from(doc.body.querySelectorAll('br'))) br.replaceWith('\n');

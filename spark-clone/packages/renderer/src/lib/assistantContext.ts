@@ -22,7 +22,7 @@ export type AssistantAction =
   | 'translate-composer';
 
 /** Composer rewrites: one prompt each, all returning just the new body. */
-const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: string }>> = {
+export const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: string }>> = {
   'rewrite-composer': {
     busy: 'Rewriting…',
     prompt:

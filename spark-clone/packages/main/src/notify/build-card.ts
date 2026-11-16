@@ -2,10 +2,10 @@ import type { Category, NotifyContext, NotifyPayload } from '@app/shared';
 import type { CardAction, CardTone, NotifyCard } from './card';
 
 /**
- * How long any card stays: about a second fully on screen after its ~0.3 s
- * slide-in. Hovering pauses it (and a card lingers 2.5 s after the pointer leaves).
+ * How long any card stays: about 3 seconds on screen, slide-in included (Ruben, 2026-11-16).
+ * Hovering pauses it (and a card lingers 2.5 s after the pointer leaves).
  */
-export const NOTIFY_TTL_MS = 1_300;
+export const NOTIFY_TTL_MS = 3_000;
 /** The heads-up window (matches the sync side's LEAD_MS): the countdown bar drains over it. */
 export const EVENT_LEAD_MS = 10 * 60_000;
 
