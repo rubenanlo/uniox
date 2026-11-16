@@ -62,13 +62,11 @@ export function KeymapProvider({ children }: { children: React.ReactNode }) {
 
       for (const action of ACTIONS) {
         if (!matchCombo(e, action.combo) && !matchCombo(e, action.altCombo ?? null)) continue;
-        // Don't hijack ⌘-combos a field needs (clipboard, ⌘B/⌘I/⌘U formatting —
-        // ⌘I only in rich text, so it opens the assistant from plain inputs),
+        // Don't hijack ⌘-combos a field needs (clipboard, ⌘B/⌘I/⌘U formatting),
         // and never act on the email list from inside the composer.
         const el = e.target as HTMLElement | null;
         const inComposer = !!el?.closest?.('[data-composer]');
-        const richText = !!el?.isContentEditable;
-        if (fieldOwnsKey(e, action, { editable, inComposer, richText })) return;
+        if (fieldOwnsKey(e, action, { editable, inComposer })) return;
         // Page keys only drive the list; in the reading pane (or on Home,
         // Calendar) they keep scrolling natively.
         if (

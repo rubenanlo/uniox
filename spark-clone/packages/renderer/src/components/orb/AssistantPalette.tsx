@@ -10,7 +10,7 @@ import { LanguagePicker } from './LanguagePicker';
 import { orbActionsFor, type OrbAction } from './orbActions';
 
 /**
- * ⌘I — the assistant's suggested actions for the current page (the same set
+ * ⌘J — the assistant's suggested actions for the current page (the same set
  * the corner orb offers), centered on screen. Type to filter; with text that
  * matches nothing, ↵ asks the assistant that question instead.
  */

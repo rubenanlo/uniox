@@ -216,7 +216,7 @@ export function AssistantModal() {
   const { edges, onScroll } = useScrollFade(scrollRef, transcriptShown);
   const { showJump, jumpToLatest } = useStickToBottom(scrollRef, transcriptShown);
 
-  // The ⌘I palette sits on top and takes the first Esc.
+  // The ⌘J palette sits on top and takes the first Esc.
   const paletteOpen = useAssistant((s) => s.paletteOpen);
   useEscapeClose(open && !paletteOpen, () => setOpen(false));
 

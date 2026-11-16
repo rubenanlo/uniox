@@ -17,7 +17,7 @@ const BASE_SYSTEM =
 
 interface AssistantState {
   open: boolean;
-  /** The ⌘I palette of suggested actions for the current page. */
+  /** The ⌘J palette of suggested actions for the current page. */
   paletteOpen: boolean;
   /** The corner orb's action menu, opened from the keyboard (⌘.). */
   orbMenuOpen: boolean;
@@ -164,7 +164,7 @@ export const useAssistant = create<AssistantState>((set, get) => ({
 }));
 
 /**
- * True while the assistant's chat panel, ⌘I palette or ⌘. menu is up. Esc
+ * True while the assistant's chat panel, ⌘J palette or ⌘. menu is up. Esc
  * closes those first, so every "Esc steps back / goes Home" handler must stand down.
  */
 export function assistantOwnsEscape(): boolean {

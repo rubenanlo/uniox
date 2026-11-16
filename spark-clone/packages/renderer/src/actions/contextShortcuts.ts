@@ -90,7 +90,7 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
       { label: 'Week up / down, or scroll hours / agenda', keys: [['↑'], ['↓']] },
       { label: 'Show / hide calendars', keys: [['P']] },
       { label: 'Edit the open event', keys: [['E']] },
-      { label: 'Join the open event’s meeting', keys: [['⌘', 'J']] },
+      { label: 'Join the open event’s meeting', keys: [['⇧', '⌘', 'J']] },
       { label: 'Book the next free slot (Agenda)', keys: [['F']] },
       { label: 'Open the event Account menu', keys: [['⌥', '↓']] },
       { label: 'Calendar sidebar', keys: [['⌘', '\\']] },
@@ -125,7 +125,7 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
-    section: 'Assistant',
+    section: 'Assistant (⌘J)',
     rows: [
       { label: 'Walk the suggested actions', keys: [['↑'], ['↓']] },
       { label: 'Run the action, or ask', keys: [['↩']] },
