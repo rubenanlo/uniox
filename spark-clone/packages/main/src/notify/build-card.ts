@@ -51,7 +51,8 @@ export function buildCard(id: string, p: NotifyPayload, ctx: NotifyContext | nul
   const account = p.accountId ? ctx?.accounts.find((a) => a.id === p.accountId) : undefined;
   const actions: CardAction[] = [];
   if (p.threadId) actions.push('open', 'reply');
-  if (p.threadId && p.accountId) actions.push('archive', 'later');
+  if (p.threadId && p.accountId && p.messageId) actions.push('read');
+  if (p.threadId && p.accountId) actions.push('archive');
   return {
     id,
     key: `mail:${p.threadId ?? id}`,
