@@ -301,6 +301,8 @@ export interface NotifyPayload {
   /** Smart Inbox category of the thread, and whether the sender is a priority sender. */
   mailCategory?: Category;
   priority?: boolean;
+  /** The message carries files (the ⌥⌘N list's Docs tab). */
+  hasAttachments?: boolean;
   /** Why an old thread is back: a reminder fired or a snooze ended. */
   reason?: 'reminder' | 'snoozed';
   /** Meeting alerts only. */
@@ -325,6 +327,8 @@ export interface QuickReplyState {
   items: QuickReplyItem[];
   /** The item the widget shows (reply mode) or the list starts on. */
   currentId: string | null;
+  /** False while the overlay fades out before its window hides (and while hidden). */
+  shown: boolean;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */

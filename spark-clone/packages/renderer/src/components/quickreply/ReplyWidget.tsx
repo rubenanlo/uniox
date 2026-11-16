@@ -19,6 +19,8 @@ import { api } from '../../lib/api';
 import { formatSlotForPeople, templateGroupReply, type GroupSlot, type Participant } from '../../lib/availability';
 import {
   cardAttachments,
+  htmlNeedsRender,
+  looksLikeMarkup,
   prefixedSubject,
   quoteBlock,
   replyRecipients,
@@ -28,6 +30,7 @@ import {
 import {
   askAbout,
   draftFromIntent,
+  markupSource,
   messageVisibleText,
   replyIdeas,
   rewriteDraft,
@@ -44,6 +47,7 @@ import { Keycaps } from '../ui/Keycap';
 import { AiMenu, type AiMenuPick } from './AiMenu';
 import { FileCard, SLOT_DRAG_TYPE, SlotCard, slotDay } from './Cards';
 import { ForwardCard } from './ForwardCard';
+import { RenderedEmail } from './RenderedEmail';
 
 /** Older messages beyond this many fold into one "N earlier messages" row. */
 const SHOWN_MESSAGES = 3;
@@ -120,6 +124,9 @@ function Bubble({ message, body, mine }: { message: MessageMeta; body?: MessageB
   const text = messageVisibleText(body, message.snippet);
   const long = text.length > 700;
   const files = body ? cardAttachments(body.attachments, body.html) : [];
+  // A designed or image-led email (or one whose text is really markup) shows as itself.
+  const source = markupSource(body);
+  const render = !mine && !!source && (htmlNeedsRender(source) || looksLikeMarkup(text) || !text.trim());
   return (
     <div className={cn('flex gap-2.5', mine ? 'flex-col items-end' : 'items-start')}>
       {!mine && (
@@ -127,19 +134,23 @@ function Bubble({ message, body, mine }: { message: MessageMeta; body?: MessageB
           <Avatar who={nameOf(message.from)} small />
         </span>
       )}
-      <div className={cn('flex min-w-0 flex-col gap-2', mine ? 'max-w-[75%] items-end' : 'max-w-[calc(100%-32px)]')}>
-        <div
-          className={cn(
-            'whitespace-pre-wrap break-words px-3.5 py-2.5 leading-[1.55] select-text',
-            mine
-              ? 'qr-bubble-out text-ink-muted rounded-[17px_17px_6px_17px] text-[13px]'
-              : 'qr-bubble-in rounded-[6px_17px_17px_17px] text-[13.5px]',
-            long && !open && 'line-clamp-[10]',
-          )}
-        >
-          {text || <span className="text-ink-faint italic">Loading…</span>}
-        </div>
-        {long && (
+      <div className={cn('flex min-w-0 flex-col gap-2', mine ? 'max-w-[75%] items-end' : 'max-w-[calc(100%-32px)]', render && 'w-full')}>
+        {render ? (
+          <RenderedEmail html={source} attachments={body?.attachments ?? []} />
+        ) : (
+          <div
+            className={cn(
+              'whitespace-pre-wrap break-words px-3.5 py-2.5 leading-[1.55] select-text',
+              mine
+                ? 'qr-bubble-out text-ink-muted rounded-[17px_17px_6px_17px] text-[13px]'
+                : 'qr-bubble-in rounded-[6px_17px_17px_17px] text-[13.5px]',
+              long && !open && 'line-clamp-[10]',
+            )}
+          >
+            {text || <span className="text-ink-faint italic">Loading…</span>}
+          </div>
+        )}
+        {long && !render && (
           <button onClick={() => setOpen(!open)} className="text-ink-faint hover:text-ink -mt-1 text-[11.5px]">
             {open ? 'Show less' : 'Show the whole email'}
           </button>
@@ -302,7 +313,9 @@ export function ReplyWidget({
 
   const togglePick = (slot: GroupSlot) =>
     setPicks((p) =>
-      p.some((x) => x.startMs === slot.startMs) ? p.filter((x) => x.startMs !== slot.startMs) : [...p, slot].sort((a, b) => a.startMs - b.startMs),
+      p.some((x) => x.startMs === slot.startMs)
+        ? p.filter((x) => x.startMs !== slot.startMs)
+        : [...p, slot].sort((a, b) => a.startMs - b.startMs),
     );
 
   /** The reply text as sent: what was typed, plus any picked times not already in it. */
@@ -499,7 +512,13 @@ export function ReplyWidget({
       keys: ['⌘', 'U'],
       on: unread,
     },
-    { id: 'times', icon: <CalendarClock size={19} />, label: 'Check my availability', keys: ['⌘', '⇧', 'A'], on: !!times && times !== 'none' },
+    {
+      id: 'times',
+      icon: <CalendarClock size={19} />,
+      label: 'Check my availability',
+      keys: ['⌘', '⇧', 'A'],
+      on: !!times && times !== 'none',
+    },
     { id: 'forward', icon: <Forward size={19} />, label: 'Forward', keys: ['⌘', '⇧', 'F'], on: forwarding },
     { id: 'done', icon: <Archive size={19} />, label: 'Done', keys: ['⌘', 'E'] },
   ];
@@ -572,12 +591,7 @@ export function ReplyWidget({
             </button>
           )}
           {shown.map((m) => (
-            <Bubble
-              key={m.id}
-              message={m}
-              body={bodies[m.id]}
-              mine={!!m.from && own.has(m.from.email.toLowerCase())}
-            />
+            <Bubble key={m.id} message={m} body={bodies[m.id]} mine={!!m.from && own.has(m.from.email.toLowerCase())} />
           ))}
 
           {/* The assistant's read */}
@@ -767,9 +781,14 @@ export function ReplyWidget({
                 <span key={s.startMs} className="qr-card flex items-center gap-2 rounded-[10px] px-2.5 py-1.5">
                   <CalendarCheck size={14} className="text-accent" />
                   <span className="text-[12.5px] font-semibold">
-                    {slotDay(s)} · {new Date(s.startMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                    {slotDay(s)} ·{' '}
+                    {new Date(s.startMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
                   </span>
-                  <button aria-label="Remove time" onClick={() => togglePick(s)} className="text-ink-faint hover:text-ink">
+                  <button
+                    aria-label="Remove time"
+                    onClick={() => togglePick(s)}
+                    className="text-ink-faint hover:text-ink"
+                  >
                     <X size={12} />
                   </button>
                 </span>

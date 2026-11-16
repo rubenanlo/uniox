@@ -1,5 +1,5 @@
 import type { DarkPalette, LightPalette, QuickReplyItem, QuickReplyState } from '@app/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { queuePosition, stepItem } from '../../lib/quickReply';
 import { useAccentColor, useTheme } from '../../lib/theme';
@@ -17,6 +17,15 @@ import { ReplyWidget } from './ReplyWidget';
  */
 export function QuickReplyWindow() {
   const [state, setState] = useState<QuickReplyState | null>(null);
+  // Flipped one frame after the page learns it is shown, so the dim and the
+  // card ease in from transparent rather than appearing at full strength.
+  const [entered, setEntered] = useState(false);
+  const shown = !!state?.shown;
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(shown));
+    return () => cancelAnimationFrame(raf);
+  }, [shown]);
+  const stageRef = useRef<HTMLDivElement>(null);
   useTheme();
   useAccentColor();
 
@@ -48,7 +57,8 @@ export function QuickReplyWindow() {
 
   const close = useCallback(() => void api.command('quick-reply:close', undefined), []);
   const show = useCallback(
-    (mode: QuickReplyState['mode'], currentId: string | null) => void api.command('quick-reply:show', { mode, currentId }),
+    (mode: QuickReplyState['mode'], currentId: string | null) =>
+      void api.command('quick-reply:show', { mode, currentId }),
     [],
   );
 
@@ -69,30 +79,33 @@ export function QuickReplyWindow() {
   return (
     <div
       className="qr-scrim fixed inset-0 select-none"
+      data-open={entered}
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget || e.target === stageRef.current) close();
       }}
     >
-      {replying ? (
-        <ReplyWidget
-          key={current.id}
-          item={current}
-          position={queuePosition(state.items, current.id)}
-          onStep={(dir) => {
-            const next = stepItem(state.items, current.id, dir);
-            if (next) show('reply', next);
-          }}
-          onClose={close}
-          onDone={() => {
-            const next = stepItem(state.items, current.id, 1) ?? stepItem(state.items, current.id, -1);
-            if (next) show('reply', next);
-            else close();
-            void api.command('quick-reply:dismiss', { id: current.id });
-          }}
-        />
-      ) : (
-        <NotificationList items={state.items} startId={state.currentId} onOpen={open} onClose={close} />
-      )}
+      <div ref={stageRef} className="qr-stage absolute inset-0">
+        {replying ? (
+          <ReplyWidget
+            key={current.id}
+            item={current}
+            position={queuePosition(state.items, current.id)}
+            onStep={(dir) => {
+              const next = stepItem(state.items, current.id, dir);
+              if (next) show('reply', next);
+            }}
+            onClose={close}
+            onDone={() => {
+              const next = stepItem(state.items, current.id, 1) ?? stepItem(state.items, current.id, -1);
+              if (next) show('reply', next);
+              else close();
+              void api.command('quick-reply:dismiss', { id: current.id });
+            }}
+          />
+        ) : (
+          <NotificationList items={state.items} startId={state.currentId} onOpen={open} onClose={close} />
+        )}
+      </div>
       <AppToaster />
     </div>
   );

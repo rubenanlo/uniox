@@ -4,6 +4,13 @@ import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
 const IDLE_DESTROY_MS = 60_000;
+/**
+ * Close fades the page out first and hides the window after it, so the last
+ * frame the window holds is a transparent one. Otherwise macOS flashes that
+ * old frame (dim and all) for a moment on the next show. Matches the page's
+ * .qr-scrim fade-out (180 ms) plus a little slack.
+ */
+const CLOSE_FADE_MS = 210;
 
 /**
  * The quick-reply overlay: one frameless, transparent window covering the
@@ -21,6 +28,8 @@ export class QuickReplyWindow {
   readonly queue = new QuickReplyQueue();
   private win: BrowserWindow | null = null;
   private idleTimer: NodeJS.Timeout | null = null;
+  private hideTimer: NodeJS.Timeout | null = null;
+  private shown = false;
   private mode: QuickReplyMode = 'list';
   private currentId: string | null = null;
 
@@ -41,29 +50,31 @@ export class QuickReplyWindow {
   state(): QuickReplyState {
     const items = this.queue.list();
     const current = this.queue.get(this.currentId) ? this.currentId : (items[0]?.id ?? null);
-    return { mode: this.mode, items, currentId: current };
+    return { mode: this.mode, items, currentId: current, shown: this.shown };
   }
 
   /** Open (or switch) the overlay. A payload picks the email to reply to. */
   open(mode: QuickReplyMode, current?: string | NotifyPayload | null): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = null;
+    this.clearTimers();
+    this.shown = true;
     this.mode = mode;
     if (typeof current === 'string' || current === null) this.currentId = current;
     else if (current) this.currentId = (this.queue.find(current) ?? this.queue.record(current)).id;
     const win = this.ensureWindow();
     if (!win.isVisible()) {
       this.place(win);
-      // Fresh page state for a fresh open; the page re-queries on show.
-      this.push();
+      // Show the (transparent) window first, then tell the page: it fades the
+      // dim and the card in from nothing on screen, instead of painting them
+      // while hidden and popping in at full strength.
       win.show();
-    } else this.push();
+    }
     win.focus();
+    this.push();
   }
 
   /** ⌥⌘N while open closes it again. */
   toggleList(): void {
-    if (this.visible()) this.close();
+    if (this.visible() && this.shown) this.close();
     else this.open('list', null);
   }
 
@@ -73,15 +84,28 @@ export class QuickReplyWindow {
 
   close(): void {
     const win = this.win;
-    if (!win || win.isDestroyed() || !win.isVisible()) return;
-    win.hide();
-    this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
+    if (!win || win.isDestroyed() || !win.isVisible() || !this.shown) return;
+    this.shown = false;
+    this.push();
+    this.hideTimer = setTimeout(() => {
+      this.hideTimer = null;
+      if (win.isDestroyed()) return;
+      win.hide();
+      this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
+    }, CLOSE_FADE_MS);
   }
 
   destroy(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = null;
+    this.clearTimers();
+    this.shown = false;
     this.win?.destroy();
+  }
+
+  private clearTimers(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.hideTimer) clearTimeout(this.hideTimer);
+    this.idleTimer = null;
+    this.hideTimer = null;
   }
 
   owns(contents: WebContents): boolean {

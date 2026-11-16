@@ -1,15 +1,43 @@
 import type { MessageBodyPayload, MessageMeta } from '@app/shared';
 import { useAssistant } from '../state/assistant';
-import { COMPOSER_PROMPTS, stripHtml, type AssistantAction } from './assistantContext';
-import { parseReplyIdeas, visibleText, type ReplyIdeas } from './quickReply';
+import { COMPOSER_PROMPTS, type AssistantAction } from './assistantContext';
+import { looksLikeMarkup, parseReplyIdeas, visibleText, type ReplyIdeas } from './quickReply';
 import { ensureStyleProfile, styleSystem } from './writingStyle';
 
 /** The draft rewrites the widget's AI menu offers (the composer's own set). */
-export type DraftRewrite = 'rewrite-composer' | 'style-composer' | 'formal-composer' | 'informal-composer' | 'translate-composer';
+export type DraftRewrite =
+  'rewrite-composer' | 'style-composer' | 'formal-composer' | 'informal-composer' | 'translate-composer';
+
+/** The words of an HTML email: no <style>, <script> or <head> text, block elements on their own lines. */
+export function htmlToText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('style, script, head, title, noscript, template').forEach((n) => n.remove());
+  doc.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+  doc.querySelectorAll('p, div, tr, li, h1, h2, h3, h4, blockquote').forEach((n) => n.append('\n'));
+  return (doc.body?.textContent ?? '')
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * The HTML to render for a message that won't read as text, else null: a
+ * text part that is really HTML, or text that still came out as markup.
+ */
+export function markupSource(body: MessageBodyPayload | undefined): string | null {
+  if (!body) return null;
+  if (body.html) return body.html;
+  return body.text && looksLikeMarkup(body.text) ? body.text : null;
+}
 
 /** Plain text of one message's new part. */
 export function messageVisibleText(body: MessageBodyPayload | undefined, fallback: string): string {
-  const raw = body?.text?.trim() || (body?.html ? stripHtml(body.html) : '') || fallback;
+  const text = body?.text?.trim();
+  const raw =
+    (text && !looksLikeMarkup(text) ? text : '') ||
+    (body?.html ? htmlToText(body.html) : text ? htmlToText(text) : '') ||
+    fallback;
   return visibleText(raw);
 }
 
@@ -94,7 +122,10 @@ export async function rewriteDraft(
   if (kind === 'translate-composer') {
     const to = language?.trim() || 'English';
     return (
-      await a.complete(`Translate this email into ${to}. Keep the tone and formatting. Return only the translated body.`, current)
+      await a.complete(
+        `Translate this email into ${to}. Keep the tone and formatting. Return only the translated body.`,
+        current,
+      )
     ).trim();
   }
   const prompt = COMPOSER_PROMPTS[kind as AssistantAction]!.prompt;
