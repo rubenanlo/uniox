@@ -2,8 +2,16 @@ import type { QuickReplyItem } from '@app/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
-import { LIST_TABS, clampIndex, listTab, startTab, type ListTab } from '../../lib/quickReply';
+import {
+  LIST_TABS,
+  clampIndex,
+  listTab,
+  shortAgo,
+  startTab,
+  type ListTab,
+} from '../../lib/quickReply';
 import { cn } from '../../lib/utils';
+import { Keycaps } from '../ui/Keycap';
 
 function eventLine(item: QuickReplyItem): string {
   const when = item.startMs
@@ -31,7 +39,12 @@ export function NotificationList({
 }) {
   const [tab, setTab] = useState<ListTab>(() => startTab(items, startId));
   const byTab = useMemo(() => {
-    const m: Record<ListTab, QuickReplyItem[]> = { important: [], calendar: [], docs: [], other: [] };
+    const m: Record<ListTab, QuickReplyItem[]> = {
+      important: [],
+      calendar: [],
+      docs: [],
+      other: [],
+    };
     for (const i of items) m[listTab(i)].push(i);
     return m;
   }, [items]);
@@ -45,9 +58,11 @@ export function NotificationList({
   });
   const cursor = clampIndex(cursors[tab], shown.length);
   const active = shown[cursor];
-  const setCursor = (n: number) => setCursors((c) => ({ ...c, [tab]: clampIndex(n, shown.length) }));
+  const setCursor = (n: number) =>
+    setCursors((c) => ({ ...c, [tab]: clampIndex(n, shown.length) }));
   const [unread, setUnread] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
+  const [now] = useState(Date.now);
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
@@ -123,12 +138,15 @@ export function NotificationList({
     <div
       role="dialog"
       aria-label="Notifications"
-      className="qr-glass qr-enter absolute left-1/2 top-[14vh] w-[820px] max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-[22px] py-3"
+      className="qr-glass qr-enter absolute left-1/2 top-[14vh] w-[760px] max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-[20px] pb-2.5 pt-1.5"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="qr-tint" />
       <div className="relative">
-        <div role="tablist" className="flex items-center gap-7 px-5 pb-2 pt-1.5">
+        <div
+          role="tablist"
+          className="border-ink/8 flex items-end gap-[22px] border-b px-[22px] pt-2.5"
+        >
           {LIST_TABS.map((t) => (
             <button
               key={t.id}
@@ -136,18 +154,24 @@ export function NotificationList({
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
               className={cn(
-                'text-[17px] tracking-[-0.01em] transition-colors',
-                tab === t.id ? 'text-ink' : 'text-ink-muted hover:text-ink',
+                'relative pb-2.5 text-[14.5px] transition-colors',
+                tab === t.id ? 'text-ink font-semibold' : 'text-ink-muted hover:text-ink',
               )}
             >
-              {t.label} <span className="text-ink-faint tabular-nums">{byTab[t.id].length}</span>
+              {t.label}
+              <span className="text-ink-faint ml-[5px] text-[12.5px] font-medium tabular-nums">
+                {byTab[t.id].length}
+              </span>
+              {tab === t.id && (
+                <span className="qr-underline absolute inset-x-0 -bottom-px h-[2px] rounded-full" />
+              )}
             </button>
           ))}
         </div>
 
-        <div ref={listRef} role="listbox" className="max-h-[56vh] overflow-y-auto">
+        <div ref={listRef} role="listbox" className="max-h-[56vh] overflow-y-auto pt-1.5">
           {shown.length === 0 && (
-            <p className="text-ink-muted px-[64px] py-8 text-[14px]">
+            <p className="text-ink-muted px-[22px] py-8 text-[13.5px]">
               {items.length
                 ? 'Nothing here. ← → for the other tabs.'
                 : 'New emails and meeting alerts show up here for a day.'}
@@ -167,37 +191,50 @@ export function NotificationList({
                 onMouseMove={() => setCursor(i)}
                 onClick={() => onOpen(item)}
                 className={cn(
-                  'relative flex h-[44px] w-full items-center gap-0 text-left text-[15px] transition-colors',
+                  'relative flex h-[44px] w-full items-center px-[22px] text-left text-[14px]',
                   on && 'bg-ink/[0.045]',
                 )}
               >
-                {/* The selection mark: a thin bar on the panel's edge. */}
-                <span
-                  className={cn(
-                    'bg-ink absolute bottom-2 left-0 top-2 w-[2.5px] rounded-r-full transition-opacity',
-                    on ? 'opacity-90' : 'opacity-0',
-                  )}
-                />
-                <span className="flex w-[205px] shrink-0 items-center gap-2 pl-[64px] pr-4">
-                  <span className={cn('truncate', on ? 'text-ink' : 'text-ink/85')}>
+                {on && (
+                  <span className="bg-accent absolute bottom-[13px] left-2 top-[13px] w-[3px] rounded-full" />
+                )}
+                <span className="flex w-[150px] shrink-0 items-center gap-2 pr-4">
+                  <span className="text-ink truncate">
                     {event ? 'Calendar' : item.title || item.fromEmail || 'Unknown'}
                   </span>
-                  {unread.has(item.id) && <span className="bg-accent h-1.5 w-1.5 shrink-0 rounded-full" />}
+                  {unread.has(item.id) && (
+                    <span className="bg-accent h-1.5 w-1.5 shrink-0 rounded-full" />
+                  )}
                 </span>
-                <span className="min-w-0 flex-1 truncate pr-6">
-                  <span className={cn(on ? 'text-ink' : 'text-ink/90', item.priority && 'font-medium')}>{subject}</span>
-                  {preview && <span className="text-ink-faint ml-3">{preview}</span>}
+                <span className="min-w-0 flex-1 truncate">
+                  <span className={cn('text-ink', item.priority && 'font-semibold')}>
+                    {subject}
+                  </span>
+                  {preview && <span className="text-ink-faint ml-2.5">{preview}</span>}
+                </span>
+                <span className="text-ink-faint w-14 shrink-0 text-right text-[12px] tabular-nums">
+                  {shortAgo(item.at, now)}
                 </span>
               </button>
             );
           })}
         </div>
-        <div className="text-ink-faint flex justify-end gap-4 px-5 pt-2.5 text-[11.5px]">
-          <span>← → tabs</span>
-          <span>↩ {active?.category === 'event' ? 'join' : 'reply'}</span>
-          <span>U unread</span>
-          <span>E done</span>
-          <span>esc close</span>
+        <div className="text-ink-faint flex justify-end gap-3.5 px-[18px] pt-2.5 text-[11px]">
+          <span className="flex items-center gap-1.5">
+            <Keycaps keys={['←', '→']} /> tabs
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Keycaps keys={['↩']} /> {active?.category === 'event' ? 'join' : 'reply'}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Keycaps keys={['U']} /> unread
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Keycaps keys={['E']} /> done
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Keycaps keys={['esc']} /> close
+          </span>
         </div>
       </div>
     </div>

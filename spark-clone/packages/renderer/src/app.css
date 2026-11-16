@@ -709,8 +709,15 @@ html.quick-reply body {
 .dark .qr-scrim {
   background: rgb(0 0 0 / 0.58);
 }
+/* In the components layer so a panel's own utility (absolute, fixed) wins:
+   unlayered, this beat Tailwind's layered utilities and dropped the AI
+   menu into the rail's flow, stretching it. */
+@layer components {
+  .qr-glass {
+    position: relative;
+  }
+}
 .qr-glass {
-  position: relative;
   /* CSS can't blur other apps behind a transparent window, so the fill (not
      the blur) keeps text legible; the tint below gives the glassy colour. */
   background: color-mix(in oklch, var(--color-surface) 90%, transparent);
@@ -768,6 +775,10 @@ html.quick-reply body {
 }
 .dark .qr-bubble-in {
   background: rgb(255 255 255 / 0.06);
+}
+/* The ⌥⌘N list's active tab: the daylight gradient as a 2px underline. */
+.qr-underline {
+  background: linear-gradient(90deg, var(--color-aqua), var(--color-azure), var(--color-violet));
 }
 /* The fade over a folded rendered email. */
 .qr-fold {
