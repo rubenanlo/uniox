@@ -1,5 +1,4 @@
 import type { QuickReplyItem } from '@app/shared';
-import { Menu } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
@@ -130,7 +129,6 @@ export function NotificationList({
       <div className="qr-tint" />
       <div className="relative">
         <div role="tablist" className="flex items-center gap-7 px-5 pb-2 pt-1.5">
-          <Menu size={20} className="text-ink-muted -mr-1 shrink-0" aria-hidden />
           {LIST_TABS.map((t) => (
             <button
               key={t.id}
