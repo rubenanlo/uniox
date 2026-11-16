@@ -40,10 +40,10 @@ export function ComposerWindow() {
   }, []);
 
   useEffect(() => wireAssistant(), []);
-  // ⌘I opens the assistant palette, as in the main window.
+  // ⌘J opens the assistant palette, as in the main window (⌘I stays italic).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'i')
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'j')
         return;
       e.preventDefault();
       e.stopPropagation();

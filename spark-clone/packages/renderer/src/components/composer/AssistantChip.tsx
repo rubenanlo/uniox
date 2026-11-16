@@ -16,7 +16,7 @@ export function assistantChipOwnsEscape(): boolean {
 /**
  * The assistant in a popped-out composer, where there is no corner orb: a
  * labelled chip in the footer toolbar that opens the composer actions
- * (rewrite, tone, translate) upward, plus the chat. ⌘I opens the palette.
+ * (rewrite, tone, translate) upward, plus the chat. ⌘J opens the palette.
  */
 export function AssistantChip() {
   const [open, setOpen] = useState(false);
@@ -104,7 +104,7 @@ export function AssistantChip() {
       )}
       <button
         onClick={() => (open ? close() : setOpen(true))}
-        title="Assistant — ⌘I"
+        title="Assistant — ⌘J"
         aria-label="Assistant"
         aria-expanded={open}
         className={cn(

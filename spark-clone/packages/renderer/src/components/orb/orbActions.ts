@@ -58,7 +58,7 @@ const READING_ACTIONS: OrbAction[] = [
 /**
  * The assistant's suggested actions for what's on screen: the open composer,
  * Home, an email in the reading pane, or the mail list. Shared by the corner
- * orb's hover menu and the ⌘I palette.
+ * orb's hover menu and the ⌘J palette.
  */
 export function orbActionsFor(
   view: string,

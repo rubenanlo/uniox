@@ -127,7 +127,7 @@ export function AgendaDetailsPanel({ event }: { event: CalendarEvent }) {
             className="bg-ink text-app flex h-10 items-center justify-center gap-2 rounded-xl text-[13px] font-medium"
           >
             <Video size={15} /> Join meeting
-            <span className="text-app/60 ml-1 font-mono text-[10.5px]">⌘J</span>
+            <span className="text-app/60 ml-1 font-mono text-[10.5px]">⇧⌘J</span>
           </a>
         </div>
       )}

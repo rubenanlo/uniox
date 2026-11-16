@@ -66,21 +66,19 @@ describe('fields keep their own ⌘-keys', () => {
   });
 });
 
-describe('⌘I opens the assistant', () => {
+describe('⌘J opens the assistant', () => {
   const assistant = ACTIONS.find((a) => a.id === 'assistant')!;
+  const cmdJ = ev({ key: 'j', code: 'KeyJ', metaKey: true });
   const cmdI = ev({ key: 'i', code: 'KeyI', metaKey: true });
 
-  it('is bound to ⌘I', () => {
-    expect(matchCombo(cmdI, assistant.combo)).toBe(true);
+  it('is bound to ⌘J, not ⌘I', () => {
+    expect(matchCombo(cmdJ, assistant.combo)).toBe(true);
+    expect(ACTIONS.some((a) => matchCombo(cmdI, a.combo) || matchCombo(cmdI, a.altCombo ?? null))).toBe(false);
   });
 
-  it('keeps ⌘I as italic in rich text (the composer body)', () => {
-    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: true, richText: true })).toBe(true);
-  });
-
-  it('opens the assistant from plain inputs and the composer’s other fields', () => {
-    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: true, richText: false })).toBe(false);
-    expect(fieldOwnsKey(cmdI, assistant, { editable: true, inComposer: false })).toBe(false);
-    expect(fieldOwnsKey(cmdI, assistant, { editable: false, inComposer: false })).toBe(false);
+  it('opens from the composer body, its other fields and plain inputs', () => {
+    expect(fieldOwnsKey(cmdJ, assistant, { editable: true, inComposer: true })).toBe(false);
+    expect(fieldOwnsKey(cmdJ, assistant, { editable: true, inComposer: false })).toBe(false);
+    expect(fieldOwnsKey(cmdJ, assistant, { editable: false, inComposer: false })).toBe(false);
   });
 });

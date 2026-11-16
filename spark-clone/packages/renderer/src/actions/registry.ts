@@ -400,7 +400,9 @@ export const ACTIONS: AppAction[] = [
   {
     id: 'assistant',
     label: 'Ask the assistant',
-    combo: { key: 'i', meta: true },
+    // ⌘J, not ⌘I: ⌘I is italic in the composer. ⌘J is the usual "ask AI"
+    // key (Notion, Superhuman) and no field or editor claims it.
+    combo: { key: 'j', meta: true },
     context: 'global',
     section: 'Respond',
     perform: () => {
@@ -768,8 +770,6 @@ function physicalKey(e: KeyboardEvent): string {
 
 /** ⌘-keys a text field needs for itself: selection, clipboard, undo, B/I/U formatting. */
 const FIELD_META_KEYS = ['a', 'c', 'v', 'x', 'z', 'b', 'i', 'u'];
-/** Keys only a rich-text field formats with; plain inputs let them through (⌘I → assistant). */
-const RICH_TEXT_ONLY_KEYS = ['i'];
 
 /**
  * True when the focused field (or the composer) should keep this key instead
@@ -779,7 +779,7 @@ const RICH_TEXT_ONLY_KEYS = ['i'];
 export function fieldOwnsKey(
   e: KeyboardEvent,
   action: AppAction,
-  ctx: { editable: boolean; inComposer: boolean; richText?: boolean },
+  ctx: { editable: boolean; inComposer: boolean },
 ): boolean {
   if (action.id === 'undo') return false;
   // While writing, keys belong to the draft: nothing may act on the email
@@ -787,8 +787,7 @@ export function fieldOwnsKey(
   if (ctx.inComposer && action.context === 'thread') return true;
   if (!ctx.editable) return false;
   const matched = matchCombo(e, action.combo) ? action.combo : action.altCombo;
-  if (!matched?.meta || matched.shift || !FIELD_META_KEYS.includes(matched.key)) return false;
-  return ctx.richText || !RICH_TEXT_ONLY_KEYS.includes(matched.key);
+  return !!matched?.meta && !matched.shift && FIELD_META_KEYS.includes(matched.key);
 }
 
 export function matchCombo(e: KeyboardEvent, combo: KeyCombo | null): boolean {

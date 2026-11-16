@@ -85,8 +85,8 @@ export function CalendarView({ onAddAccount }: { onAddAccount(): void }) {
         st.toggleRightPane();
         return;
       }
-      // ⌘J joins the open event's meeting.
-      if (meta && e.key === 'j') {
+      // ⇧⌘J joins the open event's meeting (plain ⌘J is the assistant).
+      if (meta && e.shiftKey && e.key.toLowerCase() === 'j') {
         const pane = st.rightPane;
         if (pane.kind === 'details' && pane.event.meetingUrl) {
           stop();
