@@ -12,7 +12,8 @@ export const OVERLAY_HEIGHT = 640;
 
 const CSS = `
 :root {
-  --surface: rgb(255 255 255 / 0.96);
+  --surface: rgb(255 255 255 / 0.93);
+  --rim: rgb(255 255 255 / 0.7);
   --sunken: rgb(0 0 0 / 0.05);
   --sunken-hover: rgb(0 0 0 / 0.09);
   --ink: #1c1c1f;
@@ -25,10 +26,11 @@ const CSS = `
   --azure: oklch(0.6 0.16 250);
   --violet: oklch(0.58 0.19 295);
   --priority: #c47b0a;
-  --shadow: 0 10px 30px rgb(0 0 0 / 0.16), 0 2px 6px rgb(0 0 0 / 0.08);
+  --shadow: 0 14px 36px rgb(20 20 40 / 0.18), 0 2px 8px rgb(20 20 40 / 0.08);
 }
 .dark {
-  --surface: rgb(32 32 36 / 0.97);
+  --surface: rgb(32 32 38 / 0.92);
+  --rim: rgb(255 255 255 / 0.09);
   --sunken: rgb(255 255 255 / 0.07);
   --sunken-hover: rgb(255 255 255 / 0.12);
   --ink: #e8e8ec;
@@ -52,40 +54,67 @@ body {
   user-select: none;
   cursor: default;
 }
-#stack { position: absolute; top: 0; right: 0; width: 100%; padding: 8px 10px 24px; display: flex; flex-direction: column; }
+#stack { position: absolute; top: 0; right: 0; width: 100%; padding: 8px 10px 24px; display: flex; flex-direction: column; align-items: flex-end; }
 #stack > .card + .card, #stack > .deck + .card { margin-top: 10px; }
+/* "Island": a glass capsule (avatar, sender, subject) that opens into a full
+   card while hovered. Same glass as the quick-reply widget: a near-opaque
+   fill with soft aqua/violet light, since a transparent window can't blur
+   what's behind it. Width animates from fit-content via interpolate-size. */
 .card {
+  interpolate-size: allow-keywords;
   position: relative;
   z-index: 1;
-  /* The daylight edge (amber for a priority sender) is a background layer
-     painted from the border box, so the card's own radius clips it and it
-     runs the full height. */
-  --edge: linear-gradient(180deg, var(--aqua), var(--azure) 55%, var(--violet));
-  background: var(--edge) left top / 4px 100% no-repeat border-box, var(--surface);
-  border: 0.5px solid var(--hairline);
-  border-radius: 16px;
+  width: fit-content;
+  max-width: 100%;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--aqua) 16%, transparent), transparent 55%),
+    radial-gradient(110% 90% at 100% 100%, color-mix(in oklab, var(--violet) 14%, transparent), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--rim);
+  border-radius: 28px;
   box-shadow: var(--shadow);
-  padding: 13px 14px 12px 18px;
-  transition: transform 320ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 220ms ease-out;
+  padding: 7px 16px 7px 7px;
+  transition:
+    transform 320ms cubic-bezier(0.2, 0.9, 0.3, 1.15), opacity 220ms ease-out,
+    width 220ms cubic-bezier(0.2, 0.8, 0.2, 1) 250ms, border-radius 220ms ease-out 250ms, padding 220ms ease-out 250ms;
 }
-.card.priority { --edge: linear-gradient(var(--priority), var(--priority)); }
+/* Opens at once, closes after a beat: moving down to the next card doesn't
+   pull it out from under the pointer. */
+.card:hover { width: 100%; border-radius: 22px; padding: 11px 12px 12px; transition-delay: 0ms; }
 .card.enter { transform: translateX(calc(100% + 24px)); opacity: 0; }
 /* The next mail rising off the deck. */
 .card.rise { transform: translateY(-10px) scale(0.97); opacity: 0.4; transition-duration: 260ms, 200ms; }
 .card.leave { transform: translateX(calc(100% + 24px)); opacity: 0; transition-timing-function: cubic-bezier(0.5, 0, 0.75, 0), ease-in; transition-duration: 220ms, 200ms; }
-.top { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.chip { flex: none; font-size: 10.5px; font-weight: 650; letter-spacing: 0.02em; text-transform: uppercase; padding: 2px 7px; border-radius: 6px; }
-.chip.people { color: var(--azure); background: color-mix(in oklab, var(--azure) 14%, transparent); }
-.chip.priority { color: var(--priority); background: color-mix(in oklab, var(--priority) 14%, transparent); }
-.chip.meeting { color: var(--aqua); background: color-mix(in oklab, var(--aqua) 16%, transparent); }
-.chip.quiet { color: var(--ink-muted); background: var(--sunken); }
-.source { font-size: 11px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.when { margin-left: auto; flex: none; font-size: 11px; color: var(--ink-faint); }
+.top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.av {
+  flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  color: #fff; font-size: 11.5px; font-weight: 650; letter-spacing: 0.01em;
+}
+.priority .av { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--priority); }
+.av.cal { color: var(--violet); background: color-mix(in oklab, var(--violet) 15%, transparent); }
+.av svg, .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.btn svg { width: 13px; height: 13px; }
+.head { min-width: 0; flex: 1; }
+.name { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.title { font-size: 13.5px; font-weight: 650; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.when { flex: none; font-size: 11px; color: var(--ink-faint); }
+.card:hover .when { margin-left: auto; }
 .count { flex: none; font-size: 10.5px; font-weight: 650; color: var(--ink-muted); background: var(--sunken); border-radius: 999px; padding: 1px 6px; }
-.title { font-size: 14px; font-weight: 650; margin-top: 8px; letter-spacing: -0.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.line { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.snippet { font-size: 12.5px; color: var(--ink-muted); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.event .line { color: var(--ink-muted); font-size: 12.5px; margin-top: 3px; }
+.chip { flex: none; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 999px; border: 1px solid; }
+.chip { display: none; }
+.card:hover .chip { display: inline; }
+.chip.priority { color: var(--priority); border-color: color-mix(in oklab, var(--priority) 45%, transparent); }
+.chip.meeting { color: var(--violet); border-color: color-mix(in oklab, var(--violet) 45%, transparent); }
+.line { font-size: 12.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; }
+.card:hover .line { max-width: none; color: var(--ink); font-weight: 600; }
+.event .line { font-weight: 400 !important; color: var(--ink-muted) !important; }
+.inline-join { margin-left: 4px; }
+.card:hover .inline-join { display: none; }
+/* The rest opens with the card (rows 0fr -> 1fr, no layout work while resting). */
+.more { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1) 250ms, opacity 160ms ease-out 250ms; }
+.more > div { overflow: hidden; min-width: 0; }
+.card:hover .more { grid-template-rows: 1fr; opacity: 1; transition-delay: 0ms; }
+.snippet { font-size: 12.5px; color: var(--ink-muted); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .close {
   position: absolute; top: -6px; left: -6px; width: 20px; height: 20px; border-radius: 50%; z-index: 2;
   border: 0.5px solid var(--hairline); background: var(--surface); color: var(--ink-muted);
@@ -93,42 +122,28 @@ body {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.15); opacity: 0; transition: opacity 120ms;
 }
 .card:hover .close { opacity: 1; }
-/* Mail: the app's keys fold open on hover (they are buttons; the card never takes keyboard focus). */
-.keys { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 160ms ease-out; }
-.keys > div { overflow: hidden; }
-.card:hover .keys { grid-template-rows: 1fr; }
-.keys .row { display: flex; gap: 4px; padding-top: 9px; }
-.key {
-  font: inherit; font-size: 11.5px; color: var(--ink-muted); background: transparent; border: 0;
-  border-radius: 6px; padding: 3px 6px 3px 3px; display: inline-flex; align-items: center; gap: 5px;
-}
-.key:hover { background: var(--sunken); color: var(--ink); }
-.key b { font-weight: 600; color: var(--ink); background: var(--sunken); border-radius: 5px; padding: 1px 5px; font-size: 10.5px; min-width: 18px; text-align: center; }
-.key:hover b { background: var(--sunken-hover); }
-/* Older mail stacked behind the top card. */
-.deck { position: relative; height: 14px; margin-top: -2px; z-index: 0; }
+/* Older mail tucked behind the top capsule. */
+.deck { position: relative; height: 12px; margin-top: -4px; z-index: 0; width: 240px; }
 .deck div {
   position: absolute; height: 12px; border-radius: 0 0 14px 14px;
-  background: var(--surface); border: 0.5px solid var(--hairline); border-top: 0; box-shadow: 0 4px 10px rgb(0 0 0 / 0.08);
+  background: var(--surface); border: 1px solid var(--rim); border-top: 0; box-shadow: 0 4px 10px rgb(0 0 0 / 0.08);
 }
-.deck .d1 { top: 0; left: 8px; right: 8px; opacity: 0.9; }
-.deck .d2 { top: 6px; left: 18px; right: 18px; opacity: 0.6; }
+.deck .d1 { top: 0; left: 14px; right: 14px; opacity: 0.9; }
+.deck .d2 { top: 5px; left: 30px; right: 30px; opacity: 0.6; }
 .deck[hidden], .deck .d2[hidden] { display: none; }
 /* Meetings: a bar that drains toward the start time (stepped every 30 s, not animated per frame). */
 .bar { height: 3px; border-radius: 3px; background: var(--sunken); margin-top: 10px; overflow: hidden; }
-.bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--aqua), var(--azure)); transform-origin: left; transition: transform 600ms ease-out; }
-.buttons { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.buttons .primary { margin-left: auto; }
+.bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet)); transform-origin: left; transition: transform 600ms ease-out; }
+.buttons { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
 .btn {
-  font: inherit; font-size: 12px; font-weight: 550; border: 0; border-radius: 8px; padding: 6px 10px;
-  background: var(--sunken); color: var(--ink); display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 12px; font-weight: 550; border: 1px solid var(--hairline); border-radius: 999px; padding: 4px 10px;
+  background: var(--sunken); color: var(--ink); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
 }
 .btn:hover { background: var(--sunken-hover); }
-.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.08); }
-.btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 @media (prefers-reduced-motion: reduce) {
-  .card, .card.leave, .card.rise, .keys, .bar i { transition-duration: 1ms !important; }
+  .card, .card.leave, .card.rise, .more, .bar i { transition-duration: 1ms !important; }
 }
 `;
 

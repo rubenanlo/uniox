@@ -304,6 +304,12 @@ export default function App() {
           }
         });
       }
+    } else if (e.kind === 'open-composer') {
+      // The quick-reply widget handed its draft over to the full composer.
+      const ui = useUi.getState();
+      ui.setView('inbox');
+      ui.selectThread(e.threadId);
+      ui.openComposer(e.state);
     } else if (e.kind === 'open-inbox') {
       useUi.getState().setView('inbox');
     } else if (e.kind === 'open-calendar') {

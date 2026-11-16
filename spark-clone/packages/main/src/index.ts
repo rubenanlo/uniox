@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
@@ -16,7 +17,7 @@ import {
 } from 'electron';
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile } from 'node:fs/promises';
+import { copyFile, readFile, stat } from 'node:fs/promises';
 import { basename, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -30,6 +31,7 @@ import {
   type Account,
   type AccountConfig,
   type AiMessage,
+  type ComposerState,
   type ComposerWindowState,
   type DeltaEvent,
   type MailtoDraft,
@@ -38,6 +40,7 @@ import {
   type NotifySound,
   type NotifyStyle,
   type OutgoingDraft,
+  type QuickReplyMode,
   type SchedulingPresets,
   type Task,
 } from '@app/shared';
@@ -58,6 +61,12 @@ import { printHtml } from './print';
 import { SyncBridge } from './sync-bridge';
 import { NotifyOverlay } from './notify/overlay';
 import type { CardAction } from './notify/card';
+import { QuickReplyWindow } from './quick-reply/window';
+
+/** Opens the quick-reply notification list from any app. */
+const QUICK_REPLY_SHORTCUT = 'Alt+CommandOrControl+N';
+/** Largest attachment a quick forward carries along (matches common SMTP limits). */
+const FORWARD_ATTACHMENT_MAX = 20 * 1024 * 1024;
 
 // Only an unpackaged build may load a dev-server URL: a packaged app must never
 // trust ELECTRON_RENDERER_URL from the environment (it would grant a remote page
@@ -160,6 +169,18 @@ function resolveAttachmentPath(localPath: string): string | null {
   if (!attachmentsRoot || typeof localPath !== 'string') return null;
   const full = containedPath(attachmentsRoot, localPath);
   return full && existsSync(full) ? full : null;
+}
+
+/** A downloaded attachment as base64, for the quick-reply widget's forward. */
+async function attachmentData(localPath: string): Promise<{ ok: boolean; dataBase64?: string; error?: string }> {
+  const full = resolveAttachmentPath(localPath);
+  if (!full) return { ok: false, error: 'not downloaded' };
+  try {
+    if ((await stat(full)).size > FORWARD_ATTACHMENT_MAX) return { ok: false, error: 'too large' };
+    return { ok: true, dataBase64: (await readFile(full)).toString('base64') };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Strip path parts and characters Windows/macOS refuse in a filename. */
@@ -407,7 +428,10 @@ function createWindow(): void {
     mainWindow = null;
     rendererListening = false;
     // Elsewhere the app quits with its last window; a parked overlay mustn't keep it alive.
-    if (process.platform !== 'darwin') overlay?.destroy();
+    if (process.platform !== 'darwin') {
+      overlay?.destroy();
+      quickReply?.destroy();
+    }
   });
 }
 
@@ -474,6 +498,16 @@ function notifyOverlay(): NotifyOverlay {
   return overlay;
 }
 
+let quickReply: QuickReplyWindow | null = null;
+function quickReplyWin(): QuickReplyWindow {
+  quickReply ??= new QuickReplyWindow({
+    webPreferences: RENDERER_PREFS,
+    load: loadRenderer,
+    guard: guardNavigation,
+  });
+  return quickReply;
+}
+
 function focusMain(): void {
   if (!mainWindow) createWindow();
   mainWindow?.show();
@@ -498,6 +532,11 @@ async function onNotifyAction(p: NotifyPayload | null, action: CardAction): Prom
       return;
     case 'open':
     case 'reply':
+      // A new email opens in the quick-reply widget over whatever app is in front.
+      if (p?.threadId && p.category !== 'event') {
+        quickReplyWin().open('reply', p);
+        return;
+      }
       focusMain();
       if (p?.threadId) {
         send({ kind: 'open-thread', threadId: p.threadId, accountId: p.accountId, reply: action === 'reply' });
@@ -552,11 +591,16 @@ function showSystemNotification(event: NotifyPayload, sound: NotifySound): void 
   n.show();
 }
 
-const deltaCoalescer = new DeltaCoalescer((e) => mainWindow?.webContents.send('delta', e));
+const deltaCoalescer = new DeltaCoalescer((e) => {
+  mainWindow?.webContents.send('delta', e);
+  quickReply?.forward(e);
+});
 
 function broadcastDelta(event: DeltaEvent): void {
   deltaCoalescer.push(event);
   if (event.kind !== 'notify') return;
+  // Every notification is kept for the ⌥⌘N list, even the ones that stay quiet below.
+  quickReplyWin().record(event);
   // Mail notifications stay quiet while the app is focused (you're looking at
   // the inbox); meeting alerts always show — being in the app is exactly when
   // you need the 10-minute nudge.
@@ -637,6 +681,12 @@ function registerIpc(): void {
       pendingMailto = null;
       return draft;
     }
+    if (channel === 'quick-reply:state') {
+      return quickReplyWin().state();
+    }
+    if (channel === 'attachment:data') {
+      return attachmentData((args as { localPath: string }).localPath);
+    }
     if (channel === 'composer:window-state') {
       return composerWindows.get(event.sender.id) ?? null;
     }
@@ -674,6 +724,33 @@ function registerIpc(): void {
         if (mainWindow && rendererListening) {
           mainWindow.webContents.send('delta', { kind: 'toast', message });
         }
+        return { ok: true };
+      }
+      case 'quick-reply:show': {
+        const { mode, currentId } = args as { mode: QuickReplyMode; currentId?: string | null };
+        quickReplyWin().open(mode, currentId ?? null);
+        return { ok: true };
+      }
+      case 'quick-reply:close':
+        quickReply?.close();
+        return { ok: true };
+      case 'quick-reply:dismiss':
+        quickReply?.dismiss((args as { id: string }).id);
+        return { ok: true };
+      case 'quick-reply:open-in-app': {
+        const { threadId, accountId, composer } = args as {
+          threadId: string;
+          accountId?: string;
+          composer?: ComposerState;
+        };
+        quickReply?.close();
+        focusMain();
+        mainWindow?.webContents.send(
+          'delta',
+          (composer
+            ? { kind: 'open-composer', threadId, state: composer }
+            : { kind: 'open-thread', threadId, accountId }) satisfies DeltaEvent,
+        );
         return { ok: true };
       }
       case 'ai:config':
@@ -894,7 +971,14 @@ function registerIpc(): void {
         const { localPath } = args as { localPath: string };
         const full = resolveAttachmentPath(localPath);
         if (!full) return { ok: false };
-        const win = BrowserWindow.fromWebContents(event.sender);
+        let win = BrowserWindow.fromWebContents(event.sender);
+        // Quick Look would open under the overlay (it floats above everything),
+        // so the overlay steps aside and the main window hosts the preview.
+        if (quickReply?.owns(event.sender)) {
+          quickReply.close();
+          focusMain();
+          win = mainWindow;
+        }
         if (process.platform === 'darwin' && win) win.previewFile(full);
         // Off macOS there is no Quick Look: openPath would *run* a mailed .exe/.bat/.js.
         else if (EXECUTABLE_EXT.test(full)) shell.showItemInFolder(full);
@@ -995,6 +1079,10 @@ void app.whenReady().then(() => {
   const launchMailto = process.argv.find((a) => /^mailto:/i.test(a));
   if (launchMailto) openMailto(launchMailto);
 
+  if (!globalShortcut.register(QUICK_REPLY_SHORTCUT, () => quickReplyWin().toggleList())) {
+    console.warn(`[main] ${QUICK_REPLY_SHORTCUT} is taken by another app; the notification list has no shortcut`);
+  }
+
   app.on('activate', () => {
     // A popped-out composer may be the only window left; the dock still
     // brings the inbox back.
@@ -1011,7 +1099,10 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   bridge?.stop();
   overlay?.destroy();
+  quickReply?.destroy();
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-attach-webview', (event) => event.preventDefault());

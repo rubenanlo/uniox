@@ -20,7 +20,7 @@ import type {
 import type { Calendar, CalendarEvent, CalendarEventInput } from './calendar';
 import type { KanbanBoard, NotionBlock } from './notion';
 import type { MailtoDraft } from './mailto';
-import type { ComposerWindowState } from './compose';
+import type { ComposerState, ComposerWindowState } from './compose';
 import type { OutgoingDraft, Task } from './tasks';
 
 /** Typed invoke channels: renderer → main → (mostly) sync process. */
@@ -34,6 +34,13 @@ export interface Queries {
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };
   'message:body': { args: { messageId: string }; result: MessageBodyPayload | null };
+  /** The quick-reply overlay's notifications and what it is showing (main process). */
+  'quick-reply:state': { args: undefined; result: QuickReplyState };
+  /** A downloaded attachment's bytes, so a quick forward can carry the original files. */
+  'attachment:data': {
+    args: { localPath: string };
+    result: { ok: boolean; dataBase64?: string; error?: string };
+  };
   /** Recent sent bodies for the writing-style profile; queues fetches for the rest. */
   'style:samples': {
     args: { accountId: string; limit?: number };
@@ -179,6 +186,20 @@ export interface Commands {
   'composer:send': { args: { draft: OutgoingDraft }; result: { ok: boolean } };
   /** A popped-out composer's closing message ("Draft saved"), shown as a main-window toast. */
   'composer:notice': { args: { message: string }; result: { ok: boolean } };
+  /** Show the quick-reply overlay as the notification list or the reply widget. */
+  'quick-reply:show': {
+    args: { mode: QuickReplyMode; currentId?: string | null };
+    result: { ok: boolean };
+  };
+  /** Hide the overlay (it stays warm for a minute, so a pending Undo Send still fires). */
+  'quick-reply:close': { args: undefined; result: { ok: boolean } };
+  /** Drop a handled notification from the list (done, or dismissed with ⌫). */
+  'quick-reply:dismiss': { args: { id: string }; result: { ok: boolean } };
+  /** Leave the overlay for the main window: the thread, or a composer with the draft so far. */
+  'quick-reply:open-in-app': {
+    args: { threadId: string; accountId?: string; composer?: ComposerState };
+    result: { ok: boolean };
+  };
   /** ⌘P: print a conversation from a hidden window via the system print dialog. */
   'print:thread': { args: { html: string; title: string }; result: { ok: boolean; error?: string } };
   /** Quick Look (macOS) / default-app preview of a downloaded attachment. */
@@ -289,6 +310,23 @@ export interface NotifyPayload {
   meetingUrl?: string;
 }
 
+export type QuickReplyMode = 'list' | 'reply';
+
+/** One notification as the quick-reply list (⌥⌘N) and the widget's queue keep it. */
+export interface QuickReplyItem extends NotifyPayload {
+  id: string;
+  /** When it arrived (ms). */
+  at: number;
+}
+
+export interface QuickReplyState {
+  mode: QuickReplyMode;
+  /** Newest first. */
+  items: QuickReplyItem[];
+  /** The item the widget shows (reply mode) or the list starts on. */
+  currentId: string | null;
+}
+
 /** Per-account label and colour for notification cards, plus the app theme. */
 export interface NotifyContext {
   dark: boolean;
@@ -318,7 +356,11 @@ export type DeltaEvent =
   /** A popped-out composer's closing message, shown as a toast. */
   | { kind: 'toast'; message: string }
   /** Calendar events changed (local edit, or Google sync); renderer re-queries. */
-  | { kind: 'calendar-changed' };
+  | { kind: 'calendar-changed' }
+  /** The quick-reply overlay's list or current email changed (sent to that window only). */
+  | { kind: 'quick-reply'; state: QuickReplyState }
+  /** The quick-reply widget handed its draft over: open the thread with this composer. */
+  | { kind: 'open-composer'; threadId: string; state: ComposerState };
 
 /** Surface exposed on window.api by the preload script. */
 export interface RendererApi {

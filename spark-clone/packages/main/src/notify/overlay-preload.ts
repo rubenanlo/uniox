@@ -1,10 +1,11 @@
 /**
- * Notification overlay ("Daylight deck"): draws Uniox's own notification
- * cards. Runs as the preload of a sandboxed page with no script of its own,
- * so untrusted mail text only ever lands in textContent.
+ * Notification overlay ("Island"): draws Uniox's own notification cards.
+ * Runs as the preload of a sandboxed page with no script of its own, so
+ * untrusted mail text only ever lands in textContent.
  *
- * Layout: the newest mail is a full card with older mail stacked as a deck
- * behind it; meeting alerts sit below as their own cards.
+ * Layout: the newest mail is a glass capsule (avatar, sender, subject) with
+ * older mail tucked behind it as a deck; meeting alerts sit below as their
+ * own capsules. Hovering a capsule opens it into a full card with actions.
  *
  * Cost model: no animation frame loop. Cards slide with CSS transitions,
  * auto-dismiss is one setTimeout per card (hovering pauses them all), and a
@@ -16,14 +17,15 @@ import type { CardAction, MainToOverlay, NotifyCard, OverlayToMain } from './car
 const MAX_EVENTS = 2;
 const TICK_MS = 30_000;
 
-/** The app's own shortcuts for these actions, shown on the mail card's buttons. */
-const KEYS: Partial<Record<CardAction, { key: string; label: string }>> = {
-  open: { key: '↩', label: 'Open' },
-  reply: { key: '⇧R', label: 'Reply' },
-  archive: { key: 'E', label: 'Done' },
-  later: { key: 'S', label: 'Later' },
-};
+/** The hover pills for mail, in order. */
+const MAIL_BUTTONS: { action: CardAction; label: string; icon: string; primary?: boolean }[] = [
+  { action: 'reply', label: 'Quick reply', icon: '<path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>', primary: true },
+  { action: 'read', label: 'Read', icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>' },
+  { action: 'archive', label: 'Done', icon: '<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>' },
+];
 const JOIN_ICON = '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>';
+const SNOOZE_ICON = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+const CAL_ICON = '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><circle cx="16" cy="16" r="2.4"/>';
 
 const send = (msg: OverlayToMain) => ipcRenderer.send('notify-overlay', msg);
 
@@ -75,6 +77,34 @@ function meetingFraction(card: NotifyCard, now: number): number {
   return Math.min(1, Math.max(0, left / (card.leadMs || 1)));
 }
 
+/** Static, app-authored icon markup only (never mail text). */
+function icon(paths: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.innerHTML = paths;
+  return svg;
+}
+
+function button(id: string, action: CardAction, label: string, paths: string, primary = false, cls = ''): HTMLButtonElement {
+  const b = el('button', `btn${primary ? ' primary' : ''}${cls ? ` ${cls}` : ''}`);
+  b.append(icon(paths), label);
+  onClick(b, id, action);
+  return b;
+}
+
+function initials(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '?';
+  return ((words[0]![0] ?? '') + (words.length > 1 ? (words[words.length - 1]![0] ?? '') : '')).toUpperCase();
+}
+
+/** The same sender always gets the same avatar colour (the app's hueOf). */
+function hue(name: string): number {
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
+}
+
 function render(card: NotifyCard): HTMLElement {
   const root = el('div', `card ${card.kind}${card.tone === 'priority' ? ' priority' : ''}`);
   root.setAttribute('role', 'alert');
@@ -85,61 +115,54 @@ function render(card: NotifyCard): HTMLElement {
   root.append(close);
 
   const top = el('div', 'top');
-  top.append(el('span', `chip ${card.tone}`, card.chip));
-  if (card.source) top.append(el('span', 'source', card.source));
-  top.append(el('span', 'when', card.when));
+  let av: HTMLElement;
+  if (card.kind === 'mail') {
+    av = el('span', 'av', initials(card.title));
+    const h = hue(card.title);
+    av.style.background = `linear-gradient(135deg, hsl(${h} 62% 58%), hsl(${(h + 40) % 360} 62% 48%))`;
+  } else {
+    av = el('span', 'av cal');
+    av.append(icon(CAL_ICON));
+  }
+  const head = el('div', 'head');
+  const name = el('div', 'name');
+  name.append(el('span', 'title', card.title));
   if (card.kind === 'mail') {
     const count = el('span', 'count');
     count.hidden = true;
-    top.append(count);
+    name.append(count);
   }
-  root.append(top, el('div', 'title', card.title));
+  if (card.tone === 'priority') name.append(el('span', 'chip priority', 'Important'));
+  name.append(el('span', 'when', card.when));
+  head.append(name);
+  top.append(av, head);
+  root.append(top);
+
+  const more = el('div', 'more');
+  const inner = el('div');
+  more.append(inner);
+  const row = el('div', 'buttons');
 
   if (card.kind === 'mail') {
-    if (card.line) root.append(el('div', 'line', card.line));
-    if (card.snippet) root.append(el('div', 'snippet', card.snippet));
-    const keyed = card.actions.filter((a) => KEYS[a]);
-    if (keyed.length) {
-      const fold = el('div', 'keys');
-      const inner = el('div');
-      const row = el('div', 'row');
-      for (const a of keyed) {
-        const k = KEYS[a]!;
-        const b = el('button', 'key');
-        b.append(el('b', undefined, k.key), k.label);
-        onClick(b, card.id, a);
-        row.append(b);
-      }
-      inner.append(row);
-      fold.append(inner);
-      root.append(fold);
+    head.append(el('div', 'line', card.line || card.snippet || ''));
+    if (card.snippet && card.line) inner.append(el('div', 'snippet', card.snippet));
+    for (const b of MAIL_BUTTONS) {
+      if (card.actions.includes(b.action)) row.append(button(card.id, b.action, b.label, b.icon, b.primary));
     }
   } else {
     const now = Date.now();
-    root.append(el('div', 'line', meetingLine(card, now)));
+    head.append(el('div', 'line', meetingLine(card, now)));
+    if (card.actions.includes('join')) top.append(button(card.id, 'join', 'Join', JOIN_ICON, true, 'inline-join'));
     const bar = el('div', 'bar');
     const fill = el('i');
     fill.style.transform = `scaleX(${meetingFraction(card, now)})`;
     bar.append(fill);
-    root.append(bar);
-    const row = el('div', 'buttons');
-    for (const a of card.actions) {
-      if (a === 'join') {
-        const b = el('button', 'btn primary');
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', '0 0 24 24');
-        svg.innerHTML = JOIN_ICON; // static, app-authored markup
-        b.append(svg, 'Join now');
-        onClick(b, card.id, 'join');
-        row.append(b);
-      } else if (a === 'snooze') {
-        const b = el('button', 'btn', 'Snooze 5 min');
-        onClick(b, card.id, 'snooze');
-        row.append(b);
-      }
-    }
-    root.append(row);
+    inner.append(bar);
+    if (card.actions.includes('join')) row.append(button(card.id, 'join', 'Join now', JOIN_ICON, true));
+    if (card.actions.includes('snooze')) row.append(button(card.id, 'snooze', 'Snooze 5 min', SNOOZE_ICON));
   }
+  if (row.childElementCount) inner.append(row);
+  if (inner.childElementCount) root.append(more);
 
   root.addEventListener('click', () => act(card.id, 'open'));
   root.addEventListener('mouseenter', () => setHover(true));

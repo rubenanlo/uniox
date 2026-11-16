@@ -28,7 +28,7 @@ describe('notification cards', () => {
       when: 'now',
       ttl: NOTIFY_TTL_MS,
     });
-    expect(card.actions).toEqual(['open', 'reply', 'archive', 'later']);
+    expect(card.actions).toEqual(['open', 'reply', 'read', 'archive']);
   });
 
   it('marks priority senders amber, ahead of the category', () => {
