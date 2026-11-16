@@ -329,6 +329,8 @@ export interface QuickReplyState {
   currentId: string | null;
   /** False while the overlay fades out before its window hides (and while hidden). */
   shown: boolean;
+  /** A reply typed in Notification Center: the widget for item `id` sends it once (seq tells repeats apart). */
+  send?: { id: string; text: string; seq: number } | null;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */
