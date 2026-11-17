@@ -20,6 +20,7 @@ import {
 } from '../../lib/quickReply';
 import { cn } from '../../lib/utils';
 import { useAccounts, useDelta } from '../../state/queries';
+import { useUi } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
 
 /** How many unread threads the list loads (all accounts; the account switch filters them). */
@@ -79,6 +80,8 @@ export function NotificationList({
   const { accounts } = useAccounts();
   const colorOf = useAccountColor();
   const multi = accounts.length > 1;
+  const accountLabels = useUi((s) => s.accountLabels);
+  const pillRef = useRef<HTMLDivElement>(null);
   const [accountId, setAccountId] = useState('');
   const [tab, setTab] = useState<ListTab>(() => startTab(items, startId));
 
@@ -213,7 +216,11 @@ export function NotificationList({
   });
 
   const options = [{ id: '', label: 'All accounts', color: null as string | null }].concat(
-    accounts.map((a) => ({ id: a.id, label: a.displayName || a.email, color: colorOf(a.id) })),
+    accounts.map((a) => ({
+      id: a.id,
+      label: accountLabels[a.id] || a.displayName || a.email,
+      color: colorOf(a.id),
+    })),
   );
   const current = options.find((o) => o.id === accountId) ?? options[0]!;
 
@@ -248,11 +255,22 @@ export function NotificationList({
             ))}
           </div>
           {multi && (
-            // Collapsed to the current account; hovering opens the others.
+            // Collapsed to the current account; hovering opens the others in a
+            // strip that scrolls sideways (wheel or trackpad) when they don't fit.
             <div
+              ref={pillRef}
               role="radiogroup"
               aria-label="Account"
-              className="bg-ink/[0.06] group mb-2 ml-auto flex items-center rounded-full p-[3px] text-[12.5px]"
+              onMouseEnter={() =>
+                pillRef.current
+                  ?.querySelector('[aria-checked="true"]')
+                  ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+              }
+              onWheel={(e) => {
+                const el = pillRef.current;
+                if (el && Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY;
+              }}
+              className="bg-ink/[0.06] no-scrollbar group mb-2 ml-auto flex max-w-[340px] items-center overflow-x-auto rounded-full p-[3px] text-[12.5px]"
             >
               {options.map((o, i) => {
                 const on = o.id === current.id;
@@ -264,10 +282,10 @@ export function NotificationList({
                     title={`${o.label}  ⌘${i + 1}`}
                     onClick={() => switchAccount(o.id)}
                     className={cn(
-                      'flex items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full transition-all duration-200',
+                      'flex shrink-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-2.5 py-[3px] transition-all duration-200',
                       on
-                        ? 'bg-surface text-ink px-2.5 py-[3px] font-semibold shadow-sm'
-                        : 'text-ink-muted hover:text-ink max-w-0 px-0 py-[3px] opacity-0 group-focus-within:max-w-[180px] group-focus-within:px-2.5 group-focus-within:opacity-100 group-hover:max-w-[180px] group-hover:px-2.5 group-hover:opacity-100',
+                        ? 'text-ink font-semibold'
+                        : 'text-ink-muted hover:text-ink max-w-0 !px-0 opacity-0 group-focus-within:max-w-[180px] group-focus-within:!px-2.5 group-focus-within:opacity-100 group-hover:max-w-[180px] group-hover:!px-2.5 group-hover:opacity-100',
                     )}
                   >
                     {o.color && <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: o.color }} />}

@@ -20,6 +20,7 @@ interface UiPrefs {
   priorityEmails?: string[];
   accountAvatars: Record<string, string>;
   accountColors: Record<string, string>;
+  accountLabels: Record<string, string>;
   accentColor: string | null;
 }
 
@@ -34,6 +35,7 @@ const pick = (s: ReturnType<typeof useUi.getState>): UiPrefs => ({
   sidebarExpanded: s.sidebarExpanded,
   accountAvatars: s.accountAvatars,
   accountColors: s.accountColors,
+  accountLabels: s.accountLabels,
   accentColor: s.accentColor,
 });
 

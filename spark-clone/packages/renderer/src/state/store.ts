@@ -73,6 +73,8 @@ interface UiState {
   accountAvatars: Record<string, string>;
   /** Custom identity color per account, keyed by account id (Settings → Accounts). Unset = the account's default hue. */
   accountColors: Record<string, string>;
+  /** Short label per account, keyed by account id (Settings → Accounts), e.g. "Work". Used by the ⌥⌘N account pills. */
+  accountLabels: Record<string, string>;
   /** App-wide accent override (Settings → Appearance). null = follow the theme's built-in accent. */
   accentColor: string | null;
   /** When the app was last open, captured at launch. Home shows priority mail newer than this. */
@@ -132,6 +134,7 @@ interface UiState {
   setPriorityEmails(emails: string[]): void;
   setAccountAvatar(accountId: string, dataUrl: string | null): void;
   setAccountColor(accountId: string, color: string | null): void;
+  setAccountLabel(accountId: string, label: string | null): void;
   setAccentColor(color: string | null): void;
   setHomeBaseline(ts: number): void;
   setKanbanOpen(open: boolean): void;
@@ -171,6 +174,7 @@ export const useUi = create<UiState>((set) => ({
   priorityEmails: [],
   accountAvatars: {},
   accountColors: {},
+  accountLabels: {},
   accentColor: null,
   homeBaseline: Date.now(),
   kanbanOpen: false,
@@ -237,6 +241,14 @@ export const useUi = create<UiState>((set) => ({
       if (color) accountColors[accountId] = color;
       else delete accountColors[accountId];
       return { accountColors };
+    }),
+  setAccountLabel: (accountId, label) =>
+    set((s) => {
+      const accountLabels = { ...s.accountLabels };
+      const clean = label?.trim().slice(0, 40);
+      if (clean) accountLabels[accountId] = clean;
+      else delete accountLabels[accountId];
+      return { accountLabels };
     }),
   setAccentColor: (accentColor) => set({ accentColor }),
   setHomeBaseline: (homeBaseline) => set({ homeBaseline }),

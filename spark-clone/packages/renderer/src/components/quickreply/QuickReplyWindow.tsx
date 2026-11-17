@@ -40,6 +40,7 @@ export function QuickReplyWindow() {
         lightPalette: LightPalette;
         accentColor: string | null;
         accountColors: Record<string, string>;
+        accountLabels: Record<string, string>;
       }>;
       useUi.setState({
         ...(p.theme ? { theme: p.theme } : {}),
@@ -47,6 +48,7 @@ export function QuickReplyWindow() {
         ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
         ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
         ...(p.accountColors ? { accountColors: p.accountColors } : {}),
+        ...(p.accountLabels ? { accountLabels: p.accountLabels } : {}),
       });
     });
     void api.query('quick-reply:state', undefined).then(setState);

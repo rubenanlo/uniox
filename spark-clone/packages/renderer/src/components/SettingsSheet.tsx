@@ -76,7 +76,7 @@ const SECTIONS: { id: Tab; label: string; icon: typeof SunMoon; blurb: string }[
     id: 'accounts',
     label: 'Accounts',
     icon: UserRound,
-    blurb: 'Give each account a picture and an unread-dot color to tell them apart.',
+    blurb: 'Give each account a label, a picture and an unread-dot color to tell them apart.',
   },
   {
     id: 'priority',
@@ -686,6 +686,8 @@ function AccountsTab() {
   const setAccountAvatar = useUi((s) => s.setAccountAvatar);
   const accountColors = useUi((s) => s.accountColors);
   const setAccountColor = useUi((s) => s.setAccountColor);
+  const accountLabels = useUi((s) => s.accountLabels);
+  const setAccountLabel = useUi((s) => s.setAccountLabel);
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -787,6 +789,18 @@ function AccountsTab() {
                   Remove
                 </button>
               )}
+            </div>
+            <div className="flex items-center justify-between gap-3 pl-11">
+              <label htmlFor={`account-label-${a.id}`} className="text-ink-muted shrink-0 text-[12px]">
+                Label
+              </label>
+              <AccountLabelField
+                key={accountLabels[a.id] ?? ''}
+                id={`account-label-${a.id}`}
+                value={accountLabels[a.id] ?? ''}
+                placeholder={i === 0 ? 'e.g. Work' : 'e.g. Personal'}
+                onCommit={(v) => setAccountLabel(a.id, v)}
+              />
             </div>
             <div className="flex justify-between gap-3 pl-11">
               <span className="text-ink-muted flex shrink-0 items-center gap-1.5 text-[12px]">
@@ -1664,5 +1678,42 @@ export function SettingsSheet() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** A short name for an account (e.g. "Work"), saved when the field loses focus or on ↩. */
+function AccountLabelField({
+  id,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  onCommit: (value: string) => void;
+}) {
+  // The parent keys this field by the saved value, so a change from elsewhere resets the draft.
+  const [draft, setDraft] = useState(value);
+  const commit = () => {
+    if (draft.trim() !== value) onCommit(draft);
+  };
+  return (
+    <input
+      id={id}
+      value={draft}
+      maxLength={40}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') {
+          setDraft(value);
+          e.stopPropagation();
+        }
+      }}
+      className="border-hairline bg-surface focus:border-accent w-[200px] rounded-md border px-2 py-1 text-[12.5px] outline-none"
+    />
   );
 }
