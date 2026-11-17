@@ -22,6 +22,7 @@ import { cn } from '../../lib/utils';
 import { useAccounts, useDelta } from '../../state/queries';
 import { useUi } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
+import { useListMotion } from './useListMotion';
 
 /** How many unread threads the list loads (all accounts; the account switch filters them). */
 const UNREAD_LIMIT = 200;
@@ -109,6 +110,7 @@ export function NotificationList({
   const [markedUnread, setMarkedUnread] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const [now] = useState(Date.now);
+  useListMotion(listRef, `${tab}|${accountId}`, rows.map((r) => r.item.id).join('\n'));
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
@@ -298,9 +300,9 @@ export function NotificationList({
           )}
         </div>
 
-        <div ref={listRef} role="listbox" className="max-h-[56vh] overflow-y-auto pb-1">
+        <div ref={listRef} role="listbox" className="relative max-h-[56vh] overflow-y-auto pb-1">
           {rows.length === 0 && (
-            <p className="text-ink-muted px-[22px] py-8 text-[13.5px]">
+            <p data-motion="empty" className="text-ink-muted px-[22px] py-8 text-[13.5px]">
               {items.length || unreadItems.length
                 ? 'Nothing here. ← → for the other tabs.'
                 : 'New emails, unread mail and meeting alerts show up here.'}
@@ -318,7 +320,9 @@ export function NotificationList({
             return (
               <Fragment key={item.id}>
                 {header && (
-                  <div className="text-ink-faint flex items-center gap-2 px-[22px] pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.06em]">
+                  <div
+                    data-motion={`h:${section}`}
+                    className="text-ink-faint flex items-center gap-2 px-[22px] pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.06em]">
                     <SectionIcon section={section} />
                     {LIST_SECTIONS.find((s) => s.id === section)!.label}
                     <span className="ml-auto font-medium normal-case tracking-normal tabular-nums">{count}</span>
@@ -328,6 +332,7 @@ export function NotificationList({
                   role="option"
                   aria-selected={on}
                   data-active={on}
+                  data-motion={item.id}
                   onMouseMove={() => setCursor(i)}
                   onClick={() => onOpen(item)}
                   className={cn(
