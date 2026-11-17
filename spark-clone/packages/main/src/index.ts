@@ -500,11 +500,14 @@ function notifyOverlay(): NotifyOverlay {
 }
 
 let quickReply: QuickReplyWindow | null = null;
+/** Settings key for the emails kept in the ⌥⌘N list (K), so they survive a restart. */
+const QUICK_REPLY_KEPT_KEY = 'quickReplyKept';
 function quickReplyWin(): QuickReplyWindow {
   quickReply ??= new QuickReplyWindow({
     webPreferences: RENDERER_PREFS,
     load: loadRenderer,
     guard: guardNavigation,
+    saveKept: (items) => void bridge?.query('settings:set', { key: QUICK_REPLY_KEPT_KEY, value: items }).catch(() => {}),
   });
   return quickReply;
 }
@@ -762,9 +765,14 @@ function registerIpc(): void {
         return { ok: true };
       }
       case 'quick-reply:show': {
-        const { mode, currentId } = args as { mode: QuickReplyMode; currentId?: string | null };
-        quickReplyWin().open(mode, currentId ?? null);
+        const { mode, currentId, item } = args as { mode: QuickReplyMode; currentId?: string | null; item?: NotifyPayload };
+        quickReplyWin().open(mode, item ?? currentId ?? null);
         return { ok: true };
+      }
+      case 'quick-reply:keep': {
+        const a = args as { id: string; keep: boolean } | { item: NotifyPayload; keep: boolean };
+        const id = quickReplyWin().keep('id' in a ? { id: a.id } : { item: a.item }, !!a.keep);
+        return { ok: !!id, id };
       }
       case 'quick-reply:close':
         quickReply?.close();
@@ -1100,6 +1108,11 @@ void app.whenReady().then(() => {
     onDelta: broadcastDelta,
   });
   bridge.start();
+  // Emails kept in the ⌥⌘N list come back after a restart.
+  void bridge
+    .query('settings:get', { key: QUICK_REPLY_KEPT_KEY })
+    .then((saved) => quickReplyWin().restoreKept(saved))
+    .catch(() => {});
 
   // Sleep/wake: the sync utility process isn't subject to renderer
   // background throttling, so tell it to park its timers while suspended.

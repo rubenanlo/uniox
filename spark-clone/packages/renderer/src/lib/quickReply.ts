@@ -1,4 +1,4 @@
-import type { Address, AttachmentMeta, MessageMeta, QuickReplyItem } from '@app/shared';
+import type { Address, AttachmentMeta, MessageMeta, NotifyPayload, QuickReplyItem, ThreadSummary } from '@app/shared';
 
 /**
  * Pure helpers for the quick-reply widget: turning email bodies into chat
@@ -230,6 +230,82 @@ export function startTab(items: QuickReplyItem[], startId: string | null): ListT
   const start = items.find((i) => i.id === startId);
   if (start) return listTab(start);
   return LIST_TABS.find((t) => items.some((i) => listTab(i) === t.id))?.id ?? 'important';
+}
+
+/** An unread inbox thread as a ⌥⌘N row (it isn't a notification, so its id is the thread's). */
+export function unreadItem(t: ThreadSummary & { prioritySender?: boolean }): QuickReplyItem {
+  const from = t.lastInboundFrom ?? t.senders?.[0] ?? t.participants[0] ?? null;
+  return {
+    id: `u:${t.id}`,
+    origin: 'unread',
+    title: from?.name || from?.email || 'Unknown',
+    body: t.subject,
+    snippet: t.snippet,
+    threadId: t.id,
+    accountId: t.accountId,
+    ...(from?.email ? { fromEmail: from.email } : {}),
+    mailCategory: t.category,
+    priority: !!t.prioritySender,
+    hasAttachments: t.hasAttachments,
+    at: t.lastInboundDate || t.lastMessageDate,
+  };
+}
+
+/** A row as the payload main lists it by (an unread thread that isn't listed yet). */
+export function itemPayload(item: QuickReplyItem): NotifyPayload {
+  const payload: Partial<QuickReplyItem> = { ...item };
+  delete payload.id;
+  delete payload.at;
+  delete payload.kept;
+  return payload as NotifyPayload;
+}
+
+/** The ⌥⌘N list's sections, in the order they show. */
+export type ListSection = 'kept' | 'new' | 'unread';
+export const LIST_SECTIONS: { id: ListSection; label: string }[] = [
+  { id: 'kept', label: 'Kept' },
+  { id: 'new', label: 'New notifications' },
+  { id: 'unread', label: 'Still unread' },
+];
+
+export interface ListRow {
+  item: QuickReplyItem;
+  section: ListSection;
+}
+
+/**
+ * The rows of one tab for one account (undefined = all), section by section:
+ * kept emails, then notifications, then unread mail that didn't notify (or
+ * whose notification aged out). A thread shows once, in the first section
+ * that has it. Meeting alerts have no account and show under every account.
+ */
+export function listRows(
+  items: QuickReplyItem[],
+  unread: QuickReplyItem[],
+  tab: ListTab,
+  accountId?: string,
+): ListRow[] {
+  const inView = (i: QuickReplyItem) =>
+    listTab(i) === tab && (!accountId || !i.accountId || i.accountId === accountId);
+  const kept = items.filter((i) => i.kept && inView(i));
+  const fresh = items.filter((i) => !i.kept && i.origin !== 'unread' && inView(i));
+  const listed = new Set([...kept, ...fresh].map((i) => i.threadId).filter(Boolean));
+  const rest = unread.filter((i) => inView(i) && !listed.has(i.threadId));
+  return [
+    ...kept.map((item) => ({ item, section: 'kept' as const })),
+    ...fresh.map((item) => ({ item, section: 'new' as const })),
+    ...rest.map((item) => ({ item, section: 'unread' as const })),
+  ];
+}
+
+/**
+ * ⌘1 is All accounts and ⌘2… the accounts in order, as in the main window.
+ * Returns the account id ('' = All) for the digit, or null when there's none.
+ */
+export function accountForDigit(digit: number, accountIds: string[]): string | null {
+  if (digit === 1) return '';
+  const id = accountIds[digit - 2];
+  return id ?? null;
 }
 
 const TAG = /<\/?[a-z][a-z0-9-]*(\s[^<>]*)?\/?>/gi;

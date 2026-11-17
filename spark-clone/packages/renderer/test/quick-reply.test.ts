@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageMeta, QuickReplyItem } from '@app/shared';
 import {
+  accountForDigit,
   htmlNeedsRender,
+  listRows,
+  unreadItem,
   looksLikeMarkup,
   listTab,
   startTab,
@@ -176,5 +179,68 @@ describe('rendering hard emails', () => {
     expect(htmlNeedsRender('<img src="a"><img src="b"><p>Sale!</p>')).toBe(true);
     expect(htmlNeedsRender(`<div>${'Thanks for the deck, looks great. '.repeat(5)}</div><img src="sig.png">`)).toBe(false);
     expect(htmlNeedsRender('<p>Hi Ruben,</p><p>See you Tuesday.</p>')).toBe(false);
+  });
+});
+
+describe('⌥⌘N list sections', () => {
+  const item = (over: Partial<QuickReplyItem>): QuickReplyItem => ({
+    id: over.id ?? 'q1',
+    title: 'Maya',
+    body: 'Subject',
+    at: 0,
+    accountId: 'a1',
+    mailCategory: 'personal',
+    ...over,
+  });
+
+  it('turns an unread thread into a row filed like a notification', () => {
+    const row = unreadItem({
+      id: 't9',
+      accountId: 'a2',
+      subject: 'Pricing',
+      participants: [{ email: 'x@y.z' }],
+      lastMessageDate: 5,
+      lastInboundDate: 4,
+      lastInboundFrom: { name: 'Antonio', email: 'antonio@y.z' },
+      snippet: 'Attached',
+      messageCount: 1,
+      unreadCount: 1,
+      hasAttachments: true,
+      pinned: false,
+      category: 'personal',
+      prioritySender: false,
+    });
+    expect(row).toMatchObject({ id: 'u:t9', origin: 'unread', title: 'Antonio', body: 'Pricing', at: 4, threadId: 't9' });
+    expect(listTab(row)).toBe('docs');
+  });
+
+  it('orders kept, new, then unread, showing each thread once', () => {
+    const items = [
+      item({ id: 'n1', threadId: 't1' }),
+      item({ id: 'k1', threadId: 't2', kept: true }),
+      item({ id: 'o1', threadId: 't3', origin: 'unread' }),
+    ];
+    const unread = [item({ id: 'u:t1', threadId: 't1' }), item({ id: 'u:t4', threadId: 't4' })];
+    expect(listRows(items, unread, 'important').map((r) => [r.item.id, r.section])).toEqual([
+      ['k1', 'kept'],
+      ['n1', 'new'],
+      ['u:t4', 'unread'],
+    ]);
+  });
+
+  it('filters by account but keeps meeting alerts everywhere', () => {
+    const items = [
+      item({ id: 'a', threadId: 't1', accountId: 'a1' }),
+      item({ id: 'b', threadId: 't2', accountId: 'a2' }),
+      item({ id: 'ev', category: 'event', accountId: undefined }),
+    ];
+    expect(listRows(items, [], 'important', 'a2').map((r) => r.item.id)).toEqual(['b']);
+    expect(listRows(items, [], 'calendar', 'a2').map((r) => r.item.id)).toEqual(['ev']);
+  });
+
+  it('maps ⌘1 to All and ⌘2… to accounts in order', () => {
+    expect(accountForDigit(1, ['a1', 'a2'])).toBe('');
+    expect(accountForDigit(3, ['a1', 'a2'])).toBe('a2');
+    expect(accountForDigit(4, ['a1', 'a2'])).toBeNull();
   });
 });
