@@ -228,7 +228,7 @@ function NotificationStyleField() {
       label="Notification style"
       hint={
         style === 'uniox'
-          ? 'Uniox cards with a preview and quick actions. They show even when macOS Focus is on, and each one is also listed in Notification Center (set Uniox to None in System Settings → Notifications to skip the extra macOS banner).'
+          ? 'Uniox cards with a preview and quick actions. They show even when macOS Focus is on. Press ⌥⌘N to see the ones you missed.'
           : 'The standard macOS banner, managed in System Settings → Notifications.'
       }
     >

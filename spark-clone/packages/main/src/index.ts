@@ -500,11 +500,14 @@ function notifyOverlay(): NotifyOverlay {
 }
 
 let quickReply: QuickReplyWindow | null = null;
+/** Settings key for the emails kept in the ⌥⌘N list (K), so they survive a restart. */
+const QUICK_REPLY_KEPT_KEY = 'quickReplyKept';
 function quickReplyWin(): QuickReplyWindow {
   quickReply ??= new QuickReplyWindow({
     webPreferences: RENDERER_PREFS,
     load: loadRenderer,
     guard: guardNavigation,
+    saveKept: (items) => void bridge?.query('settings:set', { key: QUICK_REPLY_KEPT_KEY, value: items }).catch(() => {}),
   });
   return quickReply;
 }
@@ -579,12 +582,10 @@ const LIVE_NOTIFICATIONS_MAX = 100;
  * the quick-reply widget, with its Undo), Mark read and Done; Join and Snooze
  * for meetings. Clicking it opens quick reply, like the toast.
  *
- * Style "macOS" uses it as the banner (with sound). Style "Uniox" posts it
- * silently next to the Uniox toast: it lands in Notification Center, and
- * setting Uniox to "None" in System Settings → Notifications keeps macOS from
- * also drawing a banner.
+ * Only style "macOS" uses it (banner with sound, listed in Notification
+ * Center). Style "Uniox" never posts to macOS; see broadcastDelta.
  */
-function showNativeNotification(event: NotifyPayload, sound: NotifySound, opts: { fallback: boolean }): void {
+function showNativeNotification(event: NotifyPayload, sound: NotifySound): void {
   if (!Notification.isSupported()) return;
   const entry = nativeEntry(event);
   const n = new Notification({
@@ -621,7 +622,7 @@ function showNativeNotification(event: NotifyPayload, sound: NotifySound, opts: 
   });
   n.on('failed', () => {
     release();
-    if (opts.fallback) osascriptNotify(event.title, event.body, sound);
+    osascriptNotify(event.title, event.body, sound);
   });
   n.show();
 }
@@ -642,10 +643,11 @@ function broadcastDelta(event: DeltaEvent): void {
   if (event.category !== 'event' && BrowserWindow.getFocusedWindow()) return;
   void (async () => {
     const [sound, style] = await Promise.all([notifySound(), notifyStyle()]);
-    if (style === 'system') return showNativeNotification(event, sound, { fallback: true });
+    if (style === 'system') return showNativeNotification(event, sound);
+    // Uniox style shows only the island toast. No macOS copy: macOS can't draw
+    // our cards in Notification Center, and a "silent" Notification still gets
+    // a banner, so posting one doubled every alert. The ⌥⌘N list is the history.
     playSound(sound);
-    // A silent copy for Notification Center's history (the toast is the alert).
-    showNativeNotification(event, 'None', { fallback: false });
     try {
       await notifyOverlay().show(event);
     } catch (err) {
@@ -763,9 +765,14 @@ function registerIpc(): void {
         return { ok: true };
       }
       case 'quick-reply:show': {
-        const { mode, currentId } = args as { mode: QuickReplyMode; currentId?: string | null };
-        quickReplyWin().open(mode, currentId ?? null);
+        const { mode, currentId, item } = args as { mode: QuickReplyMode; currentId?: string | null; item?: NotifyPayload };
+        quickReplyWin().open(mode, item ?? currentId ?? null);
         return { ok: true };
+      }
+      case 'quick-reply:keep': {
+        const a = args as { id: string; keep: boolean } | { item: NotifyPayload; keep: boolean };
+        const id = quickReplyWin().keep('id' in a ? { id: a.id } : { item: a.item }, !!a.keep);
+        return { ok: !!id, id };
       }
       case 'quick-reply:close':
         quickReply?.close();
@@ -1101,6 +1108,11 @@ void app.whenReady().then(() => {
     onDelta: broadcastDelta,
   });
   bridge.start();
+  // Emails kept in the ⌥⌘N list come back after a restart.
+  void bridge
+    .query('settings:get', { key: QUICK_REPLY_KEPT_KEY })
+    .then((saved) => quickReplyWin().restoreKept(saved))
+    .catch(() => {});
 
   // Sleep/wake: the sync utility process isn't subject to renderer
   // background throttling, so tell it to park its timers while suspended.

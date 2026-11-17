@@ -9,6 +9,7 @@ import {
   Forward,
   Loader2,
   Mail,
+  Pin,
   SquareArrowOutUpRight,
   Sparkles,
   X,
@@ -442,6 +443,13 @@ export function ReplyWidget({
     toast(next ? 'Marked as unread' : 'Marked as read');
   };
 
+  /** ⌘K: keep this email in the ⌥⌘N list after it's read (or let it go again). */
+  const toggleKeep = () => {
+    const on = !item.kept;
+    void api.command('quick-reply:keep', { id: item.id, keep: on });
+    toast(on ? 'Kept in the list' : 'No longer kept');
+  };
+
   const showTimes = () => {
     if (times && times !== 'none') return;
     void loadTimes(30, null);
@@ -484,6 +492,9 @@ export function ReplyWidget({
       if (metaKey(e) && !e.altKey && !e.shiftKey && k === 'j') {
         e.preventDefault();
         setMenu((m) => !m);
+      } else if (metaKey(e) && !e.altKey && !e.shiftKey && k === 'k') {
+        e.preventDefault();
+        toggleKeep();
       } else if (metaKey(e) && !e.altKey && !e.shiftKey && k === 'u') {
         e.preventDefault();
         toggleUnread();
@@ -522,7 +533,7 @@ export function ReplyWidget({
   const files = latestBody ? cardAttachments(latestBody.attachments, latestBody.html) : [];
   const toLabel = recipients.to.concat(recipients.cc).map((a) => firstName(a));
 
-  type RailId = 'ai' | 'unread' | 'times' | 'forward' | 'done';
+  type RailId = 'ai' | 'unread' | 'keep' | 'times' | 'forward' | 'done';
   const rail: { id: RailId; icon: React.ReactNode; label: string; keys: string[]; on?: boolean; ai?: boolean }[] = [
     { id: 'ai', icon: <Sparkles size={19} />, label: 'Assistant', keys: ['⌘', 'J'], on: menu, ai: true },
     {
@@ -538,6 +549,13 @@ export function ReplyWidget({
       on: unread,
     },
     {
+      id: 'keep',
+      icon: <Pin size={19} className="-rotate-45" />,
+      label: item.kept ? 'Kept in the list' : 'Keep in the list',
+      keys: ['⌘', 'K'],
+      on: !!item.kept,
+    },
+    {
       id: 'times',
       icon: <CalendarClock size={19} />,
       label: 'Check my availability',
@@ -551,6 +569,7 @@ export function ReplyWidget({
   function runRail(id: RailId) {
     if (id === 'ai') setMenu((m) => !m);
     else if (id === 'unread') toggleUnread();
+    else if (id === 'keep') toggleKeep();
     else if (id === 'times') showTimes();
     else if (id === 'forward') setForwarding((f) => !f);
     else done();

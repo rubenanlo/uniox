@@ -1,5 +1,5 @@
 import { BrowserWindow, screen, type WebContents, type WebPreferences } from 'electron';
-import type { DeltaEvent, NotifyPayload, QuickReplyMode, QuickReplyState } from '@app/shared';
+import type { DeltaEvent, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState } from '@app/shared';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -41,6 +41,8 @@ export class QuickReplyWindow {
       webPreferences: WebPreferences;
       load: (win: BrowserWindow, hash: string) => void;
       guard: (win: BrowserWindow) => void;
+      /** Kept emails changed: save them so they come back after a restart. */
+      saveKept?: (items: QuickReplyItem[]) => void;
     },
   ) {}
 
@@ -88,7 +90,34 @@ export class QuickReplyWindow {
   }
 
   dismiss(id: string): void {
-    if (this.queue.dismiss(id) && this.visible()) this.push();
+    const wasKept = !!this.queue.get(id)?.kept;
+    if (!this.queue.dismiss(id)) return;
+    if (wasKept) this.saveKept();
+    if (this.visible()) this.push();
+  }
+
+  /**
+   * Keep an email in the list after it's read (K), or let it go again. An
+   * unread thread that isn't listed yet comes in as a payload. Returns the
+   * row's id.
+   */
+  keep(target: { id: string } | { item: NotifyPayload }, on: boolean): string | null {
+    const id = 'id' in target ? target.id : (this.queue.find(target.item) ?? this.queue.record(target.item)).id;
+    if (!this.queue.keep(id, on)) return null;
+    this.saveKept();
+    if (this.visible()) this.push();
+    return id;
+  }
+
+  /** Saved kept emails, on launch. */
+  restoreKept(saved: unknown): void {
+    if (!Array.isArray(saved)) return;
+    this.queue.restore(saved as QuickReplyItem[]);
+    if (this.visible()) this.push();
+  }
+
+  private saveKept(): void {
+    this.opts.saveKept?.(this.queue.kept());
   }
 
   close(): void {

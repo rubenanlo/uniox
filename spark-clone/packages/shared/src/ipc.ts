@@ -30,6 +30,11 @@ export interface Queries {
   'threads:list': { args: ThreadQuery; result: ThreadSummary[] };
   /** Inbox threads from priority senders, newest first; `before` pages back by date. */
   'threads:priority': { args: { before?: number; limit: number }; result: ThreadSummary[] };
+  /** Unread inbox threads (one account, or all), newest arrival first, for the ⌥⌘N list. */
+  'threads:unread': {
+    args: { accountId?: string; limit: number };
+    result: (ThreadSummary & { prioritySender: boolean })[];
+  };
   'thread:messages': { args: { threadId: string }; result: MessageMeta[] };
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };
@@ -188,13 +193,19 @@ export interface Commands {
   'composer:notice': { args: { message: string }; result: { ok: boolean } };
   /** Show the quick-reply overlay as the notification list or the reply widget. */
   'quick-reply:show': {
-    args: { mode: QuickReplyMode; currentId?: string | null };
+    /** `item` opens an email that isn't listed yet (an unread thread). */
+    args: { mode: QuickReplyMode; currentId?: string | null; item?: NotifyPayload };
     result: { ok: boolean };
   };
   /** Hide the overlay (it stays warm for a minute, so a pending Undo Send still fires). */
   'quick-reply:close': { args: undefined; result: { ok: boolean } };
   /** Drop a handled notification from the list (done, or dismissed with ⌫). */
   'quick-reply:dismiss': { args: { id: string }; result: { ok: boolean } };
+  /** Keep an email in the list (or let it go again): a listed one by id, or an unread thread by payload. */
+  'quick-reply:keep': {
+    args: { id: string; keep: boolean } | { item: NotifyPayload; keep: boolean };
+    result: { ok: boolean; id: string | null };
+  };
   /** Leave the overlay for the main window: the thread, or a composer with the draft so far. */
   'quick-reply:open-in-app': {
     args: { threadId: string; accountId?: string; composer?: ComposerState };
@@ -310,6 +321,8 @@ export interface NotifyPayload {
   endMs?: number;
   location?: string;
   meetingUrl?: string;
+  /** Opened from the ⌥⌘N list's "Still unread" rows rather than notified. */
+  origin?: 'unread';
 }
 
 export type QuickReplyMode = 'list' | 'reply';
@@ -319,6 +332,8 @@ export interface QuickReplyItem extends NotifyPayload {
   id: string;
   /** When it arrived (ms). */
   at: number;
+  /** Kept (K): stays in the list after it's read, past the day and the size cap, across restarts. */
+  kept?: boolean;
 }
 
 export interface QuickReplyState {

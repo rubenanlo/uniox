@@ -1,7 +1,7 @@
 import type { DarkPalette, LightPalette, QuickReplyItem, QuickReplyState } from '@app/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { queuePosition, stepItem } from '../../lib/quickReply';
+import { itemPayload, queuePosition, stepItem } from '../../lib/quickReply';
 import { useAccentColor, useTheme } from '../../lib/theme';
 import { wireAssistant } from '../../state/assistant';
 import { useDelta } from '../../state/queries';
@@ -39,12 +39,14 @@ export function QuickReplyWindow() {
         darkPalette: DarkPalette;
         lightPalette: LightPalette;
         accentColor: string | null;
+        accountColors: Record<string, string>;
       }>;
       useUi.setState({
         ...(p.theme ? { theme: p.theme } : {}),
         ...(p.darkPalette ? { darkPalette: p.darkPalette } : {}),
         ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
         ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
+        ...(p.accountColors ? { accountColors: p.accountColors } : {}),
       });
     });
     void api.query('quick-reply:state', undefined).then(setState);
@@ -67,6 +69,11 @@ export function QuickReplyWindow() {
       // A meeting alert: join the call if there is one, else show it in the calendar.
       if (item.meetingUrl) window.open(item.meetingUrl);
       close();
+      return;
+    }
+    if (item.id.startsWith('u:')) {
+      // An unread thread from "Still unread": main lists it so the widget (and ←/→) can find it.
+      void api.command('quick-reply:show', { mode: 'reply', item: itemPayload(item) });
       return;
     }
     show('reply', item.id);

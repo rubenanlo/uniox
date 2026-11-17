@@ -863,6 +863,42 @@ describe('listPriorityThreads', () => {
   });
 });
 
+describe('listUnreadThreads', () => {
+  it('lists unread inbox threads newest first, flagging priority senders', () => {
+    const db = makeDb();
+    setup(db);
+    db.setPrioritySender('acc1', 'carol@partner.example', true);
+    const thread = (id: string, date: number, opts: { from?: string; seen?: boolean; folderId?: string } = {}) => {
+      db.createThread(id, 'acc1', id);
+      db.insertMessage(
+        msg({
+          id: `m-${id}`,
+          threadId: id,
+          uid: date,
+          date,
+          messageIdHdr: `<${id}@x>`,
+          folderId: opts.folderId ?? 'f-inbox',
+          from: { email: opts.from ?? 'someone@else.example' },
+          seen: opts.seen ?? false,
+        }),
+      );
+      db.refreshThreadAggregates(id);
+    };
+    thread('a', 1000, { from: 'carol@partner.example' });
+    thread('b', 2000, { seen: true });
+    thread('c', 3000);
+    thread('d', 4000, { folderId: 'f-arch' });
+
+    const rows = db.listUnreadThreads({ limit: 10 });
+    expect(rows.map((t) => [t.id, t.prioritySender])).toEqual([
+      ['c', false],
+      ['a', true],
+    ]);
+    expect(db.listUnreadThreads({ limit: 1 }).map((t) => t.id)).toEqual(['c']);
+    expect(db.listUnreadThreads({ accountId: 'other', limit: 10 })).toEqual([]);
+  });
+});
+
 describe('review fixes', () => {
   it('does not index the from_json keys as searchable words', () => {
     const db = makeDb();
