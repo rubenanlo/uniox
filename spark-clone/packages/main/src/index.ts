@@ -579,12 +579,10 @@ const LIVE_NOTIFICATIONS_MAX = 100;
  * the quick-reply widget, with its Undo), Mark read and Done; Join and Snooze
  * for meetings. Clicking it opens quick reply, like the toast.
  *
- * Style "macOS" uses it as the banner (with sound). Style "Uniox" posts it
- * silently next to the Uniox toast: it lands in Notification Center, and
- * setting Uniox to "None" in System Settings → Notifications keeps macOS from
- * also drawing a banner.
+ * Only style "macOS" uses it (banner with sound, listed in Notification
+ * Center). Style "Uniox" never posts to macOS; see broadcastDelta.
  */
-function showNativeNotification(event: NotifyPayload, sound: NotifySound, opts: { fallback: boolean }): void {
+function showNativeNotification(event: NotifyPayload, sound: NotifySound): void {
   if (!Notification.isSupported()) return;
   const entry = nativeEntry(event);
   const n = new Notification({
@@ -621,7 +619,7 @@ function showNativeNotification(event: NotifyPayload, sound: NotifySound, opts: 
   });
   n.on('failed', () => {
     release();
-    if (opts.fallback) osascriptNotify(event.title, event.body, sound);
+    osascriptNotify(event.title, event.body, sound);
   });
   n.show();
 }
@@ -642,10 +640,11 @@ function broadcastDelta(event: DeltaEvent): void {
   if (event.category !== 'event' && BrowserWindow.getFocusedWindow()) return;
   void (async () => {
     const [sound, style] = await Promise.all([notifySound(), notifyStyle()]);
-    if (style === 'system') return showNativeNotification(event, sound, { fallback: true });
+    if (style === 'system') return showNativeNotification(event, sound);
+    // Uniox style shows only the island toast. No macOS copy: macOS can't draw
+    // our cards in Notification Center, and a "silent" Notification still gets
+    // a banner, so posting one doubled every alert. The ⌥⌘N list is the history.
     playSound(sound);
-    // A silent copy for Notification Center's history (the toast is the alert).
-    showNativeNotification(event, 'None', { fallback: false });
     try {
       await notifyOverlay().show(event);
     } catch (err) {
