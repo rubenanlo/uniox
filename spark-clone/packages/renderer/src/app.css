@@ -1047,6 +1047,13 @@ html[data-island='frosted'] .qr-tint {
   background: rgb(255 255 255 / 0.18);
   border: 1px solid rgb(255 255 255 / 0.45);
 }
+/* One light sweep across a Home AI card as it unfolds (cardMotion.ts). */
+.ai-sheen {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent);
+}
+.dark .ai-sheen {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.14), transparent);
+}
 .dark .ai-glass .qr-field,
 .dark .ai-glass .qr-bubble-in,
 .dark .ai-tile {
