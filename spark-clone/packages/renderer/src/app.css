@@ -497,6 +497,119 @@ body {
   }
 }
 
+/* Sprint board: warm database look. Turnout's particle sheet behind the
+   header (SpiralField), pastel pill chips toned from one hue each
+   (mixed against the theme's surface so every palette keeps its own feel),
+   and soft outlined pills for tabs/views. */
+.sb-canvas {
+  position: relative;
+  background-color: var(--color-paper);
+}
+.sb-spiral {
+  mask-image: radial-gradient(60% 70% at 50% 50%, black 30%, transparent 75%);
+}
+.sb-pill {
+  border: 1px solid var(--color-hairline);
+  background: color-mix(in oklab, var(--color-surface) 70%, transparent);
+  color: var(--color-ink-muted);
+}
+.sb-pill:hover {
+  color: var(--color-ink);
+}
+.sb-pill[aria-selected='true'],
+.sb-pill[aria-pressed='true'] {
+  border-color: color-mix(in oklab, var(--color-violet) 55%, var(--color-hairline));
+  background: color-mix(in oklab, var(--color-violet) 9%, var(--color-surface));
+  color: var(--color-ink);
+}
+.sb-view[aria-current='true'] {
+  background: color-mix(in oklab, var(--color-violet) 13%, var(--color-paper));
+  color: var(--color-ink);
+}
+.sb-chip {
+  --t: oklch(0.6 0.02 270);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 19px;
+  white-space: nowrap;
+  background: color-mix(in oklab, var(--t) 15%, var(--color-surface));
+  color: color-mix(in oklab, var(--t) 80%, var(--color-ink));
+}
+.dark .sb-chip {
+  background: color-mix(in oklab, var(--t) 22%, var(--color-surface));
+  color: color-mix(in oklab, var(--t) 62%, white);
+}
+.sb-chip[data-tone='green'] {
+  --t: oklch(0.62 0.13 155);
+}
+.sb-chip[data-tone='teal'] {
+  --t: oklch(0.62 0.1 195);
+}
+.sb-chip[data-tone='blue'] {
+  --t: oklch(0.6 0.13 250);
+}
+.sb-chip[data-tone='lavender'] {
+  --t: oklch(0.58 0.16 292);
+}
+.sb-chip[data-tone='peach'] {
+  --t: oklch(0.66 0.13 55);
+}
+.sb-chip[data-tone='amber'] {
+  --t: oklch(0.7 0.13 80);
+}
+.sb-chip[data-tone='rose'] {
+  --t: oklch(0.6 0.15 22);
+}
+.sb-chip[data-tone='neutral'] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-hairline);
+  color: var(--color-ink-muted);
+}
+.sb-avatar[data-tone='green'] {
+  --t: oklch(0.62 0.13 155);
+}
+.sb-avatar[data-tone='teal'] {
+  --t: oklch(0.62 0.1 195);
+}
+.sb-avatar[data-tone='blue'] {
+  --t: oklch(0.6 0.13 250);
+}
+.sb-avatar[data-tone='lavender'] {
+  --t: oklch(0.58 0.16 292);
+}
+.sb-avatar[data-tone='peach'] {
+  --t: oklch(0.66 0.13 55);
+}
+.sb-dot[data-tone='green'] {
+  background: oklch(0.62 0.13 155);
+}
+.sb-dot[data-tone='teal'] {
+  background: oklch(0.62 0.1 195);
+}
+.sb-dot[data-tone='blue'] {
+  background: oklch(0.6 0.13 250);
+}
+.sb-dot[data-tone='lavender'] {
+  background: oklch(0.58 0.16 292);
+}
+.sb-dot[data-tone='peach'] {
+  background: oklch(0.66 0.13 55);
+}
+.sb-avatar {
+  background: color-mix(in oklab, var(--t) 28%, var(--color-surface));
+  color: color-mix(in oklab, var(--t) 70%, var(--color-ink));
+  box-shadow: 0 0 0 1.5px var(--color-surface);
+}
+.sb-card {
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--color-ink) 5%, transparent);
+}
+
 /* The orb's action menu materializes in step with the orb itself. */
 @keyframes orb-menu-in {
   from {
