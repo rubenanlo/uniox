@@ -119,6 +119,31 @@ const listNames = (names: string[]) =>
   names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '');
 const metaKey = (e: KeyboardEvent | React.KeyboardEvent) => e.metaKey || e.ctrlKey;
 
+/**
+ * Measures a content element and returns a pixel height for its scroll box
+ * (plus `extra` for the box's own padding). The box animates to it through
+ * CSS (.qr-convo); the first measurement lands without a transition.
+ */
+function useAutoHeight(extra: number) {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => setHeight(Math.ceil(el.getBoundingClientRect().height) + extra);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // Animate only changes after the first frame, not the opening size.
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setSettled(true)));
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [el, extra]);
+  return { setContent: setEl, height, settled };
+}
+
 /** One message as a chat bubble (yours on the right), with its files as cards below. */
 function Bubble({ message, body, mine }: { message: MessageMeta; body?: MessageBodyPayload; mine: boolean }) {
   const [open, setOpen] = useState(false);
@@ -220,6 +245,9 @@ export function ReplyWidget({
   const configured = useAssistant((s) => s.configured);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // The conversation's height follows its content on a transition, so the
+  // widget grows and shrinks smoothly as the email, the AI read and replies arrive.
+  const { setContent: setConvoContent, height: convoHeight, settled: convoSettled } = useAutoHeight(4);
 
   const applyThread = useCallback(({ msgs, bodies: loaded }: LoadedThread) => {
     setMessages(msgs);
@@ -569,6 +597,8 @@ export function ReplyWidget({
     { id: 'done', icon: <Archive size={19} />, label: 'Done', keys: ['⌘', 'E'] },
   ];
 
+  const aiPhase = !configured ? 'off' : ideas === 'loading' || ideas === null ? 'loading' : ideas === 'error' ? 'error' : 'ready';
+
   function runRail(id: RailId) {
     if (id === 'ai') setMenu((m) => !m);
     else if (id === 'unread') toggleUnread();
@@ -628,7 +658,13 @@ export function ReplyWidget({
         </div>
 
         {/* The conversation */}
-        <div ref={scrollRef} className="relative -mx-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-2 pb-1">
+        <div
+          ref={scrollRef}
+          className="qr-convo relative -mx-2 min-h-0 shrink overflow-y-auto px-2 pb-1"
+          data-settled={convoSettled || undefined}
+          style={{ height: convoHeight }}
+        >
+          <div ref={setConvoContent} className="flex flex-col gap-3.5">
           {!showOlder && older.length > 0 && (
             <button
               onClick={() => setShowOlder(true)}
@@ -637,13 +673,15 @@ export function ReplyWidget({
               {older.length} earlier message{older.length > 1 ? 's' : ''}
             </button>
           )}
-          {shown.map((m) => (
-            <Bubble key={m.id} message={m} body={bodies[m.id]} mine={!!m.from && own.has(m.from.email.toLowerCase())} />
+          {shown.map((m, i) => (
+            <div key={m.id} className="qr-msg-in" style={{ animationDelay: `${Math.min(i, 4) * 50}ms` }}>
+              <Bubble message={m} body={bodies[m.id]} mine={!!m.from && own.has(m.from.email.toLowerCase())} />
+            </div>
           ))}
 
           {/* The assistant's read */}
           {latest && (
-            <div className="flex items-start gap-2.5">
+            <div key={`ai-${aiPhase}`} className="qr-msg-in flex items-start gap-2.5">
               <AiMark />
               <div className="min-w-0 flex-1 pt-0.5">
                 {!configured ? (
@@ -681,7 +719,7 @@ export function ReplyWidget({
 
           {/* Suggested times */}
           {times && (
-            <div className="flex items-start gap-2.5">
+            <div key={`times-${times === 'loading' ? 'loading' : 'done'}`} className="qr-msg-in flex items-start gap-2.5">
               <AiMark />
               <div className="min-w-0 flex-1 pt-0.5">
                 {times === 'loading' ? (
@@ -716,7 +754,7 @@ export function ReplyWidget({
 
           {/* Forward */}
           {forwarding && latest && (
-            <div className="flex items-start gap-2.5">
+            <div className="qr-msg-in flex items-start gap-2.5">
               <AiMark />
               <div className="min-w-0 flex-1 pt-0.5">
                 <p className="mb-2 text-[14.5px] leading-normal">
@@ -753,7 +791,7 @@ export function ReplyWidget({
 
           {/* Answers from the AI menu */}
           {notes.map((n) => (
-            <div key={n.id} className="flex flex-col gap-3">
+            <div key={n.id} className="qr-msg-in flex flex-col gap-3">
               {n.question && (
                 <div className="qr-bubble-out text-ink-muted self-end rounded-[17px_17px_6px_17px] px-3.5 py-2 text-[13px]">
                   {n.question}
@@ -776,7 +814,7 @@ export function ReplyWidget({
 
           {/* What you sent, with Undo while it waits */}
           {outgoing.map((o) => (
-            <div key={o.id} className="flex flex-col items-end gap-1">
+            <div key={o.id} className="qr-msg-in flex flex-col items-end gap-1">
               {o.kind === 'reply' ? (
                 <div className="qr-bubble-out max-w-[75%] whitespace-pre-wrap rounded-[17px_17px_6px_17px] px-3.5 py-2.5 text-[13.5px] leading-[1.55]">
                   {o.text}
@@ -803,6 +841,7 @@ export function ReplyWidget({
               </div>
             </div>
           ))}
+          </div>
         </div>
 
         {/* The reply field: drop times here, ⌘↩ sends */}
