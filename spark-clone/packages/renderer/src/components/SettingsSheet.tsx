@@ -4,6 +4,9 @@ import {
   DEFAULT_NOTIFY_STYLE,
   DEFAULT_SCHEDULING,
   ISLAND_STYLE_KEY,
+  ISLAND_DISPLAY_KEY,
+  DEFAULT_ISLAND_DISPLAY,
+  type IslandDisplay,
   normalizeAvailability,
   NOTIFY_SOUNDS,
   type AvailabilityPrefs,
@@ -264,6 +267,51 @@ function IslandStyleField() {
         >
           Preview <span className="text-ink-faint ml-1">⌥⌘N</span>
         </button>
+      </div>
+    </Field>
+  );
+}
+
+/** Which screen ⌥⌘N opens on, for setups with more than one display. */
+function IslandDisplayField() {
+  const [display, setDisplay] = useState<IslandDisplay>(DEFAULT_ISLAND_DISPLAY);
+  useEffect(() => {
+    void api.query('settings:get', { key: ISLAND_DISPLAY_KEY }).then((v) => {
+      if (v === 'pointer' || v === 'primary') setDisplay(v);
+    });
+  }, []);
+  const pick = (next: IslandDisplay) => {
+    setDisplay(next);
+    void api.command('settings:set', { key: ISLAND_DISPLAY_KEY, value: next });
+  };
+  const options: { id: IslandDisplay; name: string }[] = [
+    { id: 'pointer', name: 'Where the mouse is' },
+    { id: 'primary', name: 'Primary display' },
+  ];
+  return (
+    <Field
+      label="Open ⌥⌘N on"
+      hint={
+        display === 'primary'
+          ? 'The notification list and quick reply always open on your main display (the one with the menu bar).'
+          : 'The notification list and quick reply open on whichever display the mouse is on.'
+      }
+    >
+      <div className="bg-sunken inline-flex rounded-lg p-0.5" role="radiogroup" aria-label="Open ⌥⌘N on">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            role="radio"
+            aria-checked={display === o.id}
+            onClick={() => pick(o.id)}
+            className={cn(
+              'rounded-md px-2.5 py-1 text-[12px]',
+              display === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            {o.name}
+          </button>
+        ))}
       </div>
     </Field>
   );
@@ -855,6 +903,7 @@ function AppearanceTab() {
       <NotificationsRow />
       <NotificationStyleField />
       <IslandStyleField />
+      <IslandDisplayField />
       <NotificationSoundField />
     </div>
   );

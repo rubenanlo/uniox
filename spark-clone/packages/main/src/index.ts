@@ -27,6 +27,8 @@ import {
   DEFAULT_SCHEDULING,
   GMAIL_ENDPOINTS,
   ISLAND_STYLE_KEY,
+  ISLAND_DISPLAY_KEY,
+  DEFAULT_ISLAND_DISPLAY,
   KANBAN_STATUSES,
   NOTIFY_SOUNDS,
   parseMailto,
@@ -38,6 +40,7 @@ import {
   type DeltaEvent,
   type GlassRect,
   type IslandStyle,
+  type IslandDisplay,
   type MailtoDraft,
   type NotifyContext,
   type NotifyPayload,
@@ -516,11 +519,18 @@ function quickReplyWin(): QuickReplyWindow {
     saveKept: (items) => void bridge?.query('settings:set', { key: QUICK_REPLY_KEPT_KEY, value: items }).catch(() => {}),
   });
   quickReply.setIsland(islandStyle, appDark);
+  quickReply.setDisplay(islandDisplay);
   return quickReply;
 }
 
 /** Settings → Appearance → Island style, and the app's light/dark (from the main window) for the blur. */
 let islandStyle: IslandStyle = DEFAULT_ISLAND_STYLE;
+/** Settings → Appearance → Island display: the pointer's screen or the primary one. */
+let islandDisplay: IslandDisplay = DEFAULT_ISLAND_DISPLAY;
+function setIslandDisplay(value: unknown): void {
+  islandDisplay = value === 'primary' ? 'primary' : 'pointer';
+  quickReply?.setDisplay(islandDisplay);
+}
 let appDark = nativeTheme.shouldUseDarkColors;
 function setIslandStyle(value: unknown): void {
   islandStyle = value === 'frosted' ? 'frosted' : 'glass';
@@ -770,6 +780,7 @@ function registerIpc(): void {
     if (settingKey === 'notificationSound') notifySoundCache = null;
     if (settingKey === 'notificationStyle') notifyStyleCache = null;
     if (settingKey === ISLAND_STYLE_KEY) setIslandStyle((args as { value?: unknown }).value);
+    if (settingKey === ISLAND_DISPLAY_KEY) setIslandDisplay((args as { value?: unknown }).value);
     switch (channel) {
       case 'mailto:make-default': {
         // macOS: needs the CFBundleURLTypes entry electron-builder writes
@@ -1161,6 +1172,10 @@ void app.whenReady().then(() => {
   void bridge
     .query('settings:get', { key: ISLAND_STYLE_KEY })
     .then(setIslandStyle)
+    .catch(() => {});
+  void bridge
+    .query('settings:get', { key: ISLAND_DISPLAY_KEY })
+    .then(setIslandDisplay)
     .catch(() => {});
 
   // Sleep/wake: the sync utility process isn't subject to renderer

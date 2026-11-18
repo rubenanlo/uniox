@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, screen, type WebContents, type WebPreferences } from 'electron';
-import type { DeltaEvent, GlassRect, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
+import type { DeltaEvent, GlassRect, IslandDisplay, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { GlassBackdrops } from '../glass';
 import { QuickReplyQueue } from './queue';
 
@@ -60,6 +60,7 @@ export class QuickReplyWindow {
   private returnTo: BrowserWindow | null = null;
   /** Settings → Appearance → Island style. Frosted puts macOS's blur behind the page's panels. */
   private island: IslandStyle = 'glass';
+  private display: IslandDisplay = 'pointer';
   private readonly backdrops = new GlassBackdrops();
 
   constructor(
@@ -93,6 +94,11 @@ export class QuickReplyWindow {
       view: this.view,
       island: this.island,
     };
+  }
+
+  /** Which screen the next open lands on (an open window stays where it is). */
+  setDisplay(display: IslandDisplay): void {
+    this.display = display === 'primary' ? 'primary' : 'pointer';
   }
 
   /** The island's look (frosted only on macOS) and the app's light/dark, for the blur's material. */
@@ -285,9 +291,10 @@ export class QuickReplyWindow {
     this.win.webContents.send('delta', { kind: 'quick-reply', state: this.state() } satisfies DeltaEvent);
   }
 
-  /** Cover the whole display the pointer is on, menu bar and Dock included. */
+  /** Cover the whole display (the pointer's or the primary one, per Settings), menu bar and Dock included. */
   private place(win: BrowserWindow): void {
-    const { bounds } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const { bounds } =
+      this.display === 'primary' ? screen.getPrimaryDisplay() : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     win.setBounds(bounds);
   }
 

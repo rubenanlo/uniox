@@ -859,6 +859,18 @@ html.quick-reply body {
 html[data-island='frosted'] .qr-scrim {
   background: transparent;
 }
+/* Frosted: a light dim around the panels (holes cut under each panel, see
+   useGlassBackdrops), so the clear glass reads as lifted off the screen. */
+.qr-dim {
+  display: none;
+}
+html[data-island='frosted'] .qr-dim {
+  display: block;
+  background: rgb(14 14 24 / 0.12);
+}
+html.dark[data-island='frosted'] .qr-dim {
+  background: rgb(0 0 0 / 0.22);
+}
 html[data-island='frosted'] .qr-glass {
   background: linear-gradient(160deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08));
   border-color: rgb(255 255 255 / 0.55);
@@ -880,8 +892,14 @@ html.dark[data-island='frosted'] .qr-glass {
   --color-ink-muted: rgb(255 255 255 / 0.75);
   --color-ink-faint: rgb(255 255 255 / 0.55);
 }
-html[data-island='frosted'] .qr-tint {
-  display: none;
+/* A fainter version of the theme haze: the AI windows pick up colour from
+   the app behind their CSS blur; macOS's blur here is neutral, so this adds
+   that soft violet/azure cast back. */
+html[data-island='frosted'] .qr-tint::before {
+  opacity: 0.55;
+}
+html.dark[data-island='frosted'] .qr-tint::before {
+  opacity: 0.4;
 }
 /* The theme-coloured haze inside the glass (violet / azure / aqua corners). */
 .qr-tint {

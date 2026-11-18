@@ -151,6 +151,7 @@ export function QuickReplyWindow() {
         if (e.target === e.currentTarget || e.target === stageRef.current) close();
       }}
     >
+      <div className="qr-dim pointer-events-none absolute inset-0" />
       <div ref={stageRef} className="qr-stage absolute inset-0">
         {replying ? (
           <ReplyWidget
