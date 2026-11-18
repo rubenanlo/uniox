@@ -1,4 +1,4 @@
-import type { Address, AttachmentMeta, MessageMeta, NotifyPayload, QuickReplyItem, ThreadSummary } from '@app/shared';
+import type { Address, AttachmentMeta, MessageMeta, NotifyPayload, QuickReplyItem, QuickReplyView, ThreadSummary } from '@app/shared';
 
 /**
  * Pure helpers for the quick-reply widget: turning email bodies into chat
@@ -232,7 +232,7 @@ export function startTab(items: QuickReplyItem[], startId: string | null): ListT
   return LIST_TABS.find((t) => items.some((i) => listTab(i) === t.id))?.id ?? 'important';
 }
 
-/** An unread inbox thread as a ⌥⌘N row (it isn't a notification, so its id is the thread's). */
+/** An inbox thread as a ⌥⌘N row (it isn't a notification, so its id is the thread's). */
 export function unreadItem(t: ThreadSummary & { prioritySender?: boolean }): QuickReplyItem {
   const from = t.lastInboundFrom ?? t.senders?.[0] ?? t.participants[0] ?? null;
   return {
@@ -247,6 +247,7 @@ export function unreadItem(t: ThreadSummary & { prioritySender?: boolean }): Qui
     mailCategory: t.category,
     priority: !!t.prioritySender,
     hasAttachments: t.hasAttachments,
+    unread: t.unreadCount > 0,
     at: t.lastInboundDate || t.lastMessageDate,
   };
 }
@@ -257,16 +258,21 @@ export function itemPayload(item: QuickReplyItem): NotifyPayload {
   delete payload.id;
   delete payload.at;
   delete payload.kept;
+  delete payload.unread;
   return payload as NotifyPayload;
 }
 
 /** The ⌥⌘N list's sections, in the order they show. */
-export type ListSection = 'kept' | 'new' | 'unread';
+export type ListSection = 'kept' | 'new' | 'unread' | 'read';
 export const LIST_SECTIONS: { id: ListSection; label: string }[] = [
   { id: 'kept', label: 'Kept' },
   { id: 'new', label: 'New notifications' },
   { id: 'unread', label: 'Still unread' },
+  { id: 'read', label: 'Read, still in inbox' },
 ];
+
+/** The ⌥⌘N header's names for the two views. */
+export const VIEW_LABEL: Record<QuickReplyView, string> = { inbox: 'Inbox', unread: 'Unread' };
 
 export interface ListRow {
   item: QuickReplyItem;
@@ -276,25 +282,29 @@ export interface ListRow {
 /**
  * The rows of one tab for one account (undefined = all), section by section:
  * kept emails, then notifications, then unread mail that didn't notify (or
- * whose notification aged out). A thread shows once, in the first section
- * that has it. Meeting alerts have no account and show under every account.
+ * whose notification aged out), then (whole-inbox view only) read mail still
+ * in the inbox. A thread shows once, in the first section that has it.
+ * Meeting alerts have no account and show under every account.
  */
 export function listRows(
   items: QuickReplyItem[],
-  unread: QuickReplyItem[],
+  inbox: QuickReplyItem[],
   tab: ListTab,
   accountId?: string,
+  view: QuickReplyView = 'inbox',
 ): ListRow[] {
   const inView = (i: QuickReplyItem) =>
     listTab(i) === tab && (!accountId || !i.accountId || i.accountId === accountId);
   const kept = items.filter((i) => i.kept && inView(i));
   const fresh = items.filter((i) => !i.kept && i.origin !== 'unread' && inView(i));
   const listed = new Set([...kept, ...fresh].map((i) => i.threadId).filter(Boolean));
-  const rest = unread.filter((i) => inView(i) && !listed.has(i.threadId));
+  const rest = inbox.filter((i) => inView(i) && !listed.has(i.threadId));
+  const read = view === 'inbox' ? rest.filter((i) => i.unread === false) : [];
   return [
     ...kept.map((item) => ({ item, section: 'kept' as const })),
     ...fresh.map((item) => ({ item, section: 'new' as const })),
-    ...rest.map((item) => ({ item, section: 'unread' as const })),
+    ...rest.filter((i) => i.unread !== false).map((item) => ({ item, section: 'unread' as const })),
+    ...read.map((item) => ({ item, section: 'read' as const })),
   ];
 }
 

@@ -41,6 +41,7 @@ import {
   type NotifyStyle,
   type OutgoingDraft,
   type QuickReplyMode,
+  type QuickReplyView,
   type SchedulingPresets,
   type Task,
 } from '@app/shared';
@@ -776,6 +777,9 @@ function registerIpc(): void {
       }
       case 'quick-reply:close':
         quickReply?.close({ returnFocus: (args as { returnFocus?: boolean } | undefined)?.returnFocus !== false });
+        return { ok: true };
+      case 'quick-reply:view':
+        quickReply?.setView((args as { view: QuickReplyView }).view === 'unread' ? 'unread' : 'inbox');
         return { ok: true };
       case 'quick-reply:dismiss':
         quickReply?.dismiss((args as { id: string }).id);
