@@ -54,7 +54,7 @@ body {
   user-select: none;
   cursor: default;
 }
-#stack { position: absolute; top: 0; right: 0; width: 100%; padding: 8px 10px 24px; display: flex; flex-direction: column; align-items: flex-end; }
+#stack { position: absolute; top: 0; right: 0; width: 100%; padding: 8px 16px 24px 10px; display: flex; flex-direction: column; align-items: flex-end; }
 #stack > .card + .card, #stack > .deck + .card { margin-top: 10px; }
 /* "Island": a glass capsule (avatar, sender, subject) that opens into a full
    card while hovered. Same glass as the quick-reply widget: a near-opaque
@@ -82,6 +82,12 @@ body {
    pull it out from under the pointer. */
 .card:hover { width: 100%; border-radius: 22px; padding: 11px 12px 12px; transition-delay: 0ms; }
 .card.enter { transform: translateX(calc(100% + 24px)); opacity: 0; }
+/* A newer mail taking the top spot: it settles in where the capsule already
+   is (the old one tucks into the deck) instead of the whole capsule sliding
+   off and back in for every message. */
+.card.swap { transform: translateY(-6px) scale(0.97); opacity: 0; transition-duration: 260ms, 180ms; }
+/* The previous top mail sinking into the deck (a copy; the real one waits there). */
+.card.tuck { pointer-events: none; z-index: 2; }
 /* The next mail rising off the deck. */
 .card.rise { transform: translateY(-10px) scale(0.97); opacity: 0.4; transition-duration: 260ms, 200ms; }
 .card.leave { transform: translateX(calc(100% + 24px)); opacity: 0; transition-timing-function: cubic-bezier(0.5, 0, 0.75, 0), ease-in; transition-duration: 220ms, 200ms; }
@@ -164,8 +170,23 @@ body {
 }
 .frosted .deck div { background: rgb(255 255 255 / 0.55); border-color: rgb(255 255 255 / 0.6); }
 .dark.frosted .deck div { background: rgb(70 70 82 / 0.7); border-color: rgb(255 255 255 / 0.18); }
+/* Liquid Glass can't follow a card while it slides (the glass window trails
+   it by a frame or more and showed as an empty capsule), so a card in motion
+   gets a painted fill instead, and the glass takes over once it has settled:
+   the fill fades out just as the glass appears under it. */
+.card::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.7));
+  border: 1px solid rgb(255 255 255 / 0.7);
+  opacity: 0; transition: opacity 200ms ease-out 120ms;
+}
+.dark .card::before { background: linear-gradient(160deg, rgb(64 64 74 / 0.86), rgb(40 40 48 / 0.8)); border-color: rgb(255 255 255 / 0.16); }
+.liquid .card.moving::before { opacity: 1; transition: none; }
+/* Nothing blurs behind the deck slivers, so they need enough body to read as cards. */
+.liquid .deck div { background: rgb(255 255 255 / 0.82); border-color: rgb(255 255 255 / 0.7); }
+.dark.liquid .deck div { background: rgb(52 52 62 / 0.88); border-color: rgb(255 255 255 / 0.16); }
 @media (prefers-reduced-motion: reduce) {
-  .card, .card.leave, .card.rise, .more, .bar i { transition-duration: 1ms !important; }
+  .card, .card.leave, .card.rise, .card.swap, .more, .bar i { transition-duration: 1ms !important; }
 }
 `;
 

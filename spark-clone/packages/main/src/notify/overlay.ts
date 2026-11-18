@@ -70,6 +70,7 @@ export class NotifyOverlay {
     if (!win.isVisible()) {
       this.place(win);
       win.showInactive();
+      win.setOpacity(1);
     }
     this.posted++;
     this.post({ kind: 'show', card });
@@ -95,6 +96,8 @@ export class NotifyOverlay {
         this.payloads.clear();
         this.backdrops.hide();
         win.setIgnoreMouseEvents(true, { forward: true });
+        // Out at once: macOS fades a panel it orders out (see glass.ts conceal).
+        win.setOpacity(0);
         win.hide();
         this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
         return;
@@ -115,11 +118,16 @@ export class NotifyOverlay {
     this.win?.webContents.send('notify-overlay', msg);
   }
 
-  /** Top-right of the display the pointer is on, under the menu bar. */
+  /**
+   * Top-right of the display the pointer is on, under the menu bar. The
+   * window reaches the screen's right edge (the page keeps the cards off it),
+   * so a card sliding in or out is cut by the screen, not by a visible line
+   * a few pixels short of it.
+   */
   private place(win: BrowserWindow): void {
     const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     win.setBounds({
-      x: Math.round(workArea.x + workArea.width - OVERLAY_WIDTH - EDGE),
+      x: Math.round(workArea.x + workArea.width - OVERLAY_WIDTH),
       y: Math.round(workArea.y + EDGE),
       width: OVERLAY_WIDTH,
       height: Math.min(OVERLAY_HEIGHT, workArea.height - EDGE * 2),
