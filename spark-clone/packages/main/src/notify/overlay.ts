@@ -15,7 +15,7 @@ const EDGE = 6;
  *
  * Performance: the window (and its renderer process, ~30 MB) exists only
  * while there is something to show plus a minute of warm-up for the next
- * one; hidden, it runs nothing. It never takes focus, and it ignores the mouse
+ * one; parked (transparent and click-through), it runs nothing. It never takes focus, and it ignores the mouse
  * except while the pointer is over a card, so the empty area stays
  * click-through.
  */
@@ -34,6 +34,13 @@ export class NotifyOverlay {
   /** Share (0–90) of the theme's surface laid over the glass: Settings → Transparency behind. */
   private frost = 0;
   private readonly backdrops = new GlassBackdrops();
+  /**
+   * Empty but still ordered in: transparent and click-through instead of
+   * hidden (see 'empty').
+   */
+  private parked = false;
+  /** The Uniox window that had the keyboard when the pointer reached a card. */
+  private returnTo: BrowserWindow | null = null;
 
   constructor(
     private readonly opts: {
@@ -80,20 +87,51 @@ export class NotifyOverlay {
     this.payloads.set(id, payload);
     const card = buildCard(id, payload, this.ctx, Date.now());
     const win = await this.ensureWindow();
-    if (!win.isVisible()) {
+    if (!win.isVisible() || this.parked) {
       this.place(win);
-      win.showInactive();
+      if (!win.isVisible()) win.showInactive();
       win.setOpacity(1);
+      this.parked = false;
     }
     this.posted++;
     this.post({ kind: 'show', card });
+  }
+
+  /**
+   * Free the window after a quiet minute, but only while another app is in
+   * front: closing it while you're in Uniox is the same ordering out that
+   * 'empty' avoids.
+   */
+  private scheduleIdle(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null;
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused && focused !== this.win) this.scheduleIdle();
+      else this.destroy();
+    }, IDLE_DESTROY_MS);
   }
 
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
     this.backdrops.destroy();
+    if (this.win && !this.win.isDestroyed()) this.handBack(this.win);
     this.win?.destroy();
+  }
+
+  /**
+   * A click on a card can leave the overlay holding the keyboard. Taking a
+   * key window off screen makes macOS pick another, and with Uniox's own
+   * window not in the running it activated whatever app was behind it (in
+   * Ruben's recording, Excel came forward in place of the Uniox window he
+   * was in). So hand the keyboard back to the Uniox window that had it.
+   */
+  private handBack(win: BrowserWindow): void {
+    const to = this.returnTo;
+    this.returnTo = null;
+    if (!win.isFocused() || !to || to.isDestroyed() || !to.isVisible() || to.isMinimized()) return;
+    to.focus();
   }
 
   private handle(msg: OverlayToMain): void {
@@ -101,21 +139,28 @@ export class NotifyOverlay {
     if (!win) return;
     switch (msg.kind) {
       case 'interactive':
-        if (msg.on) win.setIgnoreMouseEvents(false);
-        else win.setIgnoreMouseEvents(true, { forward: true });
+        if (msg.on) {
+          const focused = BrowserWindow.getFocusedWindow();
+          if (focused && focused !== win) this.returnTo = focused;
+          win.setIgnoreMouseEvents(false);
+        } else win.setIgnoreMouseEvents(true, { forward: true });
         return;
       case 'empty':
         if (msg.shown !== this.posted) return; // a card is on its way
         this.payloads.clear();
         this.backdrops.hide();
         win.setIgnoreMouseEvents(true, { forward: true });
-        // Out at once: macOS fades a panel it orders out (see glass.ts conceal).
+        // Parked, not hidden: transparent and click-through but still
+        // ordered in, so taking the last card away never orders a window out
+        // (and never makes macOS choose who gets the keyboard; see handBack).
+        // It costs nothing while idle and goes with the window in a minute.
         win.setOpacity(0);
-        win.hide();
-        this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
+        this.parked = true;
+        this.handBack(win);
+        this.scheduleIdle();
         return;
       case 'glass':
-        if (this.frosted && win.isVisible()) this.backdrops.sync(msg.rects, win.getBounds());
+        if (this.frosted && win.isVisible() && !this.parked) this.backdrops.sync(msg.rects, win.getBounds());
         else this.backdrops.hide();
         return;
       case 'action': {
@@ -189,6 +234,7 @@ export class NotifyOverlay {
       this.backdrops.hide();
       if (this.win === win) {
         this.win = null;
+        this.parked = false;
         this.loaded = null;
         this.posted = 0;
         this.payloads.clear();
