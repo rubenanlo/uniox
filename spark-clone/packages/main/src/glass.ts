@@ -9,7 +9,13 @@ const RADIUS_SLACK = 3;
 interface LiquidGlassApi {
   isGlassSupported(): boolean;
   addView(handle: Buffer, options?: { cornerRadius?: number; tintColor?: string; opaque?: boolean }): number;
+  /** NSGlassEffectView's material variant: 0 regular (frosted), 1 clear. Private API, so optional. */
+  unstable_setVariant?(id: number, variant: number): void;
 }
+
+/** electron-liquid-glass variant ids (GlassMaterialVariant). */
+const VARIANT_REGULAR = 0;
+const VARIANT_CLEAR = 1;
 
 let liquidApi: LiquidGlassApi | null | undefined;
 /**
@@ -56,6 +62,10 @@ export class GlassBackdrops {
   /** Windows the last sync wanted on screen, so a late glass view knows whether to show. */
   private readonly wanted = new WeakSet<BrowserWindow>();
   private dark = false;
+  /** The glass view id each Liquid Glass window holds, to switch its variant later. */
+  private readonly glassIds = new WeakMap<BrowserWindow, number>();
+  /** Settings → Transparency behind at Clear: the clear variant, with no frost of its own. */
+  private clear = false;
 
   /** True when panels sit on real Liquid Glass (the page then drops its own fill). */
   get liquid(): boolean {
@@ -67,6 +77,26 @@ export class GlassBackdrops {
     this.dark = dark;
     if (this.liquid) return; // Liquid Glass follows the app's appearance by itself
     for (const w of this.pool) if (!w.isDestroyed()) w.setVibrancy(this.material());
+  }
+
+  /**
+   * Clear (Transparency behind at 100%) uses Liquid Glass's clear variant; the
+   * regular one adds its own frost, so the panel never looked fully see-through.
+   */
+  setClear(clear: boolean): void {
+    if (this.clear === clear) return;
+    this.clear = clear;
+    for (const w of this.pool) if (!w.isDestroyed()) this.applyVariant(w);
+  }
+
+  private applyVariant(w: BrowserWindow): void {
+    const id = this.glassIds.get(w);
+    if (id === undefined || id < 0) return;
+    try {
+      liquidGlass()?.unstable_setVariant?.(id, this.clear ? VARIANT_CLEAR : VARIANT_REGULAR);
+    } catch {
+      // Private API: an older macOS or module without it keeps the regular glass.
+    }
   }
 
   /** Put a blur behind each rect (window coordinates of the window at `origin`); hide the rest. */
@@ -145,7 +175,8 @@ export class GlassBackdrops {
       this.unglazed.add(w);
       w.webContents.once('did-finish-load', () => {
         if (w.isDestroyed()) return;
-        liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
+        this.glassIds.set(w, liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius }));
+        this.applyVariant(w);
         this.unglazed.delete(w);
         if (this.wanted.has(w) && !w.isVisible()) reveal(w);
       });

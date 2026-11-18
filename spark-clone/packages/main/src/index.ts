@@ -523,6 +523,7 @@ function quickReplyWin(): QuickReplyWindow {
   });
   quickReply.setIsland(islandStyle, appDark);
   quickReply.setDisplay(islandDisplay);
+  quickReply.setGlassClear(islandFrost === 0);
   return quickReply;
 }
 
@@ -544,6 +545,7 @@ let islandFrost = 0;
 function setIslandClear(value: unknown): void {
   islandFrost = islandGlassFrost(value);
   overlay?.setFrost(islandFrost);
+  quickReply?.setGlassClear(islandFrost === 0);
 }
 function applyIsland(): void {
   quickReply?.setIsland(islandStyle, appDark);
