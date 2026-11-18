@@ -204,8 +204,10 @@ const PANEL_MIN_W = 300;
 /**
  * While the in-window composer is open, park the Assistant to its left instead
  * of under it. Tracks the composer's width (expand / collapse) and window
- * resizes. When there is no room on the left, the panel sits at the left edge
- * above the composer, so it is never hidden behind it.
+ * resizes. When the composer fills the window (expanded, or the pop-out
+ * window) there is no room beside it, so the panel floats on top of it in
+ * its usual bottom-right spot, lifted just above the composer's toolbar so
+ * Send and Discard stay reachable.
  */
 function useComposerDock(
   panelRef: RefObject<HTMLDivElement | null>,
@@ -225,21 +227,18 @@ function useComposerDock(
       const h = host.getBoundingClientRect();
       const c = card.getBoundingClientRect();
       const room = c.left - h.left - EDGE - DOCK_GAP;
-      setStyle(
-        room >= PANEL_MIN_W
-          ? {
-              right: h.right - c.left + DOCK_GAP,
-              width: Math.min(PANEL_W, room),
-            }
-          : // Too tight: hug the left edge above the composer so its header
-            // controls and Send stay reachable.
-            {
-              left: EDGE,
-              right: 'auto',
-              width: Math.min(PANEL_MIN_W, h.width - 2 * EDGE),
-              zIndex: 50,
-            },
-      );
+      if (room >= PANEL_MIN_W) {
+        setStyle({ right: h.right - c.left + DOCK_GAP, width: Math.min(PANEL_W, room) });
+        return;
+      }
+      // Full size: float above the composer, bottom-right as everywhere else.
+      const toolbar = card.querySelector<HTMLElement>('footer');
+      const bottom = toolbar
+        ? Math.max(EDGE, h.bottom - toolbar.getBoundingClientRect().top + DOCK_GAP)
+        : EDGE;
+      // Inset from the card's own edge, not the window's.
+      const right = Math.max(EDGE, h.right - c.right + DOCK_GAP);
+      setStyle({ right, bottom, zIndex: 50 });
     });
     ro.observe(card);
     ro.observe(host);
