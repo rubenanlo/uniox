@@ -20,6 +20,8 @@ export interface KanbanCard {
   createdTime: string;
   /** which request pipeline the task came from, if any */
   source: KanbanSource | null;
+  /** Names on the task's people properties (Assignee and the like). */
+  assignees?: string[];
 }
 
 export interface KanbanBoard {

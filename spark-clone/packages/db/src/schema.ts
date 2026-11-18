@@ -343,6 +343,12 @@ CREATE TABLE IF NOT EXISTS thread_label_overrides (
   PRIMARY KEY (thread_id, label)
 );
 `,
+  `
+-- Meeting prep needs who else is on an invite. Clearing the Google sync
+-- cursors makes the next poll refetch the window so existing events get them.
+ALTER TABLE events ADD COLUMN attendees_json TEXT;
+UPDATE calendars SET sync_token = NULL WHERE source = 'google';
+`,
 ];
 
 /** Crossing this version triggers the JS backfills in migrate() (idempotent). */

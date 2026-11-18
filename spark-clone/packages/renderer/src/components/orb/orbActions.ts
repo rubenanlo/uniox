@@ -1,11 +1,13 @@
 import {
   Briefcase,
+  CalendarClock,
   CalendarDays,
   Coffee,
   Fingerprint,
   Inbox,
   KanbanSquare,
   Languages,
+  Newspaper,
   PenLine,
   Reply,
   ScrollText,
@@ -26,9 +28,13 @@ export interface OrbAction {
   pickLanguage?: boolean;
 }
 
+/** Home: chat summaries plus the on-demand AI cards (each makes one card). */
 const HOME_ACTIONS: OrbAction[] = [
   { label: 'Summarize new emails', icon: Inbox, action: 'summarize-emails' },
-  { label: 'Summarize new tasks', icon: KanbanSquare, action: 'summarize-tasks' },
+  { label: 'What needs a reply', icon: Reply, action: 'card-reply' },
+  { label: 'What’s on my plate', icon: KanbanSquare, action: 'card-tasks' },
+  { label: 'Prep my meetings for today', icon: CalendarClock, action: 'card-meetings' },
+  { label: 'Make today’s news digest', icon: Newspaper, action: 'card-news' },
   { label: 'Show me the events for today', icon: CalendarDays, action: 'today-events' },
 ];
 

@@ -247,9 +247,9 @@ export function AssistantModal() {
     <div
       role="dialog"
       aria-label="Assistant"
-      className="orb-menu-in border-hairline bg-surface absolute right-4 bottom-4 z-40 flex h-[min(560px,72vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border shadow-2xl"
+      className="orb-menu-in ai-glass absolute right-4 bottom-4 z-40 flex h-[min(560px,72vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[22px]"
     >
-      <header className="border-hairline flex h-11 shrink-0 items-center gap-2 border-b px-4">
+      <header className="ai-rule flex h-11 shrink-0 items-center gap-2 border-b px-4">
         <span className="text-ink flex-1 text-[13px] font-semibold tracking-[-0.01em]">
           Assistant
         </span>
@@ -359,13 +359,13 @@ export function AssistantModal() {
             )}
           </div>
 
-          <div className="border-hairline flex flex-wrap gap-1.5 border-t px-3 pt-2">
+          <div className="ai-rule flex flex-wrap gap-1.5 border-t px-3 pt-2">
             {chips.map((c) => (
               <button
                 key={c.id}
                 onClick={() => void runAssistantAction(c.id)}
                 disabled={!!streamingId}
-                className="border-hairline text-ink-muted hover:bg-accent-soft/40 hover:text-ink rounded-full border px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-50"
+                className="ai-tile text-ink-muted hover:text-ink rounded-full px-2.5 py-1 text-[11.5px] transition-colors disabled:opacity-50"
               >
                 {c.label}
               </button>
@@ -373,7 +373,7 @@ export function AssistantModal() {
           </div>
 
           <div className="px-3 pt-2 pb-3">
-            <div className="border-hairline focus-within:border-ink-faint flex items-end gap-2 rounded-2xl border px-2.5 py-1.5 transition-colors">
+            <div className="ai-tile flex items-end gap-2 rounded-2xl px-2.5 py-1.5 transition-colors">
               <textarea
                 ref={inputRef}
                 value={input}

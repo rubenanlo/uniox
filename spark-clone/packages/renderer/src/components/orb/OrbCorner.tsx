@@ -187,8 +187,10 @@ export function OrbCorner() {
   // The visual gap below the card is padding, not margin, so the hover area
   // is continuous — crossing from orb to menu never closes it.
   const menu = (placement: string) => (
-    <div role="menu" aria-label="Assistant actions" className={cn('orb-menu-in', placement)}>
-      <div className="border-hairline bg-surface rounded-2xl border p-1.5 shadow-2xl">
+    <div role="menu" aria-label="Assistant actions" className={placement}>
+      {/* Frosted like every AI surface; the entrance runs on the glass itself so
+          an animating ancestor never drops the backdrop blur mid-fade. */}
+      <div className="orb-menu-in ai-glass rounded-[22px] p-2">
         {languageFor ? (
           <LanguagePicker
             onBack={() => {
@@ -208,7 +210,7 @@ export function OrbCorner() {
               const current = keyboardOpen && i === Math.min(active, actions.length - 1);
               return [
                 item === chat && (
-                  <div key="divider" className="border-hairline mx-2 my-1 border-t" />
+                  <div key="divider" className="ai-rule mx-2 my-1 border-t" />
                 ),
                 <button
                   key={item.label}
@@ -218,8 +220,8 @@ export function OrbCorner() {
                   className={cn(
                     'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[12.5px]',
                     current
-                      ? 'bg-accent-soft/40 text-ink'
-                      : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink',
+                      ? 'ai-row-active text-ink'
+                      : 'ai-row text-ink-muted hover:text-ink',
                   )}
                 >
                   <Icon size={14} className="text-accent shrink-0" />
@@ -229,7 +231,7 @@ export function OrbCorner() {
               ];
             })}
             {keyboardOpen ? (
-              <div className="text-ink-faint border-hairline mt-1 flex items-center gap-3 border-t px-3 pt-2 pb-1 text-[11px]">
+              <div className="text-ink-faint ai-rule mt-1 flex items-center gap-3 border-t px-3 pt-2 pb-1 text-[11px]">
                 <span className="flex items-center gap-1">
                   <Keycaps keys={['↑', '↓']} /> move
                 </span>
@@ -241,7 +243,7 @@ export function OrbCorner() {
                 </span>
               </div>
             ) : (
-              <div className="text-ink-faint border-hairline mt-1 flex items-center justify-between border-t px-3 pt-2 pb-1 text-[11px]">
+              <div className="text-ink-faint ai-rule mt-1 flex items-center justify-between border-t px-3 pt-2 pb-1 text-[11px]">
                 <span>Open from the keyboard</span>
                 <Keycaps keys={['⌘', '.']} />
               </div>

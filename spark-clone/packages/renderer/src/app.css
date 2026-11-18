@@ -1011,3 +1011,69 @@ html[data-island='frosted'] .qr-tint {
     transform: none;
   }
 }
+
+/* AI surfaces (Home cards, Prep and news panels, the ⌘. menu, the ⌘J palette
+   and the assistant chat) all wear the Frosted island look: a clear panel over
+   a heavy blur of whatever is behind it, a white rim and a soft inner glow.
+   Same fill, rim and shadow as html[data-island='frosted'] .qr-glass. */
+.ai-glass {
+  isolation: isolate;
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08));
+  -webkit-backdrop-filter: blur(34px) saturate(1.7) brightness(1.04);
+  backdrop-filter: blur(34px) saturate(1.7) brightness(1.04);
+  border: 1px solid rgb(255 255 255 / 0.55);
+  box-shadow:
+    0 24px 60px -24px rgb(30 20 80 / 0.32),
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    inset 0 0 14px 3px rgb(255 255 255 / 0.18);
+  --color-ink-muted: rgb(23 20 42 / 0.72);
+  --color-ink-faint: rgb(23 20 42 / 0.55);
+}
+.dark .ai-glass {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.02));
+  -webkit-backdrop-filter: blur(34px) saturate(1.6) brightness(0.82);
+  backdrop-filter: blur(34px) saturate(1.6) brightness(0.82);
+  border-color: rgb(255 255 255 / 0.2);
+  box-shadow:
+    0 24px 60px -24px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 0 14px 3px rgb(255 255 255 / 0.04);
+  --color-ink-muted: rgb(255 255 255 / 0.75);
+  --color-ink-faint: rgb(255 255 255 / 0.55);
+}
+.ai-glass .qr-field,
+.ai-glass .qr-bubble-in,
+.ai-tile {
+  background: rgb(255 255 255 / 0.18);
+  border: 1px solid rgb(255 255 255 / 0.45);
+}
+.dark .ai-glass .qr-field,
+.dark .ai-glass .qr-bubble-in,
+.dark .ai-tile {
+  background: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.18);
+}
+.ai-rule {
+  border-color: rgb(23 20 42 / 0.08);
+}
+.dark .ai-rule {
+  border-color: rgb(255 255 255 / 0.12);
+}
+.ai-row-active,
+.ai-row:hover {
+  background: rgb(23 20 42 / 0.06);
+}
+.dark .ai-row-active,
+.dark .ai-row:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+.ai-key {
+  border: 1px solid rgb(23 20 42 / 0.12);
+  background: rgb(255 255 255 / 0.8);
+  box-shadow: 0 1px 0 rgb(23 20 42 / 0.12);
+}
+.dark .ai-key {
+  border-color: rgb(255 255 255 / 0.15);
+  background: rgb(255 255 255 / 0.1);
+  box-shadow: none;
+}

@@ -43,7 +43,13 @@ export interface GEventItem {
   colorId?: string;
   /** 'transparent' = shows as Free; absent/'opaque' = Busy. */
   transparency?: string;
-  attendees?: { self?: boolean; responseStatus?: string }[];
+  attendees?: {
+    self?: boolean;
+    responseStatus?: string;
+    email?: string;
+    displayName?: string;
+    resource?: boolean;
+  }[];
 }
 
 /** An invite the calendar's owner declined (e.g. auto-declined by out of office). */
@@ -66,6 +72,15 @@ export interface MappedGoogleEvent {
   meetingUrl?: string;
   color?: string;
   transparency?: 'opaque' | 'transparent';
+  attendees?: { name: string; email: string }[];
+}
+
+/** Other people on the invite (not you, not meeting rooms), capped for storage. */
+export function otherAttendees(item: GEventItem): { name: string; email: string }[] {
+  return (item.attendees ?? [])
+    .filter((a) => !a.self && !a.resource && a.email && a.responseStatus !== 'declined')
+    .slice(0, 50)
+    .map((a) => ({ name: a.displayName ?? '', email: a.email!.toLowerCase() }));
 }
 
 /** Google's 11-color event palette (colorId → hex). */
@@ -136,6 +151,7 @@ export function mapGoogleEvent(item: GEventItem, calendarId: string): MappedGoog
     meetingUrl: meetingUrlOf(item),
     color: item.colorId ? EVENT_COLORS[item.colorId] : undefined,
     transparency: item.transparency === 'transparent' ? 'transparent' : undefined,
+    attendees: otherAttendees(item),
   };
 }
 

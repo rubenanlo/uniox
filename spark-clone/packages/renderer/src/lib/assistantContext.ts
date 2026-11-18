@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import type { MessageMeta } from '@app/shared';
 import { useAssistant } from '../state/assistant';
 import { useKanban } from '../state/kanban';
+import { useAiCards } from '../state/aiCards';
 import { useUi } from '../state/store';
 import { api } from './api';
 import { getComposerAccountId, getDraftText, replaceDraftBody } from './composerBridge';
@@ -12,6 +13,10 @@ export type AssistantAction =
   | 'summarize-emails'
   | 'summarize-tasks'
   | 'today-events'
+  | 'card-reply'
+  | 'card-tasks'
+  | 'card-meetings'
+  | 'card-news'
   | 'summarize-thread'
   | 'translate-thread'
   | 'reply-thread'
@@ -76,6 +81,33 @@ function kanbanContext(): string {
   return `The Sprint board tasks:\n${lines.join('\n') || '(no tasks)'}`;
 }
 
+async function todayContext(): Promise<string> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const startMs = start.getTime();
+  const events = await api.query('calendar:events', { startMs, endMs: startMs + 86_400_000 });
+  const t = (ms: number) =>
+    new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const seen = new Set<string>();
+  const rows = events
+    .filter((e) => {
+      const key = `${e.title}|${e.startMs}`; // the same invite on two calendars
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((e) =>
+      e.allDay
+        ? `- All day: ${e.title}`
+        : `- ${t(e.startMs)}–${t(e.endMs)}: ${e.title}${e.location ? ` (${e.location})` : ''}` +
+          (e.attendees?.length ? ` · with ${e.attendees.map((p) => p.name || p.email).join(', ')}` : ''),
+    );
+  return (
+    `Now: ${new Date().toLocaleString()}.\nThe user's calendar for today, from Uniox's synced ` +
+    `calendars:\n${rows.join('\n') || '(no events today)'}`
+  );
+}
+
 async function threadContext(messages?: MessageMeta[]): Promise<string> {
   const threadId = useUi.getState().selectedThreadId;
   if (!threadId) return '';
@@ -117,11 +149,18 @@ export async function runAssistantAction(
     }
     case 'today-events': {
       a.setOpen(true);
-      a.send(
-        'What events do I have today?',
-        'Note: this email app has no calendar integration, so you have no access to the ' +
-          "user's calendar. Say so plainly and suggest connecting one, rather than inventing events.",
-      );
+      a.send('What events do I have today?', await todayContext());
+      return;
+    }
+    case 'card-reply':
+    case 'card-tasks':
+    case 'card-meetings':
+    case 'card-news': {
+      // Cards live on Home; make sure it's showing, then make the card.
+      const ui = useUi.getState();
+      if (ui.view !== 'home') ui.setView('home');
+      if (ui.kanbanOpen) ui.setKanbanOpen(false);
+      void useAiCards.getState().run(action.slice(5) as 'reply' | 'tasks' | 'meetings' | 'news');
       return;
     }
     case 'summarize-thread': {
