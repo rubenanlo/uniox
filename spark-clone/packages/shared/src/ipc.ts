@@ -362,7 +362,7 @@ export interface QuickReplyState {
   send?: { id: string; text: string; seq: number } | null;
   /** The widget was opened from the ⌥⌘N list: Esc goes back to it instead of closing. */
   canGoBack?: boolean;
-  /** The list's view. Each open starts on the whole inbox; ⌥⌘N while open flips it. */
+  /** The list's view. Each open starts on unread only; ⌥⌘N while open flips it. */
   view: QuickReplyView;
 }
 

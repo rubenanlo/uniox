@@ -168,7 +168,7 @@ export function QuickReplyWindow() {
           <NotificationList
             items={state.items}
             inboxItems={unread.rows}
-            view={state.view ?? 'inbox'}
+            view={state.view ?? 'unread'}
             accounts={accounts}
             startId={state.currentId}
             onOpen={open}

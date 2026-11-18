@@ -47,8 +47,8 @@ export class QuickReplyWindow {
   private hideTimer: NodeJS.Timeout | null = null;
   private shown = false;
   private mode: QuickReplyMode = 'list';
-  /** The list's view: every open starts on the whole inbox. */
-  private view: QuickReplyView = 'inbox';
+  /** The list's view: every open starts on unread only. */
+  private view: QuickReplyView = 'unread';
   private currentId: string | null = null;
   /** A reply typed in Notification Center, for the widget to send (with Undo). */
   private pendingSend: QuickReplyState['send'] = null;
@@ -101,7 +101,7 @@ export class QuickReplyWindow {
     if (!wasOpen) {
       const focused = BrowserWindow.getFocusedWindow();
       this.returnTo = focused && focused !== this.win ? focused : null;
-      this.view = 'inbox';
+      this.view = 'unread';
     }
     // From the list into a reply: Esc comes back. ←/→ between replies keeps it.
     if (mode === 'list' || !wasOpen) this.backToList = false;
@@ -125,8 +125,8 @@ export class QuickReplyWindow {
   }
 
   /**
-   * ⌥⌘N opens the list on the whole inbox. Pressed again while the list is
-   * open it flips to unread only and back (Esc closes). From a reply it goes
+   * ⌥⌘N opens the list on unread mail. Pressed again while the list is open
+   * it flips to the whole inbox and back (Esc closes). From a reply it goes
    * back to the list.
    */
   toggleList(): void {

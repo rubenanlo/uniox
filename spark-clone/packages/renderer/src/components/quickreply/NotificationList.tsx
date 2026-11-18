@@ -291,7 +291,7 @@ export function NotificationList({
                 className="bg-surface border-ink/8 absolute right-[-8px] top-full z-20 mt-1 w-[240px] rounded-xl border p-1.5 text-[13.5px] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.35)]"
               >
                 <div className="text-ink-faint px-2.5 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.06em]">Show</div>
-                {(['inbox', 'unread'] as const).map((v) => (
+                {(['unread', 'inbox'] as const).map((v) => (
                   <button
                     key={v}
                     role="menuitemradio"
