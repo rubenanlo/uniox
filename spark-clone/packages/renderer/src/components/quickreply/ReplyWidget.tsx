@@ -182,6 +182,7 @@ export function ReplyWidget({
   send: written,
   onStep,
   onClose,
+  onEscape = onClose,
   onDone,
 }: {
   item: QuickReplyItem;
@@ -191,6 +192,8 @@ export function ReplyWidget({
   /** 1 = older email in the queue, -1 = newer. */
   onStep: (dir: 1 | -1) => void;
   onClose: () => void;
+  /** Esc: back to the list it was opened from, else close (defaults to onClose). */
+  onEscape?: () => void;
   /** Archived: move on to the next email. */
   onDone: () => void;
 }) {
@@ -486,7 +489,7 @@ export function ReplyWidget({
       if (e.key === 'Escape') {
         e.preventDefault();
         if (forwarding) setForwarding(false);
-        else onClose();
+        else onEscape();
         return;
       }
       if (metaKey(e) && !e.altKey && !e.shiftKey && k === 'j') {

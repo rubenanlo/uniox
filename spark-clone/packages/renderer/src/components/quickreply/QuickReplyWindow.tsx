@@ -13,7 +13,8 @@ import { ReplyWidget } from './ReplyWidget';
 /**
  * The quick-reply overlay window (#quick-reply). It covers the screen: the
  * dim scrim, then the notification list (⌥⌘N) or the reply widget for one
- * email. Esc or a click on the dimmed area closes it.
+ * email. A click on the dimmed area closes it; so does Esc, except in a reply
+ * opened from the list, where Esc steps back to the list.
  */
 export function QuickReplyWindow() {
   const [state, setState] = useState<QuickReplyState | null>(null);
@@ -60,6 +61,8 @@ export function QuickReplyWindow() {
   });
 
   const close = useCallback(() => void api.command('quick-reply:close', undefined), []);
+  /** Close without handing focus back: something the page opened (a meeting link) should keep it. */
+  const closeQuiet = useCallback(() => void api.command('quick-reply:close', { returnFocus: false }), []);
   const show = useCallback(
     (mode: QuickReplyState['mode'], currentId: string | null) =>
       void api.command('quick-reply:show', { mode, currentId }),
@@ -69,8 +72,10 @@ export function QuickReplyWindow() {
   const open = (item: QuickReplyItem) => {
     if (item.category === 'event') {
       // A meeting alert: join the call if there is one, else show it in the calendar.
-      if (item.meetingUrl) window.open(item.meetingUrl);
-      close();
+      if (item.meetingUrl) {
+        window.open(item.meetingUrl);
+        closeQuiet();
+      } else close();
       return;
     }
     if (item.id.startsWith('u:')) {
@@ -105,6 +110,7 @@ export function QuickReplyWindow() {
               if (next) show('reply', next);
             }}
             onClose={close}
+            onEscape={state.canGoBack ? () => show('list', current.id) : close}
             onDone={() => {
               const next = stepItem(state.items, current.id, 1) ?? stepItem(state.items, current.id, -1);
               if (next) show('reply', next);
