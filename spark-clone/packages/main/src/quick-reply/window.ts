@@ -116,6 +116,11 @@ export class QuickReplyWindow {
     if (this.visible()) this.push();
   }
 
+  /** Settings → Transparency behind at Clear: Liquid Glass's clear variant, no frost of its own. */
+  setGlassClear(clear: boolean): void {
+    this.backdrops.setClear(clear);
+  }
+
   /** Frosted: the page reports where its glass panels are; the blur follows them. */
   glass(rects: GlassRect[]): void {
     const win = this.win;
