@@ -314,6 +314,14 @@ export const DEFAULT_NOTIFY_STYLE: NotifyStyle = 'uniox';
 export type IslandStyle = 'glass' | 'frosted';
 export const DEFAULT_ISLAND_STYLE: IslandStyle = 'glass';
 export const ISLAND_STYLE_KEY = 'islandStyle';
+/**
+ * Settings → Appearance → Island display: which screen the ⌥⌘N list and the
+ * reply widget open on. 'pointer' follows the mouse; 'primary' is always the
+ * main display (the one with the menu bar in System Settings → Displays).
+ */
+export type IslandDisplay = 'pointer' | 'primary';
+export const DEFAULT_ISLAND_DISPLAY: IslandDisplay = 'pointer';
+export const ISLAND_DISPLAY_KEY = 'islandDisplay';
 /** One glass panel on screen, in its window's CSS pixels, for the native blur behind it. */
 export interface GlassRect {
   x: number;
