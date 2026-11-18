@@ -1,11 +1,10 @@
 import type { ThreadSummary } from '@app/shared';
-import { KanbanSquare } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { hourOf, useNow, useScheduling } from '../lib/workday';
 import { api } from '../lib/api';
 import { cn, isPriorityThread } from '../lib/utils';
 import { arrivedAt, freshPriorityThreads, inboundSenderLabel } from '../lib/homePriority';
-import { kanbanNewCount, useKanban } from '../state/kanban';
+import { useKanban } from '../state/kanban';
 import { useAccounts, usePriorityTimeline } from '../state/queries';
 import { useUi } from '../state/store';
 import { assistantOwnsEscape } from '../state/assistant';
@@ -13,6 +12,7 @@ import { useWindowActive } from '../lib/useWindowActive';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
 import { RollingNumber } from './RollingNumber';
+import { CARD_LAYOUT_MS, CARD_SPRING } from './ai/cardMotion';
 import { AiCardsRow } from './ai/AiCards';
 import { AiSidePanel } from './ai/AiSidePanel';
 import { useTodayCards } from '../state/aiCards';
@@ -265,11 +265,16 @@ export function HomeView() {
   const baseline = useUi((s) => s.homeBaseline);
   const userName = useUi((s) => s.userName);
   const kanbanOpen = useUi((s) => s.kanbanOpen);
-  // The timeline gives up some height while AI cards sit under it.
+  // The timeline gives up some height while AI cards sit under it, gliding
+  // on the cards' spring when one is asked for or the last one leaves.
   const hasAiCards = Object.keys(useTodayCards()).length > 0;
+  const [cardRow, setCardRow] = useState({ shown: hasAiCards, animate: false });
+  const onCardRow = useCallback(
+    (shown: boolean, animate: boolean) => setCardRow({ shown, animate }),
+    [],
+  );
   const setKanbanOpen = useUi((s) => s.setKanbanOpen);
   const kanban = useKanban();
-  const newRequests = kanbanNewCount(kanban.board, kanban.seenAt);
   const timeline = usePriorityTimeline(priorityEmails.join(','));
 
   const start = scheduling.morningHour;
@@ -406,32 +411,6 @@ export function HomeView() {
       {/* sdsn-crm Admin's halftone wave washes the top of Home behind the
           greeting, feathered out before the priority list. */}
       <HalftoneWave className="home-wave pointer-events-none absolute inset-x-0 top-0 h-[440px] w-full" />
-      {kanban.configured && (
-        <button
-          onClick={() => {
-            setKanbanOpen(true);
-            kanban.markSeen();
-            kanban.refresh();
-          }}
-          title={
-            newRequests > 0
-              ? `${newRequests} new ${newRequests === 1 ? 'request' : 'requests'}`
-              : undefined
-          }
-          className="text-ink-muted hover:text-ink absolute top-6 right-6 z-10 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold"
-        >
-          <KanbanSquare size={13} />
-          Sprint board
-          {/* new tasks/requests since the board was last opened; the ping halo
-              draws the eye (and stays still under reduced-motion) */}
-          {newRequests > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-              <span className="bg-danger absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 motion-reduce:hidden" />
-              <span className="bg-danger relative inline-flex h-2 w-2 rounded-full" />
-            </span>
-          )}
-        </button>
-      )}
       {/* Centred both ways: the summary on the left, the day rail on the
           right. The rail is a fixed 60% of the window and scrolls back in time. */}
       <div className="relative m-auto grid max-h-full w-full max-w-230 min-h-0 grid-cols-[minmax(0,320px)_minmax(0,1fr)] items-center gap-x-14 px-10 py-12">
@@ -468,10 +447,13 @@ export function HomeView() {
           ref={railRef}
           className={cn(
             'home-rise no-scrollbar flex min-h-0 flex-col-reverse overflow-y-auto',
-            hasAiCards ? 'h-[46vh]' : 'h-[60vh]',
+            cardRow.shown ? 'h-[46vh]' : 'h-[60vh]',
+            cardRow.animate && 'transition-[height] motion-reduce:transition-none',
           )}
           style={{
             animationDelay: '0.09s',
+            transitionDuration: `${CARD_LAYOUT_MS}ms`,
+            transitionTimingFunction: CARD_SPRING,
             // Older mail fades out under the top edge instead of being cut.
             maskImage: 'linear-gradient(transparent, black 40px)',
           }}
@@ -516,7 +498,7 @@ export function HomeView() {
             })}
           </div>
         </section>
-        <AiCardsRow />
+        <AiCardsRow onShownChange={onCardRow} />
       </div>
       <AiSidePanel />
     </div>
