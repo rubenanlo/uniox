@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, nativeTheme, screen } from 'electron';
 import type { IslandStyle, NotifyContext, NotifyPayload } from '@app/shared';
 import { GlassBackdrops } from '../glass';
 import { giveActivationBack, isAppActive, makeNonActivating, trackAppActive, unioxWantedSince } from '../mac-activation';
+import { trace, traceWindow } from '../debug-activation';
 import { buildCard } from './build-card';
 import type { CardAction, MainToOverlay, OverlayToMain } from './card';
 import { OVERLAY_HEIGHT, OVERLAY_URL, OVERLAY_WIDTH } from './overlay-page';
@@ -94,9 +95,11 @@ export class NotifyOverlay {
     const id = `n${++this.seq}`;
     this.payloads.set(id, payload);
     const card = buildCard(id, payload, this.ctx, Date.now());
+    trace('toast:show', { id });
     const win = await this.ensureWindow();
     if (!win.isVisible() || this.parked) {
       this.place(win);
+      trace('toast:reveal', { visible: win.isVisible(), parked: this.parked });
       if (!win.isVisible()) win.showInactive();
       win.setOpacity(1);
       this.parked = false;
@@ -123,6 +126,7 @@ export class NotifyOverlay {
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
+    trace('toast:destroy');
     this.backdrops.destroy();
     if (this.win && !this.win.isDestroyed()) this.handBack(this.win);
     this.win?.destroy();
@@ -159,6 +163,7 @@ export class NotifyOverlay {
   private handle(msg: OverlayToMain): void {
     const win = this.win;
     if (!win) return;
+    if (msg.kind !== 'glass') trace(`toast:${msg.kind}`, msg);
     switch (msg.kind) {
       case 'interactive':
         if (msg.on) {
@@ -255,6 +260,7 @@ export class NotifyOverlay {
         spellcheck: false,
       },
     });
+    traceWindow(win, 'toasts');
     makeNonActivating(win);
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });

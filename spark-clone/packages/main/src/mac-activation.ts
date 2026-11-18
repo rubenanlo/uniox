@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu } from 'electron';
+import { trace } from './debug-activation';
 
 /**
  * Keeping Uniox's floating overlays (the ⌥⌘N island and the notification
@@ -60,6 +61,7 @@ export function giveActivationBack(whileHidden?: () => void): void {
     whileHidden?.();
     return;
   }
+  trace('giveActivationBack', { appActive: isAppActive() });
   let done = false;
   const unhide = () => {
     if (done) return;

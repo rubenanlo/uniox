@@ -74,6 +74,7 @@ import type { CardAction } from './notify/card';
 import { nativeEntry } from './notify/native';
 import { QuickReplyWindow } from './quick-reply/window';
 import { markUnioxWanted } from './mac-activation';
+import { startActivationTrace, trace, traceWindow } from './debug-activation';
 
 /** Opens the quick-reply notification list from any app. */
 const QUICK_REPLY_SHORTCUT = 'Alt+CommandOrControl+N';
@@ -418,6 +419,7 @@ function createWindow(): void {
     show: false,
     webPreferences: RENDERER_PREFS,
   });
+  traceWindow(mainWindow, 'main');
   // Open filling the screen's usable area (macOS "Fill"), not native full
   // screen, which would move the app to its own Space. Maximizing before the
   // first show avoids a visible jump from the default size.
@@ -567,6 +569,7 @@ function glassRects(args: unknown): GlassRect[] {
 }
 
 function focusMain(): void {
+  trace('focusMain');
   markUnioxWanted();
   if (!mainWindow) createWindow();
   mainWindow?.show();
@@ -695,6 +698,7 @@ function broadcastDelta(event: DeltaEvent): void {
   // Mail notifications stay quiet while the app is focused (you're looking at
   // the inbox); meeting alerts always show — being in the app is exactly when
   // you need the 10-minute nudge.
+  trace('notify:received', { category: event.category, focusedSkip: !!BrowserWindow.getFocusedWindow() });
   if (event.category !== 'event' && BrowserWindow.getFocusedWindow()) return;
   void (async () => {
     const [sound, style] = await Promise.all([notifySound(), notifyStyle()]);
@@ -1165,6 +1169,14 @@ function registerIpc(): void {
 
 void app.whenReady().then(() => {
   if (!isPrimaryInstance) return;
+  startActivationTrace(() =>
+    void notifyOverlay().show({
+      title: 'Activation test',
+      body: 'A sample notification (UNIOX_DEBUG_ACTIVATION)',
+      mailCategory: 'personal',
+      snippet: 'Fired by SIGUSR2 to check whether showing a card activates Uniox.',
+    }),
+  );
   const userData = app.getPath('userData');
   const attachmentsDir = join(userData, 'attachments');
   attachmentsRoot = attachmentsDir;
