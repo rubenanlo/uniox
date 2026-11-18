@@ -148,23 +148,29 @@ body {
 .btn:hover { background: var(--sunken-hover); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.08); }
+/* Settings → Transparency behind: a layer of the theme's surface over the glass
+   (none at Clear, 90% at Frosted). Only the frosted looks read it. */
+.frosted { --frost-base: 255 255 255; }
+.dark.frosted { --frost-base: 32 32 38; }
 /* Frosted island: the card is clear over macOS's own blur (a vibrancy window
    behind it, see glass.ts); only its fill, rim and shadow change. The soft
    inner glow covers the thin edge the blur window leaves for the corners. */
 .frosted .card {
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.14));
+  background: linear-gradient(rgb(var(--frost-base) / var(--glass-frost, 0)), rgb(var(--frost-base) / var(--glass-frost, 0))),
+    linear-gradient(160deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.14));
   border-color: rgb(255 255 255 / 0.6);
   box-shadow: 0 14px 36px rgb(20 20 40 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.55), inset 0 0 10px 3px rgb(255 255 255 / 0.2);
 }
 .dark.frosted .card {
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04));
+  background: linear-gradient(rgb(var(--frost-base) / var(--glass-frost, 0)), rgb(var(--frost-base) / var(--glass-frost, 0))),
+    linear-gradient(160deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04));
   border-color: rgb(255 255 255 / 0.2);
   box-shadow: 0 14px 36px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 10px 3px rgb(255 255 255 / 0.05);
 }
 /* Real Liquid Glass (macOS 26+): macOS draws the glass and its edge. */
 .liquid .card,
 .dark.liquid .card {
-  background: transparent;
+  background: rgb(var(--frost-base) / var(--glass-frost, 0));
   border-color: transparent;
   box-shadow: 0 14px 36px rgb(0 0 0 / 0.18);
 }
