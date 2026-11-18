@@ -93,6 +93,7 @@ export class QuickReplyWindow {
       canGoBack: this.mode === 'reply' && this.backToList,
       view: this.view,
       island: this.island,
+      liquid: this.island === 'frosted' && this.backdrops.liquid,
     };
   }
 

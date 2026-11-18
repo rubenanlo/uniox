@@ -2,32 +2,79 @@ import { BrowserWindow, type Rectangle } from 'electron';
 import type { GlassRect } from '@app/shared';
 import { backdropBounds } from './glass-geometry';
 
+/** The bit of electron-liquid-glass we use (an optional, macOS-only dependency). */
+interface LiquidGlassApi {
+  isGlassSupported(): boolean;
+  addView(handle: Buffer, options?: { cornerRadius?: number; tintColor?: string; opaque?: boolean }): number;
+}
+
+let liquidApi: LiquidGlassApi | null | undefined;
 /**
- * The "Frosted" island's blur. CSS can't see other apps through a
- * transparent window, so the blur comes from macOS: one small vibrancy window
+ * macOS 26's Liquid Glass (NSGlassEffectView), through electron-liquid-glass.
+ * It follows System Settings → Appearance → Liquid Glass (Clear / Tinted) by
+ * itself. Null before macOS 26, off the Mac, or if the module didn't install.
+ */
+export function liquidGlass(): LiquidGlassApi | null {
+  if (liquidApi !== undefined) return liquidApi;
+  liquidApi = null;
+  if (process.platform !== 'darwin') return liquidApi;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('electron-liquid-glass') as LiquidGlassApi & { default?: LiquidGlassApi };
+    const api = mod.default ?? mod;
+    if (api.isGlassSupported()) liquidApi = api;
+  } catch {
+    liquidApi = null;
+  }
+  return liquidApi;
+}
+
+/**
+ * The "Liquid glass" island's backdrop. CSS can't see other apps through a
+ * transparent window, so the glass comes from macOS: one small window
  * behind each glass panel, sized and moved to follow it. They sit one level
  * below the island's windows (still above every app), never take focus or
  * the mouse, and are hidden whenever there's nothing to blur.
+ *
+ * On macOS 26+ each window holds a real Liquid Glass view (Clear or Tinted,
+ * per System Settings) sized to the whole panel with its corner radius.
+ * Earlier macOS falls back to a vibrancy material, inset so the window's own
+ * 10px corners stay under the panel's curve.
  *
  * Cost: an empty window per panel (no page work), only while frosted panels
  * are on screen; destroyed together with the island.
  */
 export class GlassBackdrops {
   private readonly pool: BrowserWindow[] = [];
+  /** The corner radius each pooled window's glass was made with (Liquid Glass can't change it later). */
+  private readonly radii = new WeakMap<BrowserWindow, number>();
   private dark = false;
+
+  /** True when panels sit on real Liquid Glass (the page then drops its own fill). */
+  get liquid(): boolean {
+    return liquidGlass() !== null;
+  }
 
   setDark(dark: boolean): void {
     if (this.dark === dark) return;
     this.dark = dark;
+    if (this.liquid) return; // Liquid Glass follows the app's appearance by itself
     for (const w of this.pool) if (!w.isDestroyed()) w.setVibrancy(this.material());
   }
 
   /** Put a blur behind each rect (window coordinates of the window at `origin`); hide the rest. */
   sync(rects: GlassRect[], origin: { x: number; y: number }): void {
     if (process.platform !== 'darwin') return;
-    const bounds = rects.map((r) => backdropBounds(r, origin)).filter((b): b is Rectangle => !!b);
-    bounds.forEach((b, i) => {
-      const w = this.pool[i] && !this.pool[i].isDestroyed() ? this.pool[i] : (this.pool[i] = this.create());
+    const liquid = this.liquid;
+    const panels = rects
+      .map((r) => ({ radius: Math.round(r.radius), bounds: liquid ? fullBounds(r, origin) : backdropBounds(r, origin) }))
+      .filter((p): p is { radius: number; bounds: Rectangle } => !!p.bounds);
+    const bounds = panels.map((p) => p.bounds);
+    panels.forEach(({ radius, bounds: b }, i) => {
+      let w: BrowserWindow | undefined = this.pool[i];
+      // Liquid Glass keeps the corner radius it was made with: remake for a rounder or squarer panel.
+      if (w && !w.isDestroyed() && liquid && this.radii.get(w) !== radius) w.destroy();
+      if (!w || w.isDestroyed()) w = this.pool[i] = this.create(radius);
       w.setBounds(b, false);
       if (!w.isVisible()) w.showInactive();
     });
@@ -50,7 +97,8 @@ export class GlassBackdrops {
     return this.dark ? 'hud' : 'under-window';
   }
 
-  private create(): BrowserWindow {
+  private create(radius: number): BrowserWindow {
+    const liquid = liquidGlass();
     const w = new BrowserWindow({
       show: false,
       frame: false,
@@ -65,15 +113,31 @@ export class GlassBackdrops {
       skipTaskbar: true,
       focusable: false,
       type: 'panel',
-      vibrancy: this.material(),
-      visualEffectState: 'active',
+      ...(liquid ? {} : { vibrancy: this.material(), visualEffectState: 'active' as const }),
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false },
     });
     // Under the island (screen-saver level) but over every app window and the menu bar.
     w.setAlwaysOnTop(true, 'pop-up-menu');
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     w.setIgnoreMouseEvents(true);
+    if (liquid) {
+      this.radii.set(w, radius);
+      w.webContents.once('did-finish-load', () => {
+        if (!w.isDestroyed()) liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
+      });
+    }
     void w.loadURL('about:blank');
     return w;
   }
+}
+
+/** Liquid Glass draws its own rounded corners, so its window covers the whole panel. */
+function fullBounds(r: GlassRect, origin: { x: number; y: number }): Rectangle | null {
+  if (r.width < 4 || r.height < 4) return null;
+  return {
+    x: Math.round(origin.x + r.x),
+    y: Math.round(origin.y + r.y),
+    width: Math.round(r.width),
+    height: Math.round(r.height),
+  };
 }

@@ -57,7 +57,7 @@ export class NotifyOverlay {
     if (frosted === this.frosted) return;
     this.frosted = frosted;
     if (!frosted) this.backdrops.hide();
-    this.post({ kind: 'island', frosted });
+    this.post({ kind: 'island', frosted, liquid: frosted && this.backdrops.liquid });
   }
 
   async show(payload: NotifyPayload): Promise<void> {
@@ -176,7 +176,7 @@ export class NotifyOverlay {
     this.win = win;
     this.loaded = win.loadURL(OVERLAY_URL).then(() => {
       this.post({ kind: 'theme', dark: this.ctx?.dark ?? nativeTheme.shouldUseDarkColors });
-      this.post({ kind: 'island', frosted: this.frosted });
+      this.post({ kind: 'island', frosted: this.frosted, liquid: this.frosted && this.backdrops.liquid });
     });
     await this.loaded;
     return win;

@@ -392,6 +392,7 @@ ipcRenderer.on('notify-overlay', (_e, msg: MainToOverlay) => {
   else if (msg.kind === 'island') {
     frosted = msg.frosted;
     document.documentElement.classList.toggle('frosted', frosted);
+    document.documentElement.classList.toggle('liquid', !!msg.liquid);
     lastGlass = '';
     followGlass(80);
   }

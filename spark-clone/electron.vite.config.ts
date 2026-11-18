@@ -17,7 +17,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         // native module: must resolve from node_modules at runtime
-        external: ['better-sqlite3'],
+        external: ['better-sqlite3', 'electron-liquid-glass'],
         input: {
           index: resolve('packages/main/src/index.ts'),
           sync: resolve('packages/sync/src/entry.ts'),
