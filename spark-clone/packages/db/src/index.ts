@@ -800,12 +800,17 @@ export class MailDb {
   }
 
   /**
-   * Unread inbox threads, newest arrival first, for the ⌥⌘N list's "Still
-   * unread" section: one account or all of them. Each row says whether a
-   * priority sender wrote in it, which files it under Important. Threads
-   * holding only our own mail are left out.
+   * Unread inbox threads, newest arrival first, for the ⌥⌘N list: one account
+   * or all of them. `includeRead` lists every thread still in the inbox (read
+   * or not) for the list's whole-inbox view. Each row says whether a priority
+   * sender wrote in it, which files it under Important. Threads holding only
+   * our own mail are left out.
    */
-  listUnreadThreads(q: { accountId?: string; limit: number }): (ThreadSummary & { prioritySender: boolean })[] {
+  listUnreadThreads(q: {
+    accountId?: string;
+    limit: number;
+    includeRead?: boolean;
+  }): (ThreadSummary & { prioritySender: boolean })[] {
     const { where, params } = this.viewWhere({ view: 'inbox', accountId: q.accountId, limit: q.limit, offset: 0 });
     params.push(q.limit);
     const rows = this.stmt(
@@ -816,7 +821,7 @@ export class MailDb {
                 ) AS priority_sender
          FROM threads t
          LEFT JOIN snoozes s ON s.thread_id = t.id
-         WHERE ${where} AND t.unread_count > 0 AND t.last_inbound_date > 0
+         WHERE ${where} ${q.includeRead ? '' : 'AND t.unread_count > 0'} AND t.last_inbound_date > 0
          ORDER BY t.last_inbound_date DESC LIMIT ?`,
       )
       .all(...params) as Row[];

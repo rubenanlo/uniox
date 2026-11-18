@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, screen, type WebContents, type WebPreferences } from 'electron';
-import type { DeltaEvent, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState } from '@app/shared';
+import type { DeltaEvent, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -47,6 +47,8 @@ export class QuickReplyWindow {
   private hideTimer: NodeJS.Timeout | null = null;
   private shown = false;
   private mode: QuickReplyMode = 'list';
+  /** The list's view: every open starts on the whole inbox. */
+  private view: QuickReplyView = 'inbox';
   private currentId: string | null = null;
   /** A reply typed in Notification Center, for the widget to send (with Undo). */
   private pendingSend: QuickReplyState['send'] = null;
@@ -84,6 +86,7 @@ export class QuickReplyWindow {
       shown: this.shown,
       send: this.pendingSend,
       canGoBack: this.mode === 'reply' && this.backToList,
+      view: this.view,
     };
   }
 
@@ -98,6 +101,7 @@ export class QuickReplyWindow {
     if (!wasOpen) {
       const focused = BrowserWindow.getFocusedWindow();
       this.returnTo = focused && focused !== this.win ? focused : null;
+      this.view = 'inbox';
     }
     // From the list into a reply: Esc comes back. ←/→ between replies keeps it.
     if (mode === 'list' || !wasOpen) this.backToList = false;
@@ -120,10 +124,21 @@ export class QuickReplyWindow {
     this.push();
   }
 
-  /** ⌥⌘N while open closes it again. */
+  /**
+   * ⌥⌘N opens the list on the whole inbox. Pressed again while the list is
+   * open it flips to unread only and back (Esc closes). From a reply it goes
+   * back to the list.
+   */
   toggleList(): void {
-    if (this.visible() && this.shown) this.close({ returnFocus: true });
-    else this.open('list', null);
+    if (!this.visible() || !this.shown) this.open('list', null);
+    else if (this.mode === 'reply') this.open('list', this.currentId);
+    else this.setView(this.view === 'inbox' ? 'unread' : 'inbox');
+  }
+
+  setView(view: QuickReplyView): void {
+    if (this.view === view) return;
+    this.view = view;
+    if (this.visible()) this.push();
   }
 
   dismiss(id: string): void {

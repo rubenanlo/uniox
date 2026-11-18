@@ -1,5 +1,5 @@
-import type { Account, QuickReplyItem } from '@app/shared';
-import { Bell, ChevronDown, Pin } from 'lucide-react';
+import type { Account, QuickReplyItem, QuickReplyView } from '@app/shared';
+import { Bell, Check, ChevronDown, Inbox, Pin } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAccountColor } from '../../lib/accountColor';
@@ -13,6 +13,7 @@ import {
   listRows,
   shortAgo,
   startTab,
+  VIEW_LABEL,
   type ListRow,
   type ListSection,
   type ListTab,
@@ -32,14 +33,16 @@ function eventLine(item: QuickReplyItem): string {
 function SectionIcon({ section }: { section: ListSection }) {
   if (section === 'kept') return <Pin size={12} className="-rotate-45" />;
   if (section === 'new') return <Bell size={12} />;
+  if (section === 'read') return <Inbox size={12} />;
   return <span className="bg-accent h-[7px] w-[7px] rounded-full" />;
 }
 
 /**
  * ⌥⌘N: emails you kept, the notifications from the last day, then the rest of
- * your unread mail, filed under Important, Calendar, Docs and Other. The pill
- * at the top right picks the account (⌘1 All, ⌘2… each account, as in the
- * main window). ←/→ (or Tab / ⇧Tab) switch tabs, ↑/↓ move, ↩ opens the email
+ * your unread mail and (in the whole-inbox view) the read mail still in the
+ * inbox, filed under Important, Calendar, Docs and Other. The control at the
+ * top right ("Inbox · All accounts") opens one menu for the view (⌥⌘N again
+ * flips it) and the account (⌘1 All, ⌘2… each account, as in the main window). ←/→ (or Tab / ⇧Tab) switch tabs, ↑/↓ move, ↩ opens the email
  * in the reply widget (or joins a meeting), K keeps it here after it's read,
  * U toggles unread, E marks it done, ⌫ drops a notification from the list.
  *
@@ -47,15 +50,17 @@ function SectionIcon({ section }: { section: ListSection }) {
  */
 export function NotificationList({
   items,
-  unreadItems,
+  inboxItems,
+  view,
   accounts,
   startId,
   onOpen,
   onClose,
 }: {
   items: QuickReplyItem[];
-  /** Loaded by the window before it fades in, so the first open doesn't pop rows in. */
-  unreadItems: QuickReplyItem[];
+  /** Inbox threads, read and unread. Loaded by the window before it fades in, so the first open doesn't pop rows in. */
+  inboxItems: QuickReplyItem[];
+  view: QuickReplyView;
   accounts: Account[];
   startId: string | null;
   onOpen: (item: QuickReplyItem) => void;
@@ -64,15 +69,16 @@ export function NotificationList({
   const colorOf = useAccountColor();
   const multi = accounts.length > 1;
   const accountLabels = useUi((s) => s.accountLabels);
-  const pillRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [accountId, setAccountId] = useState('');
   const [tab, setTab] = useState<ListTab>(() => startTab(items, startId));
 
   const rowsByTab = useMemo(() => {
     const m = {} as Record<ListTab, ListRow[]>;
-    for (const t of LIST_TABS) m[t.id] = listRows(items, unreadItems, t.id, accountId || undefined);
+    for (const t of LIST_TABS) m[t.id] = listRows(items, inboxItems, t.id, accountId || undefined, view);
     return m;
-  }, [items, unreadItems, accountId]);
+  }, [items, inboxItems, accountId, view]);
   const rows = rowsByTab[tab];
 
   // One cursor per tab, so hopping across tabs and back keeps your place.
@@ -92,7 +98,26 @@ export function NotificationList({
   const [markedUnread, setMarkedUnread] = useState<Set<string>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const [now] = useState(Date.now);
-  useListMotion(listRef, `${tab}|${accountId}`, rows.map((r) => r.item.id).join('\n'));
+  useListMotion(listRef, `${tab}|${accountId}|${view}`, rows.map((r) => r.item.id).join('\n'));
+
+  // Say what ⌥⌘N just did (the list stays mounted while open, so this skips the first render).
+  const firstView = useRef(view);
+  useEffect(() => {
+    if (view === firstView.current) return;
+    firstView.current = view;
+    toast(view === 'unread' ? 'Unread only · ⌥⌘N for the whole inbox' : 'Whole inbox · ⌥⌘N for unread only');
+  }, [view]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    window.addEventListener('mousedown', away, true);
+    return () => window.removeEventListener('mousedown', away, true);
+  }, [menuOpen]);
+
+  const setView = (v: QuickReplyView) => void api.command('quick-reply:view', { view: v });
 
   useEffect(() => {
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
@@ -106,13 +131,16 @@ export function NotificationList({
   const markUnread = (item: QuickReplyItem) => {
     if (!item.accountId) return;
     if (item.id.startsWith('u:')) {
-      // An unread thread: U marks it read (it then leaves the list unless kept).
+      // An inbox thread: U marks unread mail read (in the unread view it then
+      // leaves the list unless kept) and read mail unread again (its latest message).
       if (!item.threadId) return;
+      const read = item.unread !== false;
       void api.query('thread:messages', { threadId: item.threadId }).then((msgs) => {
-        const ids = msgs.filter((m) => !m.seen && m.accountId === item.accountId).map((m) => m.id);
-        if (ids.length) void api.command('task:enqueue', { type: 'set-seen', accountId: item.accountId!, messageIds: ids, seen: true });
+        const mine = msgs.filter((m) => m.accountId === item.accountId);
+        const ids = read ? mine.filter((m) => !m.seen).map((m) => m.id) : mine.slice(-1).map((m) => m.id);
+        if (ids.length) void api.command('task:enqueue', { type: 'set-seen', accountId: item.accountId!, messageIds: ids, seen: read });
       });
-      toast('Marked as read');
+      toast(read ? 'Marked as read' : 'Marked as unread');
       return;
     }
     if (!item.messageId) return;
@@ -184,7 +212,8 @@ export function NotificationList({
         onOpen(active);
       } else if (k === 'Escape') {
         e.preventDefault();
-        onClose();
+        if (menuOpen) setMenuOpen(false);
+        else onClose();
       } else if ((k === 'k' || k === 'K') && active) {
         keep(active);
       } else if ((k === 'u' || k === 'U') && active) {
@@ -212,7 +241,7 @@ export function NotificationList({
     <div
       role="dialog"
       aria-label="Notifications"
-      className="qr-glass qr-enter absolute left-1/2 top-[14vh] w-[820px] max-w-[calc(100vw-32px)] -translate-x-1/2 overflow-hidden rounded-[20px] pb-2.5 pt-1.5"
+      className="qr-glass qr-enter absolute left-1/2 top-[14vh] w-[820px] max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-[20px] pb-2.5 pt-1.5"
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="qr-tint" />
@@ -238,56 +267,82 @@ export function NotificationList({
               </button>
             ))}
           </div>
-          {multi && (
-            // Collapsed to the current account; hovering opens the others in a
-            // strip that scrolls sideways (wheel or trackpad) when they don't fit.
-            <div
-              ref={pillRef}
-              role="radiogroup"
-              aria-label="Account"
-              onMouseEnter={() =>
-                pillRef.current
-                  ?.querySelector('[aria-checked="true"]')
-                  ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-              }
-              onWheel={(e) => {
-                const el = pillRef.current;
-                if (el && Math.abs(e.deltaY) > Math.abs(e.deltaX)) el.scrollLeft += e.deltaY;
-              }}
-              className="bg-ink/[0.06] no-scrollbar group mb-2 ml-auto flex max-w-[340px] items-center overflow-x-auto rounded-full p-[3px] text-[12.5px]"
+          {/* One control for what the list shows: the view, and (with several accounts) the account. */}
+          <div ref={menuRef} className="relative mb-0 ml-auto">
+            <button
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
+              className="text-ink flex items-center gap-1.5 whitespace-nowrap pb-2.5 text-[14.5px] font-medium"
             >
-              {options.map((o, i) => {
-                const on = o.id === current.id;
-                return (
+              {VIEW_LABEL[view]}
+              {multi && (
+                <>
+                  <span className="text-ink-faint">·</span>
+                  {current.color && <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: current.color }} />}
+                  <span className="max-w-[180px] truncate">{current.label}</span>
+                </>
+              )}
+              <ChevronDown size={13} className={cn('text-ink-faint transition-transform', menuOpen && 'rotate-180')} />
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="bg-surface border-ink/8 absolute right-[-8px] top-full z-20 mt-1 w-[240px] rounded-xl border p-1.5 text-[13.5px] shadow-[0_18px_40px_-12px_rgb(0_0_0/0.35)]"
+              >
+                <div className="text-ink-faint px-2.5 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.06em]">Show</div>
+                {(['inbox', 'unread'] as const).map((v) => (
                   <button
-                    key={o.id || 'all'}
-                    role="radio"
-                    aria-checked={on}
-                    title={`${o.label}  ⌘${i + 1}`}
-                    onClick={() => switchAccount(o.id)}
-                    className={cn(
-                      'flex shrink-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-full px-2.5 py-[3px] transition-all duration-200',
-                      on
-                        ? 'text-ink font-semibold'
-                        : 'text-ink-muted hover:text-ink max-w-0 !px-0 opacity-0 group-focus-within:max-w-[180px] group-focus-within:!px-2.5 group-focus-within:opacity-100 group-hover:max-w-[180px] group-hover:!px-2.5 group-hover:opacity-100',
-                    )}
+                    key={v}
+                    role="menuitemradio"
+                    aria-checked={view === v}
+                    onClick={() => {
+                      setView(v);
+                      setMenuOpen(false);
+                    }}
+                    className="text-ink hover:bg-ink/[0.05] flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left"
                   >
-                    {o.color && <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: o.color }} />}
-                    <span className="max-w-[140px] truncate">{o.label}</span>
-                    {on && <ChevronDown size={12} className="text-ink-faint group-focus-within:hidden group-hover:hidden" />}
+                    <Check size={13} className={cn('shrink-0', view !== v && 'invisible')} />
+                    {v === 'inbox' ? 'Whole inbox' : 'Unread only'}
+                    {view !== v && <span className="ml-auto"><Keycaps keys={['⌥⌘N']} /></span>}
                   </button>
-                );
-              })}
-            </div>
-          )}
+                ))}
+                {multi && (
+                  <>
+                    <div className="border-ink/8 mx-1 my-1.5 border-t" />
+                    <div className="text-ink-faint px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.06em]">Account</div>
+                    {options.map((o, i) => (
+                      <button
+                        key={o.id || 'all'}
+                        role="menuitemradio"
+                        aria-checked={o.id === current.id}
+                        onClick={() => {
+                          switchAccount(o.id);
+                          setMenuOpen(false);
+                        }}
+                        className="text-ink hover:bg-ink/[0.05] flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left"
+                      >
+                        <Check size={13} className={cn('shrink-0', o.id !== current.id && 'invisible')} />
+                        {o.color && <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: o.color }} />}
+                        <span className="truncate">{o.label}</span>
+                        {i < 9 && <span className="ml-auto"><Keycaps keys={[`⌘${i + 1}`]} /></span>}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div ref={listRef} role="listbox" className="relative max-h-[56vh] overflow-y-auto pb-1">
           {rows.length === 0 && (
             <p data-motion="empty" className="text-ink-muted px-[22px] py-8 text-[13.5px]">
-              {items.length || unreadItems.length
-                ? 'Nothing here. ← → for the other tabs.'
-                : 'New emails, unread mail and meeting alerts show up here.'}
+              {items.length || inboxItems.length
+                ? view === 'unread'
+                  ? 'Nothing unread here. ⌥⌘N for the whole inbox.'
+                  : 'Nothing here. ← → for the other tabs.'
+                : 'New emails, your inbox and meeting alerts show up here.'}
             </p>
           )}
           {rows.map((row, i) => {
@@ -355,13 +410,16 @@ export function NotificationList({
             </span>
           )}
           <span className="flex items-center gap-1.5">
+            <Keycaps keys={['⌥⌘N']} /> {view === 'inbox' ? 'unread only' : 'whole inbox'}
+          </span>
+          <span className="flex items-center gap-1.5">
             <Keycaps keys={['↩']} /> {active?.category === 'event' ? 'join' : 'open'}
           </span>
           <span className="flex items-center gap-1.5">
             <Keycaps keys={['K']} /> {active?.kept ? 'unkeep' : 'keep'}
           </span>
           <span className="flex items-center gap-1.5">
-            <Keycaps keys={['U']} /> {active?.id.startsWith('u:') ? 'read' : 'unread'}
+            <Keycaps keys={['U']} /> {active?.id.startsWith('u:') && active.unread !== false ? 'read' : 'unread'}
           </span>
           <span className="flex items-center gap-1.5">
             <Keycaps keys={['E']} /> done

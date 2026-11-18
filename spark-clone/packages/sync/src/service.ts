@@ -477,7 +477,7 @@ export class SyncService {
       case 'threads:priority':
         return this.db.listPriorityThreads(args as { before?: number; limit: number });
       case 'threads:unread':
-        return this.db.listUnreadThreads(args as { accountId?: string; limit: number });
+        return this.db.listUnreadThreads(args as { accountId?: string; limit: number; includeRead?: boolean });
       case 'thread:messages':
         // Deduped view: Gmail label copies of the same Message-ID collapse to one.
         return this.db.getThreadMessagesForDisplay((args as { threadId: string }).threadId);

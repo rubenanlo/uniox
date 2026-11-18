@@ -210,7 +210,7 @@ describe('⌥⌘N list sections', () => {
       category: 'personal',
       prioritySender: false,
     });
-    expect(row).toMatchObject({ id: 'u:t9', origin: 'unread', title: 'Antonio', body: 'Pricing', at: 4, threadId: 't9' });
+    expect(row).toMatchObject({ id: 'u:t9', origin: 'unread', title: 'Antonio', body: 'Pricing', at: 4, threadId: 't9', unread: true });
     expect(listTab(row)).toBe('docs');
   });
 
@@ -226,6 +226,21 @@ describe('⌥⌘N list sections', () => {
       ['n1', 'new'],
       ['u:t4', 'unread'],
     ]);
+  });
+
+  it('adds read inbox mail last in the whole-inbox view, and hides it in the unread view', () => {
+    const items = [item({ id: 'n1', threadId: 't1' })];
+    const inbox = [
+      item({ id: 'u:t2', threadId: 't2', origin: 'unread', unread: false }),
+      item({ id: 'u:t3', threadId: 't3', origin: 'unread', unread: true }),
+      item({ id: 'u:t1', threadId: 't1', origin: 'unread', unread: false }),
+    ];
+    expect(listRows(items, inbox, 'important', undefined, 'inbox').map((r) => [r.item.id, r.section])).toEqual([
+      ['n1', 'new'],
+      ['u:t3', 'unread'],
+      ['u:t2', 'read'],
+    ]);
+    expect(listRows(items, inbox, 'important', undefined, 'unread').map((r) => r.item.id)).toEqual(['n1', 'u:t3']);
   });
 
   it('filters by account but keeps meeting alerts everywhere', () => {

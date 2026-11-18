@@ -896,6 +896,8 @@ describe('listUnreadThreads', () => {
     ]);
     expect(db.listUnreadThreads({ limit: 1 }).map((t) => t.id)).toEqual(['c']);
     expect(db.listUnreadThreads({ accountId: 'other', limit: 10 })).toEqual([]);
+    // The whole-inbox view adds read threads, still leaving archived mail out.
+    expect(db.listUnreadThreads({ limit: 10, includeRead: true }).map((t) => t.id)).toEqual(['c', 'b', 'a']);
   });
 });
 

@@ -10,18 +10,21 @@ import { AppToaster } from '../AppToaster';
 import { NotificationList } from './NotificationList';
 import { ReplyWidget } from './ReplyWidget';
 
-/** How many unread threads the list loads (all accounts; the account switch filters them). */
-const UNREAD_LIMIT = 200;
+/**
+ * How many inbox threads the list loads (all accounts, read and unread; the
+ * account switch and the view filter them in the page, so flipping is instant).
+ */
+const INBOX_LIMIT = 400;
 /** Fade in anyway if a first load hangs, rather than never showing. */
 const READY_TIMEOUT_MS = 800;
 
-/** Unread inbox threads, refreshed as mail changes while the window lives. */
-function useUnreadItems(): { rows: QuickReplyItem[]; loaded: boolean } {
+/** Inbox threads (read and unread), refreshed as mail changes while the window lives. */
+function useInboxItems(): { rows: QuickReplyItem[]; loaded: boolean } {
   const [rows, setRows] = useState<QuickReplyItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const refresh = useCallback(() => {
     void api
-      .query('threads:unread', { limit: UNREAD_LIMIT })
+      .query('threads:unread', { limit: INBOX_LIMIT, includeRead: true })
       .then((threads) => setRows(threads.map(unreadItem)))
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -43,7 +46,7 @@ export function QuickReplyWindow() {
   const [state, setState] = useState<QuickReplyState | null>(null);
   const [prefsReady, setPrefsReady] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
-  const unread = useUnreadItems();
+  const unread = useInboxItems();
   const { accounts, loaded: accountsLoaded } = useAccounts();
   // The window is created on the first open and shown straight away, while
   // this page is still loading. Hold the page back until the user's theme,
@@ -122,7 +125,7 @@ export function QuickReplyWindow() {
       return;
     }
     if (item.id.startsWith('u:')) {
-      // An unread thread from "Still unread": main lists it so the widget (and ←/→) can find it.
+      // An inbox thread that didn't notify: main lists it so the widget (and ←/→) can find it.
       void api.command('quick-reply:show', { mode: 'reply', item: itemPayload(item) });
       return;
     }
@@ -164,7 +167,8 @@ export function QuickReplyWindow() {
         ) : (
           <NotificationList
             items={state.items}
-            unreadItems={unread.rows}
+            inboxItems={unread.rows}
+            view={state.view ?? 'inbox'}
             accounts={accounts}
             startId={state.currentId}
             onOpen={open}

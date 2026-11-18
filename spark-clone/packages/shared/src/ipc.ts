@@ -30,9 +30,12 @@ export interface Queries {
   'threads:list': { args: ThreadQuery; result: ThreadSummary[] };
   /** Inbox threads from priority senders, newest first; `before` pages back by date. */
   'threads:priority': { args: { before?: number; limit: number }; result: ThreadSummary[] };
-  /** Unread inbox threads (one account, or all), newest arrival first, for the ⌥⌘N list. */
+  /**
+   * Unread inbox threads (one account, or all), newest arrival first, for the
+   * ⌥⌘N list. `includeRead` lists every thread still in the inbox instead.
+   */
   'threads:unread': {
-    args: { accountId?: string; limit: number };
+    args: { accountId?: string; limit: number; includeRead?: boolean };
     result: (ThreadSummary & { prioritySender: boolean })[];
   };
   'thread:messages': { args: { threadId: string }; result: MessageMeta[] };
@@ -204,6 +207,8 @@ export interface Commands {
    * something else (a meeting link) that should keep it.
    */
   'quick-reply:close': { args: { returnFocus?: boolean } | undefined; result: { ok: boolean } };
+  /** Switch the list between the whole inbox and unread only (the header menu). */
+  'quick-reply:view': { args: { view: QuickReplyView }; result: { ok: boolean } };
   /** Drop a handled notification from the list (done, or dismissed with ⌫). */
   'quick-reply:dismiss': { args: { id: string }; result: { ok: boolean } };
   /** Keep an email in the list (or let it go again): a listed one by id, or an unread thread by payload. */
@@ -326,11 +331,15 @@ export interface NotifyPayload {
   endMs?: number;
   location?: string;
   meetingUrl?: string;
-  /** Opened from the ⌥⌘N list's "Still unread" rows rather than notified. */
+  /** Opened from the ⌥⌘N list's inbox rows (unread or read) rather than notified. */
   origin?: 'unread';
+  /** Inbox rows only: the thread still has unread mail. */
+  unread?: boolean;
 }
 
 export type QuickReplyMode = 'list' | 'reply';
+/** What the ⌥⌘N list shows besides notifications: the whole inbox, or only unread mail. */
+export type QuickReplyView = 'inbox' | 'unread';
 
 /** One notification as the quick-reply list (⌥⌘N) and the widget's queue keep it. */
 export interface QuickReplyItem extends NotifyPayload {
@@ -353,6 +362,8 @@ export interface QuickReplyState {
   send?: { id: string; text: string; seq: number } | null;
   /** The widget was opened from the ⌥⌘N list: Esc goes back to it instead of closing. */
   canGoBack?: boolean;
+  /** The list's view. Each open starts on the whole inbox; ⌥⌘N while open flips it. */
+  view: QuickReplyView;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */
