@@ -126,7 +126,7 @@ export class NotifyOverlay {
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
-    trace('toast:destroy');
+    trace('toast:destroy', { stack: new Error().stack?.split('\n').slice(2, 5).join(' < ') });
     this.backdrops.destroy();
     if (this.win && !this.win.isDestroyed()) this.handBack(this.win);
     this.win?.destroy();
