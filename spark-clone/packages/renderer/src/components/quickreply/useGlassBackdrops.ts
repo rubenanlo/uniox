@@ -13,6 +13,27 @@ export function glassRects(root: ParentNode = document): GlassRect[] {
     .filter((r) => r.width > 0 && r.height > 0);
 }
 
+/** A rounded rect as an SVG path (clockwise), for cutting holes in the dim. */
+function roundedRect({ x, y, width: w, height: h, radius: r }: GlassRect): string {
+  return (
+    `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}` +
+    `A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}` +
+    `V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
+  );
+}
+
+/**
+ * Frosted: dim the screen around the panels but not under them. The dim lives
+ * in the island's window, above macOS's blur windows, so a plain full-screen
+ * dim would grey the blur too; cutting each panel out keeps the glass clear.
+ */
+function cutDim(rects: GlassRect[]): void {
+  const dim = document.querySelector<HTMLElement>('.qr-dim');
+  if (!dim) return;
+  const outer = `M0 0H${window.innerWidth}V${window.innerHeight}H0Z`;
+  dim.style.clipPath = `path(evenodd, '${outer}${rects.map(roundedRect).join('')}')`;
+}
+
 /**
  * Frosted island: tell main where the glass panels are, so it can put
  * macOS's blur (a vibrancy window) behind each. Panels move while they
@@ -34,6 +55,7 @@ export function useGlassBackdrops(on: boolean): void {
       const key = JSON.stringify(rects);
       if (key === last) return;
       last = key;
+      cutDim(rects);
       void api.command('quick-reply:glass', { rects });
     };
     const follow = (ms = 450) => {
