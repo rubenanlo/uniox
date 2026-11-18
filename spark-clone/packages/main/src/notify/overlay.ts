@@ -71,6 +71,7 @@ export class NotifyOverlay {
 
   /** Settings → Appearance → Transparency behind, as a frost share (0 clear … 90 nearly solid). */
   setFrost(frost: number): void {
+    this.backdrops.setClear(frost === 0);
     if (frost === this.frost) return;
     this.frost = frost;
     this.postIsland();
