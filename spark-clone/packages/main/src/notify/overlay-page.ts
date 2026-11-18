@@ -142,6 +142,21 @@ body {
 .btn:hover { background: var(--sunken-hover); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.08); }
+/* Frosted island: the card is clear over macOS's own blur (a vibrancy window
+   behind it, see glass.ts); only its fill, rim and shadow change. The soft
+   inner glow covers the thin edge the blur window leaves for the corners. */
+.frosted .card {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.14));
+  border-color: rgb(255 255 255 / 0.6);
+  box-shadow: 0 14px 36px rgb(20 20 40 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.55), inset 0 0 10px 3px rgb(255 255 255 / 0.2);
+}
+.dark.frosted .card {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04));
+  border-color: rgb(255 255 255 / 0.2);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 10px 3px rgb(255 255 255 / 0.05);
+}
+.frosted .deck div { background: rgb(255 255 255 / 0.55); border-color: rgb(255 255 255 / 0.6); }
+.dark.frosted .deck div { background: rgb(70 70 82 / 0.7); border-color: rgb(255 255 255 / 0.18); }
 @media (prefers-reduced-motion: reduce) {
   .card, .card.leave, .card.rise, .more, .bar i { transition-duration: 1ms !important; }
 }

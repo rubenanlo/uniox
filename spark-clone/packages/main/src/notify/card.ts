@@ -3,6 +3,8 @@
  * delta (plus account colours from the renderer), rendered by the overlay
  * preload. Plain data only: this file is shared by the node and DOM builds.
  */
+import type { GlassRect } from '@app/shared';
+
 /** 'inbox' = the "N more" pill: open the app on the inbox. */
 export type CardAction = 'open' | 'inbox' | 'reply' | 'archive' | 'read' | 'later' | 'join' | 'snooze' | 'dismiss';
 
@@ -43,9 +45,13 @@ export type OverlayToMain =
    * Every card has left; main hides the window. `shown` counts the cards the
    * overlay has received, so main can drop a stale report that crossed a new card.
    */
-  | { kind: 'empty'; shown: number };
+  | { kind: 'empty'; shown: number }
+  /** Frosted: where the cards are (window CSS px), so main puts macOS's blur behind them. */
+  | { kind: 'glass'; rects: GlassRect[] };
 
 export type MainToOverlay =
   | { kind: 'show'; card: NotifyCard }
   | { kind: 'remove'; id: string }
-  | { kind: 'theme'; dark: boolean };
+  | { kind: 'theme'; dark: boolean }
+  /** Settings → Appearance → Island style: frosted cards are clear over a native blur. */
+  | { kind: 'island'; frosted: boolean };

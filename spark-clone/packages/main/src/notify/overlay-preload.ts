@@ -48,6 +48,44 @@ let received = 0;
 let tickTimer: ReturnType<typeof setTimeout> | null = null;
 let deck: HTMLElement | null = null;
 
+/* ── Frosted island ──────────────────────────────────────────────────────
+   The cards are clear and macOS blurs what's behind each one (a vibrancy
+   window per card, in main). Main needs to know where the cards are: while a
+   transition moves them, report once a frame; otherwise nothing runs.
+   Cards still sliding in or out get no blur. */
+let frosted = false;
+let glassRaf = 0;
+let glassUntil = 0;
+let lastGlass = '';
+
+function reportGlass(): void {
+  const rects = frosted
+    ? [...stack().querySelectorAll<HTMLElement>('.card:not(.enter):not(.leave)')].map((c) => {
+        const r = c.getBoundingClientRect();
+        // CSS clamps a radius to half the box (the resting capsule).
+        const radius = Math.min(parseFloat(getComputedStyle(c).borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
+        return { x: r.left, y: r.top, width: r.width, height: r.height, radius };
+      })
+    : [];
+  const key = JSON.stringify(rects);
+  if (key === lastGlass) return;
+  lastGlass = key;
+  send({ kind: 'glass', rects });
+}
+
+function followGlass(ms = 600): void {
+  if (!frosted && lastGlass === '[]') return;
+  glassUntil = Math.max(glassUntil, performance.now() + ms);
+  if (glassRaf) return;
+  const step = () => {
+    reportGlass();
+    glassRaf = performance.now() < glassUntil ? requestAnimationFrame(step) : 0;
+  };
+  glassRaf = requestAnimationFrame(step);
+}
+document.addEventListener('transitionrun', () => followGlass(), true);
+document.addEventListener('transitionend', () => followGlass(80), true);
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -289,6 +327,7 @@ function show(card: NotifyCard): void {
     requestAnimationFrame(() => requestAnimationFrame(() => l.el.classList.remove('enter')));
   }
   layout();
+  followGlass();
   arm(l);
   if (card.kind === 'event' && !tickTimer) tickTimer = setTimeout(tick, TICK_MS);
 }
@@ -328,6 +367,7 @@ function remove(id: string): void {
     setTimeout(done, 400); // transitionend can be skipped (reduced motion, hidden window)
   } else done();
   layout();
+  followGlass();
   // A card removed from under the pointer never gets its mouseleave; re-read
   // hover once things have moved, or the countdowns would stay paused.
   setTimeout(syncHover, 60);
@@ -349,4 +389,10 @@ ipcRenderer.on('notify-overlay', (_e, msg: MainToOverlay) => {
     show(msg.card);
   } else if (msg.kind === 'remove') remove(msg.id);
   else if (msg.kind === 'theme') document.documentElement.classList.toggle('dark', msg.dark);
+  else if (msg.kind === 'island') {
+    frosted = msg.frosted;
+    document.documentElement.classList.toggle('frosted', frosted);
+    lastGlass = '';
+    followGlass(80);
+  }
 });

@@ -7,6 +7,8 @@ import type {
   Category,
   Folder,
   GatekeeperPending,
+  GlassRect,
+  IslandStyle,
   MessageBodyPayload,
   MessageMeta,
   PersonFreeBusy,
@@ -209,6 +211,8 @@ export interface Commands {
   'quick-reply:close': { args: { returnFocus?: boolean } | undefined; result: { ok: boolean } };
   /** Switch the list between the whole inbox and unread only (the header menu). */
   'quick-reply:view': { args: { view: QuickReplyView }; result: { ok: boolean } };
+  /** Frosted island: where the page's glass panels are, so main can put macOS's blur behind them. */
+  'quick-reply:glass': { args: { rects: GlassRect[] }; result: { ok: boolean } };
   /** Drop a handled notification from the list (done, or dismissed with ⌫). */
   'quick-reply:dismiss': { args: { id: string }; result: { ok: boolean } };
   /** Keep an email in the list (or let it go again): a listed one by id, or an unread thread by payload. */
@@ -364,6 +368,8 @@ export interface QuickReplyState {
   canGoBack?: boolean;
   /** The list's view. Each open starts on unread only; ⌥⌘N while open flips it. */
   view: QuickReplyView;
+  /** The island's look; the page styles its panels to match. */
+  island?: IslandStyle;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */

@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, nativeTheme, screen } from 'electron';
-import type { NotifyContext, NotifyPayload } from '@app/shared';
+import type { IslandStyle, NotifyContext, NotifyPayload } from '@app/shared';
+import { GlassBackdrops } from '../glass';
 import { buildCard } from './build-card';
 import type { CardAction, MainToOverlay, OverlayToMain } from './card';
 import { OVERLAY_HEIGHT, OVERLAY_URL, OVERLAY_WIDTH } from './overlay-page';
@@ -28,6 +29,9 @@ export class NotifyOverlay {
   private posted = 0;
   /** Payloads of cards on screen, so actions know their thread/message. */
   private readonly payloads = new Map<string, NotifyPayload>();
+  /** Frosted island: the cards are clear and macOS blurs what's behind each one. */
+  private frosted = false;
+  private readonly backdrops = new GlassBackdrops();
 
   constructor(
     private readonly opts: {
@@ -44,7 +48,16 @@ export class NotifyOverlay {
   setContext(ctx: NotifyContext): void {
     const themeChanged = this.ctx?.dark !== ctx.dark;
     this.ctx = ctx;
+    this.backdrops.setDark(ctx.dark);
     if (themeChanged) this.post({ kind: 'theme', dark: ctx.dark });
+  }
+
+  setIsland(style: IslandStyle): void {
+    const frosted = style === 'frosted' && process.platform === 'darwin';
+    if (frosted === this.frosted) return;
+    this.frosted = frosted;
+    if (!frosted) this.backdrops.hide();
+    this.post({ kind: 'island', frosted });
   }
 
   async show(payload: NotifyPayload): Promise<void> {
@@ -65,6 +78,7 @@ export class NotifyOverlay {
   destroy(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
+    this.backdrops.destroy();
     this.win?.destroy();
   }
 
@@ -79,9 +93,14 @@ export class NotifyOverlay {
       case 'empty':
         if (msg.shown !== this.posted) return; // a card is on its way
         this.payloads.clear();
+        this.backdrops.hide();
         win.setIgnoreMouseEvents(true, { forward: true });
         win.hide();
         this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
+        return;
+      case 'glass':
+        if (this.frosted && win.isVisible()) this.backdrops.sync(msg.rects, win.getBounds());
+        else this.backdrops.hide();
         return;
       case 'action': {
         const payload = this.payloads.get(msg.id) ?? null;
@@ -146,6 +165,7 @@ export class NotifyOverlay {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
     win.on('closed', () => {
+      this.backdrops.hide();
       if (this.win === win) {
         this.win = null;
         this.loaded = null;
@@ -156,6 +176,7 @@ export class NotifyOverlay {
     this.win = win;
     this.loaded = win.loadURL(OVERLAY_URL).then(() => {
       this.post({ kind: 'theme', dark: this.ctx?.dark ?? nativeTheme.shouldUseDarkColors });
+      this.post({ kind: 'island', frosted: this.frosted });
     });
     await this.loaded;
     return win;
