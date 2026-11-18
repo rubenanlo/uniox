@@ -1065,12 +1065,42 @@ html.dark[data-island='frosted'] .qr-menu {
   background: rgb(40 40 46 / 0.6);
   border-color: rgb(255 255 255 / 0.14);
 }
+/* Keyboard hints sit on the glass as clear chips instead of white keys. */
+html[data-island='frosted'] .keycap {
+  background: rgb(255 255 255 / 0.14);
+  border-color: rgb(255 255 255 / 0.45);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 1px 0 rgb(0 0 0 / 0.06);
+}
+html.dark[data-island='frosted'] .keycap {
+  background: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.16);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 1px 0 rgb(0 0 0 / 0.25);
+}
 /* A folded email fades out over the glass instead of into a white band. */
 html[data-island='frosted'] .qr-fold {
   display: none;
 }
 html[data-island='frosted'] .qr-bubble-in:has(> .qr-fold) {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+}
+/* The reply widget's conversation: its height eases to fit what's in it, so
+   the widget grows and shrinks smoothly as the email and the AI read load. */
+.qr-convo[data-settled] {
+  transition: height 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Messages and AI notes rise in as they arrive. */
+.qr-msg-in {
+  animation: qr-msg-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes qr-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
 }
 /* Undo Send: the bar drains over the 5 s window (UNDO_SEND_MS). */
 .qr-countdown {
@@ -1089,8 +1119,12 @@ html[data-island='frosted'] .qr-bubble-in:has(> .qr-fold) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .qr-enter {
+  .qr-enter,
+  .qr-msg-in {
     animation: none;
+  }
+  .qr-convo[data-settled] {
+    transition: none;
   }
   .qr-scrim,
   .qr-scrim > .qr-stage {
