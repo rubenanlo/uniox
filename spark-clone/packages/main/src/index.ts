@@ -27,6 +27,8 @@ import {
   DEFAULT_SCHEDULING,
   GMAIL_ENDPOINTS,
   ISLAND_STYLE_KEY,
+  ISLAND_GLASS_CLEAR_KEY,
+  islandGlassFrost,
   ISLAND_DISPLAY_KEY,
   DEFAULT_ISLAND_DISPLAY,
   KANBAN_STATUSES,
@@ -505,6 +507,7 @@ function notifyOverlay(): NotifyOverlay {
     onAction: (payload, action) => void onNotifyAction(payload, action),
   });
   overlay.setIsland(islandStyle);
+  overlay.setFrost(islandFrost);
   return overlay;
 }
 
@@ -536,9 +539,16 @@ function setIslandStyle(value: unknown): void {
   islandStyle = value === 'frosted' ? 'frosted' : 'glass';
   applyIsland();
 }
+/** Settings → Appearance → Transparency behind, as a frost share for the toasts (the ⌥⌘N page reads it itself). */
+let islandFrost = 0;
+function setIslandClear(value: unknown): void {
+  islandFrost = islandGlassFrost(value);
+  overlay?.setFrost(islandFrost);
+}
 function applyIsland(): void {
   quickReply?.setIsland(islandStyle, appDark);
   overlay?.setIsland(islandStyle);
+  overlay?.setFrost(islandFrost);
 }
 
 /** A page's report of its glass panels: a short list of finite numbers, nothing else. */
@@ -781,6 +791,7 @@ function registerIpc(): void {
     if (settingKey === 'notificationStyle') notifyStyleCache = null;
     if (settingKey === ISLAND_STYLE_KEY) setIslandStyle((args as { value?: unknown }).value);
     if (settingKey === ISLAND_DISPLAY_KEY) setIslandDisplay((args as { value?: unknown }).value);
+    if (settingKey === ISLAND_GLASS_CLEAR_KEY) setIslandClear((args as { value?: unknown }).value);
     switch (channel) {
       case 'mailto:make-default': {
         // macOS: needs the CFBundleURLTypes entry electron-builder writes
@@ -1176,6 +1187,10 @@ void app.whenReady().then(() => {
   void bridge
     .query('settings:get', { key: ISLAND_DISPLAY_KEY })
     .then(setIslandDisplay)
+    .catch(() => {});
+  void bridge
+    .query('settings:get', { key: ISLAND_GLASS_CLEAR_KEY })
+    .then(setIslandClear)
     .catch(() => {});
 
   // Sleep/wake: the sync utility process isn't subject to renderer

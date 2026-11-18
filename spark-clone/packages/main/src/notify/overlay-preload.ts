@@ -393,6 +393,7 @@ ipcRenderer.on('notify-overlay', (_e, msg: MainToOverlay) => {
     frosted = msg.frosted;
     document.documentElement.classList.toggle('frosted', frosted);
     document.documentElement.classList.toggle('liquid', !!msg.liquid);
+    document.documentElement.style.setProperty('--glass-frost', String((msg.frost ?? 0) / 100));
     lastGlass = '';
     followGlass(80);
   }

@@ -1,4 +1,5 @@
 import type { DarkPalette, LightPalette, QuickReplyItem, QuickReplyState } from '@app/shared';
+import { ISLAND_GLASS_CLEAR_KEY, islandGlassFrost } from '@app/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { itemPayload, queuePosition, stepItem, unreadItem } from '../../lib/quickReply';
@@ -125,7 +126,12 @@ export function QuickReplyWindow() {
   // Each open picks up the current theme, palette and accent.
   const isShown = !!state?.shown;
   useEffect(() => {
-    if (isShown) void loadPrefs();
+    if (!isShown) return;
+    void loadPrefs();
+    // Settings → Appearance → Transparency behind: how much theme surface sits over the glass.
+    void api.query('settings:get', { key: ISLAND_GLASS_CLEAR_KEY }).then((v) => {
+      document.documentElement.style.setProperty('--glass-frost', `${islandGlassFrost(v)}%`);
+    });
   }, [isShown]);
 
   const close = useCallback(() => void api.command('quick-reply:close', undefined), []);

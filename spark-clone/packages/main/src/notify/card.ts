@@ -54,4 +54,4 @@ export type MainToOverlay =
   | { kind: 'remove'; id: string }
   | { kind: 'theme'; dark: boolean }
   /** Settings → Appearance → Island style: frosted cards are clear over a native blur. */
-  | { kind: 'island'; frosted: boolean; liquid?: boolean };
+  | { kind: 'island'; frosted: boolean; liquid?: boolean; frost?: number };
