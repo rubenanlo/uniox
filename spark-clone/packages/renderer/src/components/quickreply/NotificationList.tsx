@@ -53,6 +53,8 @@ export function NotificationList({
   inboxItems,
   view,
   accounts,
+  accountId: chosenAccount,
+  onAccountChange,
   startId,
   onOpen,
   onClose,
@@ -62,6 +64,13 @@ export function NotificationList({
   inboxItems: QuickReplyItem[];
   view: QuickReplyView;
   accounts: Account[];
+  /**
+   * The account the list is narrowed to ('' = all). Held by the window, not
+   * here: opening an email unmounts the list, and the choice should still be
+   * there on the way back (and on the next ⌥⌘N).
+   */
+  accountId: string;
+  onAccountChange: (id: string) => void;
   startId: string | null;
   onOpen: (item: QuickReplyItem) => void;
   onClose: () => void;
@@ -71,7 +80,8 @@ export function NotificationList({
   const accountLabels = useUi((s) => s.accountLabels);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [accountId, setAccountId] = useState('');
+  // An account removed since it was picked falls back to All accounts.
+  const accountId = accounts.some((a) => a.id === chosenAccount) ? chosenAccount : '';
   const [tab, setTab] = useState<ListTab>(() => startTab(items, startId));
 
   const rowsByTab = useMemo(() => {
@@ -124,7 +134,7 @@ export function NotificationList({
   }, [cursor, tab]);
 
   const switchAccount = (id: string) => {
-    setAccountId(id);
+    onAccountChange(id);
     setCursors({ important: 0, calendar: 0, docs: 0, other: 0 });
   };
 

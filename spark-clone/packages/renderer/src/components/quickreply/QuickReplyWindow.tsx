@@ -79,6 +79,8 @@ export function QuickReplyWindow() {
   const [prefsReady, setPrefsReady] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const unread = useInboxItems();
+  // The ⌥⌘N account switch lives here so it survives opening an email and coming back.
+  const [listAccount, setListAccount] = useState('');
   const { accounts, loaded: accountsLoaded } = useAccounts();
   // The window is created on the first open and shown straight away, while
   // this page is still loading. Hold the page back until the user's theme,
@@ -199,6 +201,8 @@ export function QuickReplyWindow() {
             inboxItems={unread.rows}
             view={state.view ?? 'unread'}
             accounts={accounts}
+            accountId={listAccount}
+            onAccountChange={setListAccount}
             startId={state.currentId}
             onOpen={open}
             onClose={close}
