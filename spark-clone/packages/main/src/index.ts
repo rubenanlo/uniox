@@ -974,11 +974,17 @@ function registerIpc(): void {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       }
-      case 'notify:context':
+      case 'notify:context': {
+        const { theme } = args as NotifyContext;
+        // macOS draws vibrancy (the Frosted island's blur) in the app's
+        // appearance, which follows the system unless told otherwise: with
+        // Uniox light on a dark Mac, the light material came out dark grey.
+        if (theme === 'light' || theme === 'dark' || theme === 'system') nativeTheme.themeSource = theme;
         appDark = !!(args as NotifyContext).dark;
         applyIsland();
         notifyOverlay().setContext(args as NotifyContext);
         return { ok: true };
+      }
       case 'notify:preview':
         await notifyOverlay().show({
           title: 'Uniox',

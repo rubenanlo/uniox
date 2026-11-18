@@ -18,6 +18,7 @@ export function useNotifyContext() {
     const push = () => {
       void api.command('notify:context', {
         dark: theme === 'dark' || (theme === 'system' && mq.matches),
+        theme,
         accounts: accounts.map((a, i) => ({
           id: a.id,
           label: a.email,

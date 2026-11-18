@@ -375,6 +375,9 @@ export interface QuickReplyState {
 /** Per-account label and colour for notification cards, plus the app theme. */
 export interface NotifyContext {
   dark: boolean;
+  /** The app's theme setting. Main mirrors it into nativeTheme so macOS
+   *  materials (the Frosted island's blur) match the app, not the system. */
+  theme?: 'system' | 'light' | 'dark';
   accounts: { id: string; label: string; color: string }[];
 }
 
