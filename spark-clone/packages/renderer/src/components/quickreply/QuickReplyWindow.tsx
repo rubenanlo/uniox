@@ -43,6 +43,36 @@ function useInboxItems(): { rows: QuickReplyItem[]; loaded: boolean } {
  * email. A click on the dimmed area closes it; so does Esc, except in a reply
  * opened from the list, where Esc steps back to the list.
  */
+/**
+ * Wear the main window's look (read only: the main window owns these prefs).
+ * Read on load and again on every open: the window stays warm between opens,
+ * so a theme picked in the meantime would otherwise keep the old colours.
+ */
+function loadPrefs(): Promise<void> {
+  return api
+    .query('settings:get', { key: 'ui-prefs' })
+    .then((stored) => {
+      if (!stored || typeof stored !== 'object') return;
+      const p = stored as Partial<{
+        theme: ThemePref;
+        darkPalette: DarkPalette;
+        lightPalette: LightPalette;
+        accentColor: string | null;
+        accountColors: Record<string, string>;
+        accountLabels: Record<string, string>;
+      }>;
+      useUi.setState({
+        ...(p.theme ? { theme: p.theme } : {}),
+        ...(p.darkPalette ? { darkPalette: p.darkPalette } : {}),
+        ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
+        ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
+        ...(p.accountColors ? { accountColors: p.accountColors } : {}),
+        ...(p.accountLabels ? { accountLabels: p.accountLabels } : {}),
+      });
+    })
+    .catch(() => {});
+}
+
 export function QuickReplyWindow() {
   const [state, setState] = useState<QuickReplyState | null>(null);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -84,30 +114,7 @@ export function QuickReplyWindow() {
 
   useEffect(() => {
     document.documentElement.classList.add('quick-reply');
-    // Wear the main window's look (read only: the main window owns these prefs).
-    void api
-      .query('settings:get', { key: 'ui-prefs' })
-      .then((stored) => {
-        if (!stored || typeof stored !== 'object') return;
-        const p = stored as Partial<{
-          theme: ThemePref;
-          darkPalette: DarkPalette;
-          lightPalette: LightPalette;
-          accentColor: string | null;
-          accountColors: Record<string, string>;
-          accountLabels: Record<string, string>;
-        }>;
-        useUi.setState({
-          ...(p.theme ? { theme: p.theme } : {}),
-          ...(p.darkPalette ? { darkPalette: p.darkPalette } : {}),
-          ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
-          ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
-          ...(p.accountColors ? { accountColors: p.accountColors } : {}),
-          ...(p.accountLabels ? { accountLabels: p.accountLabels } : {}),
-        });
-      })
-      .catch(() => {})
-      .finally(() => setPrefsReady(true));
+    void loadPrefs().finally(() => setPrefsReady(true));
     void api.query('quick-reply:state', undefined).then(setState);
     return wireAssistant();
   }, []);
@@ -115,6 +122,11 @@ export function QuickReplyWindow() {
   useDelta((e) => {
     if (e.kind === 'quick-reply') setState(e.state);
   });
+  // Each open picks up the current theme, palette and accent.
+  const isShown = !!state?.shown;
+  useEffect(() => {
+    if (isShown) void loadPrefs();
+  }, [isShown]);
 
   const close = useCallback(() => void api.command('quick-reply:close', undefined), []);
   /** Close without handing focus back: something the page opened (a meeting link) should keep it. */

@@ -48,6 +48,10 @@ export class GlassBackdrops {
   private readonly pool: BrowserWindow[] = [];
   /** The corner radius each pooled window's glass was made with (Liquid Glass can't change it later). */
   private readonly radii = new WeakMap<BrowserWindow, number>();
+  /** Liquid Glass windows still waiting for their glass view: showing them early flashes an empty frame. */
+  private readonly unglazed = new WeakSet<BrowserWindow>();
+  /** Windows the last sync wanted on screen, so a late glass view knows whether to show. */
+  private readonly wanted = new WeakSet<BrowserWindow>();
   private dark = false;
 
   /** True when panels sit on real Liquid Glass (the page then drops its own fill). */
@@ -76,13 +80,22 @@ export class GlassBackdrops {
       if (w && !w.isDestroyed() && liquid && this.radii.get(w) !== radius) w.destroy();
       if (!w || w.isDestroyed()) w = this.pool[i] = this.create(radius);
       w.setBounds(b, false);
-      if (!w.isVisible()) w.showInactive();
+      this.wanted.add(w);
+      if (!w.isVisible() && !this.unglazed.has(w)) w.showInactive();
     });
-    for (const w of this.pool.slice(bounds.length)) if (!w.isDestroyed() && w.isVisible()) w.hide();
+    for (const w of this.pool.slice(bounds.length)) {
+      if (w.isDestroyed()) continue;
+      this.wanted.delete(w);
+      if (w.isVisible()) w.hide();
+    }
   }
 
   hide(): void {
-    for (const w of this.pool) if (!w.isDestroyed() && w.isVisible()) w.hide();
+    for (const w of this.pool) {
+      if (w.isDestroyed()) continue;
+      this.wanted.delete(w);
+      if (w.isVisible()) w.hide();
+    }
   }
 
   destroy(): void {
@@ -122,8 +135,12 @@ export class GlassBackdrops {
     w.setIgnoreMouseEvents(true);
     if (liquid) {
       this.radii.set(w, radius);
+      this.unglazed.add(w);
       w.webContents.once('did-finish-load', () => {
-        if (!w.isDestroyed()) liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
+        if (w.isDestroyed()) return;
+        liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
+        this.unglazed.delete(w);
+        if (this.wanted.has(w) && !w.isVisible()) w.showInactive();
       });
     }
     void w.loadURL('about:blank');
