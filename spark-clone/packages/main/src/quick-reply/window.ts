@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Menu, screen, type Rectangle, type WebContents, type WebPreferences } from 'electron';
+import { BrowserWindow, screen, type Rectangle, type WebContents, type WebPreferences } from 'electron';
 import type { DeltaEvent, GlassRect, IslandDisplay, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { GlassBackdrops } from '../glass';
+import { giveActivationBack, makeNonActivating, trackAppActive } from '../mac-activation';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -12,23 +13,8 @@ const IDLE_DESTROY_MS = 60_000;
  * .qr-scrim fade-out (180 ms) plus a little slack.
  */
 const CLOSE_FADE_MS = 210;
-/** Longest wait for macOS to hand activation back after app.hide() before Uniox's windows come back. */
-const UNHIDE_FALLBACK_MS = 300;
-
-/**
- * Whether Uniox is the active macOS app. Electron has no getter, so follow the
- * app events once the overlay exists, starting from whether a window has focus.
- */
-let appActive = false;
-let trackingActive = false;
-function trackAppActive(): void {
-  if (trackingActive || process.platform !== 'darwin') return;
-  trackingActive = true;
-  appActive = BrowserWindow.getFocusedWindow() !== null;
-  app.on('did-become-active', () => (appActive = true));
-  app.on('did-resign-active', () => (appActive = false));
-}
-
+/** The page's own fade-out (.qr-scrim), which the glass behind its panels follows. */
+const PAGE_FADE_MS = 180;
 /**
  * The quick-reply overlay: one frameless, transparent window covering the
  * whole display the pointer is on. The page dims everything behind it and
@@ -79,6 +65,11 @@ export class QuickReplyWindow {
     trackAppActive();
   }
 
+  /** On screen (not closing). */
+  get isOpen(): boolean {
+    return this.shown && this.visible();
+  }
+
   /** Remember a notification for the list; refresh an open list. */
   record(payload: NotifyPayload): void {
     this.queue.record(payload);
@@ -124,6 +115,8 @@ export class QuickReplyWindow {
   /** Frosted: the page reports where its glass panels are; the blur follows them. */
   glass(rects: GlassRect[]): void {
     const win = this.win;
+    // Closing: the page clears its rects as it starts to fade; the glass fades with it instead.
+    if (!this.shown && this.hideTimer) return;
     if (this.island !== 'frosted' || !win || win.isDestroyed() || !win.isVisible() || !this.shown) {
       this.backdrops.hide();
       return;
@@ -246,8 +239,8 @@ export class QuickReplyWindow {
     if (!win || win.isDestroyed() || !win.isVisible() || !this.shown) return;
     this.shown = false;
     this.backToList = false;
-    // The blur can't fade with the page, so it leaves first; the panels fade out over the screen.
-    this.backdrops.hide();
+    // The glass fades out with the page (its .qr-scrim fade), so the text never floats bare.
+    this.backdrops.fadeOut(PAGE_FADE_MS);
     const returnTo = this.returnTo;
     this.returnTo = null;
     this.push();
@@ -261,18 +254,19 @@ export class QuickReplyWindow {
   }
 
   /**
-   * Hide the overlay and hand the keyboard back. When Uniox ended up the
-   * active app (a click on a notification, or the panel taking the keyboard,
-   * activates it) the order matters:
+   * Hide the overlay and hand the keyboard back.
    *
    * - A Uniox window that had focus at open gets it back.
-   * - Otherwise, hiding the panel on its own makes macOS give the keyboard to
-   *   Uniox's next window and raise it: the main window flashed up in front
-   *   of the app you were in, or another app (ForkLift) came forward. So hide
-   *   the whole app in one step instead, panel included (its page has already
-   *   faded to nothing). macOS then reactivates the previous app, as ⌘H does;
-   *   once it has, drop the panel and bring Uniox's other windows back behind
-   *   it without activating them.
+   * - Otherwise, never order the panel out on its own. It holds the keyboard,
+   *   and when it goes macOS hands the keyboard to Uniox's next window,
+   *   activating Uniox and raising its main window over the app you were in
+   *   (or, from a toast click, bringing some other app such as ForkLift
+   *   forward). That happens whether or not Uniox counted as the active app,
+   *   since Electron's panel only pretends to be non-activating. So hide the
+   *   whole app in one step, panel included (its page has already faded to
+   *   nothing). Nothing of Uniox is left to take the keyboard, and macOS gives
+   *   it back to the app you were in, as ⌘H does. Then drop the panel and
+   *   bring Uniox's other windows back behind that app without activating.
    */
   private hideAndGiveFocusBack(win: BrowserWindow, returnTo: BrowserWindow | null): void {
     if (returnTo && !returnTo.isDestroyed() && returnTo.isVisible() && !returnTo.isMinimized()) {
@@ -280,30 +274,11 @@ export class QuickReplyWindow {
       returnTo.focus();
       return;
     }
-    if (process.platform !== 'darwin' || !appActive) {
-      win.hide();
-      return;
-    }
-    let done = false;
-    const unhide = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(fallback);
-      app.off('did-resign-active', unhide);
-      // Order the panel out while the app is hidden so unhiding leaves it out
-      // (unless ⌥⌘N opened it again in the meantime).
-      const dropPanel = () => {
-        if (!win.isDestroyed() && !this.shown) win.hide();
-      };
-      dropPanel();
-      // NSApplication's unhideWithoutActivation: Uniox's windows (and its
-      // notification toasts) show again while the other app keeps the keyboard.
-      Menu.sendActionToFirstResponder('unhideWithoutActivation');
-      dropPanel();
-    };
-    const fallback = setTimeout(unhide, UNHIDE_FALLBACK_MS);
-    app.on('did-resign-active', unhide);
-    app.hide();
+    // Order the panel out while the app is hidden so unhiding leaves it out
+    // (unless ⌥⌘N opened it again in the meantime).
+    giveActivationBack(() => {
+      if (!win.isDestroyed() && !this.shown) win.hide();
+    });
   }
 
   destroy(): void {
@@ -380,6 +355,7 @@ export class QuickReplyWindow {
       ...(mac ? { type: 'panel' } : {}),
       webPreferences: { ...this.opts.webPreferences, backgroundThrottling: false },
     });
+    makeNonActivating(win);
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     // Switching to another app hides the overlay, Spotlight-style.

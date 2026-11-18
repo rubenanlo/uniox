@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, nativeTheme, screen } from 'electron';
 import type { IslandStyle, NotifyContext, NotifyPayload } from '@app/shared';
 import { GlassBackdrops } from '../glass';
+import { giveActivationBack, isAppActive, makeNonActivating, trackAppActive, unioxWantedSince } from '../mac-activation';
 import { buildCard } from './build-card';
 import type { CardAction, MainToOverlay, OverlayToMain } from './card';
 import { OVERLAY_HEIGHT, OVERLAY_URL, OVERLAY_WIDTH } from './overlay-page';
@@ -15,7 +16,7 @@ const EDGE = 6;
  *
  * Performance: the window (and its renderer process, ~30 MB) exists only
  * while there is something to show plus a minute of warm-up for the next
- * one; parked (transparent and click-through), it runs nothing. It never takes focus, and it ignores the mouse
+ * one; parked (transparent and click-through), it runs nothing. It never takes focus or activates Uniox, and it ignores the mouse
  * except while the pointer is over a card, so the empty area stays
  * click-through.
  */
@@ -41,13 +42,19 @@ export class NotifyOverlay {
   private parked = false;
   /** The Uniox window that had the keyboard when the pointer reached a card. */
   private returnTo: BrowserWindow | null = null;
+  /** When the pointer reached a card (0: not over one), and whether Uniox was the active app then. */
+  private hoverAt = 0;
+  private activeAtHover = true;
 
   constructor(
     private readonly opts: {
       preload: string;
       onAction: (payload: NotifyPayload | null, action: CardAction) => void;
+      /** Another Uniox overlay (the island) holds the keyboard on purpose right now. */
+      busy?: () => boolean;
     },
   ) {
+    trackAppActive();
     ipcMain.on('notify-overlay', (event, msg: OverlayToMain) => {
       if (!this.win || event.sender !== this.win.webContents) return;
       this.handle(msg);
@@ -135,6 +142,20 @@ export class NotifyOverlay {
     to.focus();
   }
 
+  /**
+   * The pointer left the cards. If a click on one activated Uniox while you
+   * were in another app, and the click wasn't meant to open Uniox (Read,
+   * Done, Snooze, Join, a quick reply), give activation straight back to that
+   * app: a notification never pulls you into Uniox.
+   */
+  private releaseHover(): void {
+    const since = this.hoverAt;
+    if (!since) return;
+    this.hoverAt = 0;
+    if (this.activeAtHover || !isAppActive() || unioxWantedSince(since) || this.opts.busy?.()) return;
+    giveActivationBack();
+  }
+
   private handle(msg: OverlayToMain): void {
     const win = this.win;
     if (!win) return;
@@ -143,8 +164,15 @@ export class NotifyOverlay {
         if (msg.on) {
           const focused = BrowserWindow.getFocusedWindow();
           if (focused && focused !== win) this.returnTo = focused;
+          if (!this.hoverAt) {
+            this.hoverAt = Date.now();
+            this.activeAtHover = isAppActive();
+          }
           win.setIgnoreMouseEvents(false);
-        } else win.setIgnoreMouseEvents(true, { forward: true });
+        } else {
+          win.setIgnoreMouseEvents(true, { forward: true });
+          this.releaseHover();
+        }
         return;
       case 'empty':
         if (msg.shown !== this.posted) return; // a card is on its way
@@ -158,6 +186,7 @@ export class NotifyOverlay {
         win.setOpacity(0);
         this.parked = true;
         this.handBack(win);
+        this.releaseHover();
         this.scheduleIdle();
         return;
       case 'glass':
@@ -226,6 +255,7 @@ export class NotifyOverlay {
         spellcheck: false,
       },
     });
+    makeNonActivating(win);
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     win.setIgnoreMouseEvents(true, { forward: true });
