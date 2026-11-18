@@ -1,6 +1,6 @@
-import type { QuickReplyItem } from '@app/shared';
+import type { Account, QuickReplyItem } from '@app/shared';
 import { Bell, ChevronDown, Pin } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAccountColor } from '../../lib/accountColor';
 import { api } from '../../lib/api';
@@ -13,41 +13,20 @@ import {
   listRows,
   shortAgo,
   startTab,
-  unreadItem,
   type ListRow,
   type ListSection,
   type ListTab,
 } from '../../lib/quickReply';
 import { cn } from '../../lib/utils';
-import { useAccounts, useDelta } from '../../state/queries';
 import { useUi } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
 import { useListMotion } from './useListMotion';
-
-/** How many unread threads the list loads (all accounts; the account switch filters them). */
-const UNREAD_LIMIT = 200;
 
 function eventLine(item: QuickReplyItem): string {
   const when = item.startMs
     ? `Starts ${new Date(item.startMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
     : 'Meeting';
   return item.location ? `${when} · ${item.location}` : when;
-}
-
-/** Unread inbox threads, refreshed as mail changes while the list is open. */
-function useUnreadItems(): QuickReplyItem[] {
-  const [rows, setRows] = useState<QuickReplyItem[]>([]);
-  const refresh = useCallback(() => {
-    void api
-      .query('threads:unread', { limit: UNREAD_LIMIT })
-      .then((threads) => setRows(threads.map(unreadItem)))
-      .catch(() => {});
-  }, []);
-  useEffect(refresh, [refresh]);
-  useDelta((e) => {
-    if (e.kind === 'threads-changed' || e.kind === 'accounts-changed') refresh();
-  });
-  return rows;
 }
 
 function SectionIcon({ section }: { section: ListSection }) {
@@ -68,17 +47,20 @@ function SectionIcon({ section }: { section: ListSection }) {
  */
 export function NotificationList({
   items,
+  unreadItems,
+  accounts,
   startId,
   onOpen,
   onClose,
 }: {
   items: QuickReplyItem[];
+  /** Loaded by the window before it fades in, so the first open doesn't pop rows in. */
+  unreadItems: QuickReplyItem[];
+  accounts: Account[];
   startId: string | null;
   onOpen: (item: QuickReplyItem) => void;
   onClose: () => void;
 }) {
-  const unreadItems = useUnreadItems();
-  const { accounts } = useAccounts();
   const colorOf = useAccountColor();
   const multi = accounts.length > 1;
   const accountLabels = useUi((s) => s.accountLabels);
