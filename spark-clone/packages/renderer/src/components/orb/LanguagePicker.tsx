@@ -53,7 +53,7 @@ export function LanguagePicker({
 
   return (
     <div className="flex flex-col">
-      <div className="border-hairline flex items-center gap-2 border-b px-2 pb-1.5">
+      <div className="ai-rule flex items-center gap-2 border-b px-2 pb-1.5">
         <button
           onClick={onBack}
           aria-label="Back to assistant actions"

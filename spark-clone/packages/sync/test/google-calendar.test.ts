@@ -67,6 +67,25 @@ describe('mapGoogleEvent', () => {
     expect(m.startMs).toBe(d(2026, 8, 24));
     expect(m.endMs).toBe(d(2026, 8, 28));
   });
+  it('keeps the other invitees for meeting prep (not you, rooms or decliners)', () => {
+    const m = mapGoogleEvent(
+      {
+        ...base,
+        attendees: [
+          { self: true, email: 'me@x.org', responseStatus: 'accepted' },
+          { email: 'Helen@X.org', displayName: 'Helen M', responseStatus: 'accepted' },
+          { email: 'room-3@resource.calendar.google.com', resource: true },
+          { email: 'ana@x.org', responseStatus: 'declined' },
+          { email: 'guillaume@x.org', responseStatus: 'needsAction' },
+        ],
+      },
+      'c',
+    )!;
+    expect(m.attendees).toEqual([
+      { name: 'Helen M', email: 'helen@x.org' },
+      { name: '', email: 'guillaume@x.org' },
+    ]);
+  });
   it('skips cancelled and working-location items', () => {
     expect(mapGoogleEvent({ ...base, status: 'cancelled' }, 'c')).toBeNull();
     expect(mapGoogleEvent({ ...base, eventType: 'workingLocation' }, 'c')).toBeNull();

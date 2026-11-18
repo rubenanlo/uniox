@@ -98,6 +98,19 @@ function cardSource(props: Json): KanbanSource | null {
 let boardCache: { board: KanbanBoard; at: number } | null = null;
 const BOARD_CACHE_MS = 60_000;
 
+/** Names on every people-type property whose name says who does the task. */
+function assigneesOf(props: Json): string[] {
+  const names = new Set<string>();
+  for (const [key, prop] of Object.entries(props)) {
+    if ((prop as Json)?.type !== 'people' || !/assign|owner|responsible/i.test(key)) continue;
+    for (const person of ((prop as Json)['people'] as Json[]) ?? []) {
+      const name = (person?.['name'] as string) || (person?.['person']?.email as string);
+      if (name) names.add(name);
+    }
+  }
+  return [...names];
+}
+
 export async function fetchBoard(token: string): Promise<KanbanBoard> {
   if (boardCache && Date.now() - boardCache.at < BOARD_CACHE_MS) return boardCache.board;
 
@@ -141,6 +154,7 @@ export async function fetchBoard(token: string): Promise<KanbanBoard> {
       taskId: (props['ID']?.unique_id?.number as number) ?? null,
       createdTime: (page['created_time'] as string) ?? '',
       source: cardSource(props),
+      assignees: assigneesOf(props),
     });
   }
 

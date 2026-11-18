@@ -74,7 +74,7 @@ function Palette() {
         role="dialog"
         aria-label="Assistant"
         onMouseDown={(e) => e.stopPropagation()}
-        className="orb-menu-in border-hairline bg-surface w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-2xl border p-1.5 shadow-2xl"
+        className="orb-menu-in ai-glass w-[min(520px,calc(100vw-2rem))] overflow-hidden rounded-[22px] p-2"
       >
         {languageFor ? (
           <LanguagePicker
@@ -90,7 +90,7 @@ function Palette() {
           />
         ) : (
           <>
-            <div className="border-hairline flex items-center gap-2.5 border-b px-2.5 pb-2 pt-1">
+            <div className="ai-rule flex items-center gap-2.5 border-b px-2.5 pb-2 pt-1">
               <Sparkles size={15} className="text-accent shrink-0" />
               <input
                 ref={inputRef}
@@ -137,7 +137,7 @@ function Palette() {
                 const Icon = item.icon;
                 return [
                   item === chat && suggested.length > 0 && (
-                    <div key="divider" className="border-hairline mx-2 my-1 border-t" />
+                    <div key="divider" className="ai-rule mx-2 my-1 border-t" />
                   ),
                   <button
                     key={item === chat ? 'chat' : item.label}
@@ -148,7 +148,7 @@ function Palette() {
                     onClick={() => pick(item)}
                     className={cn(
                       'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px]',
-                      i === current ? 'bg-accent-soft/40 text-ink' : 'text-ink-muted',
+                      i === current ? 'ai-row-active text-ink' : 'text-ink-muted',
                     )}
                   >
                     <Icon size={15} className="text-accent shrink-0" />

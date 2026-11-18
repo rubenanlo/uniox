@@ -37,6 +37,7 @@ import { useAccentColor, useTheme } from './lib/theme';
 import { assistantOwnsEscape, wireAssistant } from './state/assistant';
 import { wireCalendar } from './state/calendar';
 import { wireKanban } from './state/kanban';
+import { useAiCards } from './state/aiCards';
 import { usePersistedUiPrefs } from './state/persist';
 import { useAccounts, useDelta, useSelectedThread, useThreads } from './state/queries';
 import { useUi } from './state/store';
@@ -282,6 +283,9 @@ export default function App() {
   // Notion Sprint-board polling lives app-level so the sidebar dot works
   // from any view.
   useEffect(() => wireKanban(), []);
+  useEffect(() => {
+    void useAiCards.getState().load();
+  }, []);
   // Assistant stream channel + initial status probe, app-level.
   useEffect(() => wireAssistant(), []);
   // Calendar change-delta subscription + initial load, app-level.

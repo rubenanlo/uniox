@@ -13,6 +13,9 @@ import { useWindowActive } from '../lib/useWindowActive';
 import { HalftoneWave } from './HalftoneWave';
 import { KanbanView } from './kanban/KanbanView';
 import { RollingNumber } from './RollingNumber';
+import { AiCardsRow } from './ai/AiCards';
+import { AiSidePanel } from './ai/AiSidePanel';
+import { useTodayCards } from '../state/aiCards';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -262,6 +265,8 @@ export function HomeView() {
   const baseline = useUi((s) => s.homeBaseline);
   const userName = useUi((s) => s.userName);
   const kanbanOpen = useUi((s) => s.kanbanOpen);
+  // The timeline gives up some height while AI cards sit under it.
+  const hasAiCards = Object.keys(useTodayCards()).length > 0;
   const setKanbanOpen = useUi((s) => s.setKanbanOpen);
   const kanban = useKanban();
   const newRequests = kanbanNewCount(kanban.board, kanban.seenAt);
@@ -461,7 +466,10 @@ export function HomeView() {
 
         <section
           ref={railRef}
-          className="home-rise no-scrollbar flex h-[60vh] min-h-0 flex-col-reverse overflow-y-auto"
+          className={cn(
+            'home-rise no-scrollbar flex min-h-0 flex-col-reverse overflow-y-auto',
+            hasAiCards ? 'h-[46vh]' : 'h-[60vh]',
+          )}
           style={{
             animationDelay: '0.09s',
             // Older mail fades out under the top edge instead of being cut.
@@ -508,7 +516,9 @@ export function HomeView() {
             })}
           </div>
         </section>
+        <AiCardsRow />
       </div>
+      <AiSidePanel />
     </div>
   );
 }

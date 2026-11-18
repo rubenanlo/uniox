@@ -81,7 +81,20 @@ function rowToEvent(r: Row): CalendarEvent {
     meetingUrl: r.meeting_url || undefined,
     readOnly: r.source !== 'local',
     transparency: r.transparency === 'transparent' ? 'transparent' : undefined,
+    attendees: parseAttendees(r.attendees_json),
   };
+}
+
+function parseAttendees(json: unknown): { name: string; email: string }[] | undefined {
+  if (typeof json !== 'string' || !json) return undefined;
+  try {
+    const list = JSON.parse(json) as { name?: string; email?: string }[];
+    return Array.isArray(list)
+      ? list.filter((a) => a?.email).map((a) => ({ name: a.name ?? '', email: a.email! }))
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function rowToAccount(r: Row): Account {
@@ -1618,18 +1631,21 @@ export class MailDb {
     meetingUrl?: string;
     color?: string;
     transparency?: 'opaque' | 'transparent';
+    attendees?: { name: string; email: string }[];
   }) {
     this.stmt(
         `INSERT INTO events
            (id, calendar_id, source, remote_id, title, description, location, start_ms, end_ms,
-            all_day, color, status, meeting_url, updated_at, event_type, transparency)
-         VALUES (?, ?, 'google', ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)
+            all_day, color, status, meeting_url, updated_at, event_type, transparency,
+            attendees_json)
+         VALUES (?, ?, 'google', ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title, description = excluded.description,
            location = excluded.location, start_ms = excluded.start_ms,
            end_ms = excluded.end_ms, all_day = excluded.all_day, color = excluded.color,
            meeting_url = excluded.meeting_url, event_type = excluded.event_type,
-           transparency = excluded.transparency, updated_at = excluded.updated_at`,
+           transparency = excluded.transparency, attendees_json = excluded.attendees_json,
+           updated_at = excluded.updated_at`,
       )
       .run(
         e.id,
@@ -1646,6 +1662,7 @@ export class MailDb {
         Date.now(),
         e.eventType,
         e.transparency === 'transparent' ? 'transparent' : null,
+        e.attendees?.length ? JSON.stringify(e.attendees) : null,
       );
   }
 

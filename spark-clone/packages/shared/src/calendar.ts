@@ -39,6 +39,8 @@ export interface CalendarEvent {
   readOnly?: boolean;
   /** 'transparent' shows as Free in other calendars; absent/'opaque' = Busy. */
   transparency?: 'opaque' | 'transparent';
+  /** Other invitees (Google events): not you, not rooms. For meeting prep. */
+  attendees?: { name: string; email: string }[];
 }
 
 /** The writable shape sent to `calendar:event:save` (id omitted = create). */

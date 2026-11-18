@@ -46,6 +46,8 @@ import {
 } from '../lib/writingStyle';
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
+import { useKanban } from '../state/kanban';
+import { DEFAULT_NEWS_SENDERS } from '../lib/aiCards/generators';
 import { loadContactZones, saveContactZones, useZonePrompt } from '../state/contactZones';
 import { normalizeSignatureHtml, signatureText } from '../lib/signature';
 import { mutatePrioritySender } from '../state/priority';
@@ -506,7 +508,89 @@ function AssistantTab() {
       </Row>
 
       <WritingStyleField configured={configured} />
+      <AiCardsFields />
     </div>
+  );
+}
+
+/**
+ * Inputs for the on-demand Home cards: whose Notion tasks "What's on my plate"
+ * lists, and which newsletter senders the news digest reads.
+ */
+function AiCardsFields() {
+  const board = useKanban((s) => s.board);
+  const notion = useKanban((s) => s.configured);
+  const [assignee, setAssignee] = useState('');
+  const [senders, setSenders] = useState('');
+
+  useEffect(() => {
+    void api.query('settings:get', { key: 'aiNotionAssignee' }).then((v) => setAssignee((v as string) || ''));
+    void api.query('settings:get', { key: 'aiNewsSenders' }).then((v) =>
+      setSenders((Array.isArray(v) && v.length ? (v as string[]) : DEFAULT_NEWS_SENDERS).join(', ')),
+    );
+    useKanban.getState().refresh();
+  }, []);
+
+  const people = [
+    ...new Set((board?.columns ?? []).flatMap((c) => c.cards.flatMap((card) => card.assignees ?? []))),
+  ].sort();
+
+  const saveSenders = () => {
+    const list = senders
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    void api.command('settings:set', { key: 'aiNewsSenders', value: list });
+    toast('Newsletter senders saved');
+  };
+
+  return (
+    <>
+      {notion && (
+        <Field
+          label="“What’s on my plate” tasks"
+          hint="Which Notion tasks the card picks from. Everyone uses the whole Sprint board."
+        >
+          <select
+            value={assignee}
+            onChange={(e) => {
+              setAssignee(e.target.value);
+              void api.command('settings:set', { key: 'aiNotionAssignee', value: e.target.value });
+            }}
+            aria-label="Notion tasks assigned to"
+            className={inputCls}
+          >
+            <option value="">Everyone</option>
+            {assignee && !people.includes(assignee) && <option value={assignee}>{assignee}</option>}
+            {people.map((p) => (
+              <option key={p} value={p}>
+                Assigned to {p}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      <Field
+        label="News digest senders"
+        hint="Newsletters the digest reads, comma separated: part of the sender’s address or name."
+      >
+        <div className="flex gap-2">
+          <input
+            value={senders}
+            onChange={(e) => setSenders(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveSenders()}
+            aria-label="News digest senders"
+            className={cn(inputCls, 'flex-1')}
+          />
+          <button
+            onClick={saveSenders}
+            className="bg-accent rounded-lg px-3 text-[12.5px] font-semibold text-white"
+          >
+            Save
+          </button>
+        </div>
+      </Field>
+    </>
   );
 }
 
