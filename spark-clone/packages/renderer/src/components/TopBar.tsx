@@ -318,9 +318,13 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-x-5">
-        <h1 className="text-[13px] font-bold tracking-tight">{VIEW_TITLES[view] ?? 'Uniox'}</h1>
-
-        <Separator />
+        {/* Home has no view title; the app name isn't repeated there. */}
+        {VIEW_TITLES[view] && (
+          <>
+            <h1 className="text-[13px] font-bold tracking-tight">{VIEW_TITLES[view]}</h1>
+            <Separator />
+          </>
+        )}
 
         {view === 'inbox' && (
           <button
