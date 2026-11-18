@@ -52,19 +52,22 @@ let deck: HTMLElement | null = null;
    The cards are clear and macOS blurs what's behind each one (a vibrancy
    window per card, in main). Main needs to know where the cards are: while a
    transition moves them, report once a frame; otherwise nothing runs.
-   Cards still sliding in or out get no blur. */
+   Cards sliding in or out get no blur (they paint their own fill, see
+   .moving in the page), and rects are the cards' layout boxes, so a small
+   settle (swap, rise) keeps the glass still under it. */
 let frosted = false;
 let glassRaf = 0;
 let glassUntil = 0;
 let lastGlass = '';
 
 function reportGlass(): void {
+  const s = stack();
   const rects = frosted
-    ? [...stack().querySelectorAll<HTMLElement>('.card:not(.enter):not(.leave)')].map((c) => {
-        const r = c.getBoundingClientRect();
+    ? [...s.querySelectorAll<HTMLElement>('.card:not(.moving):not(.gone)')].map((c) => {
+        const r = { x: s.offsetLeft + c.offsetLeft, y: s.offsetTop + c.offsetTop, width: c.offsetWidth, height: c.offsetHeight };
         // CSS clamps a radius to half the box (the resting capsule).
         const radius = Math.min(parseFloat(getComputedStyle(c).borderTopLeftRadius) || 0, r.width / 2, r.height / 2);
-        return { x: r.left, y: r.top, width: r.width, height: r.height, radius };
+        return { ...r, radius };
       })
     : [];
   const key = JSON.stringify(rects);
@@ -240,16 +243,18 @@ function layout(): void {
       (d.querySelector('.d2') as HTMLElement).hidden = behind < 2;
       desired.push(d);
     }
+    // The top mail carries the countdown for the whole deck (see arm).
+    if (!topMail.timer) arm(topMail);
   }
   for (const id of events.slice(0, MAX_EVENTS)) desired.push(live.get(id)!.el);
 
   const keep = new Set(desired);
   for (const child of [...s.children]) {
-    if (!keep.has(child as HTMLElement) && !child.classList.contains('leave')) child.remove();
+    if (!keep.has(child as HTMLElement) && !child.classList.contains('gone')) child.remove();
   }
   let ref: ChildNode | null = s.firstChild;
   for (const node of desired) {
-    while (ref && ref !== node && (ref as HTMLElement).classList.contains('leave')) ref = ref.nextSibling;
+    while (ref && ref !== node && (ref as HTMLElement).classList.contains('gone')) ref = ref.nextSibling;
     if (ref === node) {
       ref = ref.nextSibling;
       continue;
@@ -257,19 +262,88 @@ function layout(): void {
     const fresh = !node.isConnected;
     s.insertBefore(node, ref);
     // A mail coming off the deck rises into place (new cards slide in instead).
-    if (fresh && node.classList.contains('card') && !node.classList.contains('enter')) {
+    if (fresh && node.classList.contains('card') && !node.classList.contains('enter') && !node.classList.contains('swap')) {
       node.classList.add('rise');
       requestAnimationFrame(() => requestAnimationFrame(() => node.classList.remove('rise')));
     }
   }
+  // Centre the deck under the capsule it belongs to.
+  if (topMail && deck?.isConnected) deck.style.width = `${topMail.el.offsetWidth}px`;
 }
 
+/**
+ * Start (or resume) a card's countdown. Mail in the deck has none: the deck
+ * leaves together with the top mail. Giving each its own made the "+N" tick
+ * down one by one behind a capsule that never changed, and the older mail
+ * never showed anyway (it always ran out before the newer one on top).
+ */
 function arm(l: Live): void {
   if (l.timer) clearTimeout(l.timer);
   l.timer = null;
   if (!l.card.ttl || hovering) return;
+  const top = l.card.kind === 'mail';
+  if (top && mails[0] !== l.card.id) return;
   l.startedAt = Date.now();
-  l.timer = setTimeout(() => remove(l.card.id), l.left);
+  l.timer = setTimeout(() => remove(l.card.id, top), l.left);
+}
+
+function disarm(l: Live): void {
+  if (l.timer) clearTimeout(l.timer);
+  l.timer = null;
+}
+
+/** Mark a card as sliding in or out (no glass under it until it settles). */
+function slideIn(node: HTMLElement): void {
+  node.classList.add('enter', 'moving');
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    node.removeEventListener('transitionend', onEnd);
+    node.classList.remove('moving');
+    followGlass();
+  };
+  const onEnd = (e: TransitionEvent) => {
+    if (e.target === node && e.propertyName === 'transform') settle();
+  };
+  node.addEventListener('transitionend', onEnd);
+  setTimeout(settle, 500); // transitionend can be skipped (reduced motion, hidden window)
+  // One frame later, drop the offset so the transition plays.
+  requestAnimationFrame(() => requestAnimationFrame(() => node.classList.remove('enter')));
+}
+
+/**
+ * The top capsule as it looks right now, lifted out of the flow and sunk
+ * toward the deck while the newer mail settles in on top of it.
+ */
+function tuck(node: HTMLElement): void {
+  const s = stack();
+  const style = getComputedStyle(node);
+  const ghost = node.cloneNode(true) as HTMLElement;
+  ghost.classList.remove('enter', 'moving', 'swap', 'rise');
+  ghost.classList.add('tuck', 'gone');
+  ghost.removeAttribute('role');
+  Object.assign(ghost.style, {
+    position: 'absolute',
+    top: `${node.offsetTop}px`,
+    left: `${node.offsetLeft}px`,
+    width: `${node.offsetWidth}px`,
+    marginTop: '0',
+    transform: style.transform === 'none' ? '' : style.transform,
+    opacity: style.opacity,
+    transition: 'none',
+  });
+  s.insertBefore(ghost, node);
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      Object.assign(ghost.style, {
+        transition: 'transform 240ms cubic-bezier(0.4, 0, 0.6, 1), opacity 160ms ease-in',
+        transform: 'translateY(8px) scale(0.94)',
+        opacity: '0',
+      });
+    }),
+  );
+  setTimeout(() => ghost.remove(), 320);
 }
 
 function setHover(on: boolean): void {
@@ -320,11 +394,16 @@ function show(card: NotifyCard): void {
     if (card.kind === 'event') events = events.map((id) => (id === prev.card.id ? card.id : id));
     else mails = [card.id, ...mails.filter((id) => id !== prev.card.id)];
   } else {
-    l.el.classList.add('enter');
+    const prevTop = card.kind === 'mail' && mails[0] ? live.get(mails[0]) : undefined;
+    if (prevTop) disarm(prevTop); // it joins the deck, which follows the top's countdown
     live.set(card.id, l);
     listFor(card).unshift(card.id);
-    // One frame later, drop the offset so the transition plays.
-    requestAnimationFrame(() => requestAnimationFrame(() => l.el.classList.remove('enter')));
+    if (prevTop?.el.isConnected) {
+      // A capsule is already up: change what it says, don't fly it out and back.
+      tuck(prevTop.el);
+      l.el.classList.add('swap');
+      requestAnimationFrame(() => requestAnimationFrame(() => l.el.classList.remove('swap')));
+    } else slideIn(l.el);
   }
   layout();
   followGlass();
@@ -332,13 +411,22 @@ function show(card: NotifyCard): void {
   if (card.kind === 'event' && !tickTimer) tickTimer = setTimeout(tick, TICK_MS);
 }
 
-function remove(id: string): void {
+/** Take a card away; `withDeck` also clears the older mail tucked behind it. */
+function remove(id: string, withDeck = false): void {
   const l = live.get(id);
   if (!l) return;
   if (l.timer) clearTimeout(l.timer);
   live.delete(id);
   mails = mails.filter((x) => x !== id);
   events = events.filter((x) => x !== id);
+  if (withDeck && l.card.kind === 'mail') {
+    for (const other of mails) {
+      const o = live.get(other);
+      if (o) disarm(o);
+      live.delete(other);
+    }
+    mails = [];
+  }
   let finished = false;
   const done = () => {
     if (finished) return;
@@ -350,7 +438,7 @@ function remove(id: string): void {
       send({ kind: 'empty', shown: received });
     }
   };
-  if (l.el.isConnected && !l.el.classList.contains('enter')) {
+  if (l.el.isConnected && !l.el.classList.contains('enter') && !l.el.classList.contains('swap')) {
     // Lift the card out of the flow where it stands, so what's below (or the
     // next mail off the deck) moves up while it slides away on top.
     const { offsetTop, offsetLeft, offsetWidth } = l.el;
@@ -362,7 +450,7 @@ function remove(id: string): void {
       zIndex: '3',
       marginTop: '0',
     });
-    l.el.classList.add('leave');
+    l.el.classList.add('leave', 'moving', 'gone');
     l.el.addEventListener('transitionend', done, { once: true });
     setTimeout(done, 400); // transitionend can be skipped (reduced motion, hidden window)
   } else done();
@@ -374,7 +462,7 @@ function remove(id: string): void {
 }
 
 function syncHover(): void {
-  setHover(!!document.querySelector('#stack > .card:not(.leave):hover, .deck:hover'));
+  setHover(!!document.querySelector('#stack > .card:not(.gone):hover, .deck:hover'));
 }
 
 function act(id: string, action: CardAction): void {

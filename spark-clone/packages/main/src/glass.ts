@@ -2,6 +2,9 @@ import { BrowserWindow, type Rectangle } from 'electron';
 import type { GlassRect } from '@app/shared';
 import { backdropBounds } from './glass-geometry';
 
+/** Corner radii this close share a Liquid Glass window (see sync). */
+const RADIUS_SLACK = 3;
+
 /** The bit of electron-liquid-glass we use (an optional, macOS-only dependency). */
 interface LiquidGlassApi {
   isGlassSupported(): boolean;
@@ -76,17 +79,21 @@ export class GlassBackdrops {
     const bounds = panels.map((p) => p.bounds);
     panels.forEach(({ radius, bounds: b }, i) => {
       let w: BrowserWindow | undefined = this.pool[i];
-      // Liquid Glass keeps the corner radius it was made with: remake for a rounder or squarer panel.
-      if (w && !w.isDestroyed() && liquid && this.radii.get(w) !== radius) w.destroy();
+      // Liquid Glass keeps the corner radius it was made with: remake for a
+      // clearly rounder or squarer panel. A pixel or two either way (a capsule
+      // opening into a card, a radius mid-transition) keeps the window: a
+      // remade one shows nothing until its glass loads, so remaking it every
+      // frame of an animation left the panel bare and flickering.
+      if (w && !w.isDestroyed() && liquid && Math.abs((this.radii.get(w) ?? radius) - radius) > RADIUS_SLACK) w.destroy();
       if (!w || w.isDestroyed()) w = this.pool[i] = this.create(radius);
       w.setBounds(b, false);
       this.wanted.add(w);
-      if (!w.isVisible() && !this.unglazed.has(w)) w.showInactive();
+      if (!w.isVisible() && !this.unglazed.has(w)) reveal(w);
     });
     for (const w of this.pool.slice(bounds.length)) {
       if (w.isDestroyed()) continue;
       this.wanted.delete(w);
-      if (w.isVisible()) w.hide();
+      conceal(w);
     }
   }
 
@@ -94,7 +101,7 @@ export class GlassBackdrops {
     for (const w of this.pool) {
       if (w.isDestroyed()) continue;
       this.wanted.delete(w);
-      if (w.isVisible()) w.hide();
+      conceal(w);
     }
   }
 
@@ -140,12 +147,29 @@ export class GlassBackdrops {
         if (w.isDestroyed()) return;
         liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
         this.unglazed.delete(w);
-        if (this.wanted.has(w) && !w.isVisible()) w.showInactive();
+        if (this.wanted.has(w) && !w.isVisible()) reveal(w);
       });
     }
     void w.loadURL('about:blank');
     return w;
   }
+}
+
+function reveal(w: BrowserWindow): void {
+  w.showInactive();
+  w.setOpacity(1);
+}
+
+/**
+ * Hide at once. macOS fades a panel out when it's ordered out, and a glass
+ * window caught in that fade lost its rounded mask: a grey rectangle lingered
+ * after the notification had gone. Dropping the opacity first makes the fade
+ * invisible.
+ */
+function conceal(w: BrowserWindow): void {
+  if (!w.isVisible()) return;
+  w.setOpacity(0);
+  w.hide();
 }
 
 /** Liquid Glass draws its own rounded corners, so its window covers the whole panel. */
