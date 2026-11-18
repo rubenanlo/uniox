@@ -61,6 +61,7 @@ export class GlassBackdrops {
   private readonly unglazed = new WeakSet<BrowserWindow>();
   /** Windows the last sync wanted on screen, so a late glass view knows whether to show. */
   private readonly wanted = new WeakSet<BrowserWindow>();
+  private fadeTimer: NodeJS.Timeout | null = null;
   private dark = false;
   /** The glass view id each Liquid Glass window holds, to switch its variant later. */
   private readonly glassIds = new WeakMap<BrowserWindow, number>();
@@ -107,6 +108,8 @@ export class GlassBackdrops {
       .map((r) => ({ radius: Math.round(r.radius), bounds: liquid ? fullBounds(r, origin) : backdropBounds(r, origin) }))
       .filter((p): p is { radius: number; bounds: Rectangle } => !!p.bounds);
     const bounds = panels.map((p) => p.bounds);
+    // A reopen mid-fade: the panels come back at full strength.
+    const wasFading = this.stopFade();
     panels.forEach(({ radius, bounds: b }, i) => {
       let w: BrowserWindow | undefined = this.pool[i];
       // Liquid Glass keeps the corner radius it was made with: remake for a
@@ -119,6 +122,7 @@ export class GlassBackdrops {
       w.setBounds(b, false);
       this.wanted.add(w);
       if (!w.isVisible() && !this.unglazed.has(w)) reveal(w);
+      else if (wasFading && w.isVisible()) w.setOpacity(1);
     });
     for (const w of this.pool.slice(bounds.length)) {
       if (w.isDestroyed()) continue;
@@ -127,7 +131,37 @@ export class GlassBackdrops {
     }
   }
 
+  /**
+   * Fade the panels out with the island's page (its close fade), then hide
+   * them. Hiding them at once left the page's text floating over the screen,
+   * bare, for the length of that fade (Liquid glass draws no fill of its own).
+   */
+  fadeOut(ms: number): void {
+    this.stopFade();
+    const shown = this.pool.filter((w) => !w.isDestroyed() && w.isVisible());
+    // A panel whose glass loads late must not show up mid-close.
+    for (const w of this.pool) this.wanted.delete(w);
+    if (!shown.length) return this.hide();
+    const start = Date.now();
+    this.fadeTimer = setInterval(() => {
+      const t = Math.min(1, (Date.now() - start) / ms);
+      // Ease in, like the page's fade (cubic-bezier(0.4, 0, 1, 1)).
+      const opacity = 1 - t * t;
+      for (const w of shown) if (!w.isDestroyed()) w.setOpacity(opacity);
+      if (t >= 1) this.hide();
+    }, 16);
+  }
+
+  /** Stop a running fade; true when one was running. */
+  private stopFade(): boolean {
+    if (!this.fadeTimer) return false;
+    clearInterval(this.fadeTimer);
+    this.fadeTimer = null;
+    return true;
+  }
+
   hide(): void {
+    this.stopFade();
     for (const w of this.pool) {
       if (w.isDestroyed()) continue;
       this.wanted.delete(w);
@@ -136,6 +170,7 @@ export class GlassBackdrops {
   }
 
   destroy(): void {
+    this.stopFade();
     for (const w of this.pool) if (!w.isDestroyed()) w.destroy();
     this.pool.length = 0;
   }
