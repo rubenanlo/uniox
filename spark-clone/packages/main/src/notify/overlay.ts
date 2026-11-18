@@ -31,6 +31,8 @@ export class NotifyOverlay {
   private readonly payloads = new Map<string, NotifyPayload>();
   /** Frosted island: the cards are clear and macOS blurs what's behind each one. */
   private frosted = false;
+  /** Share (0–90) of the theme's surface laid over the glass: Settings → Transparency behind. */
+  private frost = 0;
   private readonly backdrops = new GlassBackdrops();
 
   constructor(
@@ -57,7 +59,18 @@ export class NotifyOverlay {
     if (frosted === this.frosted) return;
     this.frosted = frosted;
     if (!frosted) this.backdrops.hide();
-    this.post({ kind: 'island', frosted, liquid: frosted && this.backdrops.liquid });
+    this.postIsland();
+  }
+
+  /** Settings → Appearance → Transparency behind, as a frost share (0 clear … 90 nearly solid). */
+  setFrost(frost: number): void {
+    if (frost === this.frost) return;
+    this.frost = frost;
+    this.postIsland();
+  }
+
+  private postIsland(): void {
+    this.post({ kind: 'island', frosted: this.frosted, liquid: this.frosted && this.backdrops.liquid, frost: this.frost });
   }
 
   async show(payload: NotifyPayload): Promise<void> {
@@ -176,7 +189,7 @@ export class NotifyOverlay {
     this.win = win;
     this.loaded = win.loadURL(OVERLAY_URL).then(() => {
       this.post({ kind: 'theme', dark: this.ctx?.dark ?? nativeTheme.shouldUseDarkColors });
-      this.post({ kind: 'island', frosted: this.frosted, liquid: this.frosted && this.backdrops.liquid });
+      this.postIsland();
     });
     await this.loaded;
     return win;

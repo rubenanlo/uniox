@@ -5,6 +5,10 @@ import {
   DEFAULT_SCHEDULING,
   ISLAND_STYLE_KEY,
   ISLAND_DISPLAY_KEY,
+  ISLAND_GLASS_CLEAR_KEY,
+  DEFAULT_ISLAND_GLASS_CLEAR,
+  islandGlassClear,
+  islandGlassFrost,
   DEFAULT_ISLAND_DISPLAY,
   type IslandDisplay,
   normalizeAvailability,
@@ -18,6 +22,8 @@ import {
 } from '@app/shared';
 import {
   CalendarClock,
+  Check,
+  ChevronDown,
   FileText,
   Info,
   KanbanSquare,
@@ -29,7 +35,6 @@ import {
   SunMoon,
   Trash2,
   UserRound,
-  VolumeX,
   X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -78,7 +83,7 @@ const SECTIONS: { id: Tab; label: string; icon: typeof SunMoon; blurb: string }[
     id: 'appearance',
     label: 'Appearance',
     icon: SunMoon,
-    blurb: 'Set the theme and the accent color that tints the whole app.',
+    blurb: 'How Uniox looks, and how it tells you about new mail.',
   },
   {
     id: 'accounts',
@@ -141,6 +146,61 @@ const inputCls =
 
 type NotifyMode = 'all' | 'smart' | 'off';
 
+/** A titled, boxed group of rows: how Settings → Appearance is laid out. */
+function Group({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-5 first:mt-1">
+      <div className="flex min-h-[26px] items-center justify-between gap-2 px-1 pb-1.5">
+        <h4 className="text-ink-muted text-[11px] font-semibold tracking-wide uppercase">{label}</h4>
+        {action}
+      </div>
+      <div className="border-hairline bg-app rounded-xl border px-3">{children}</div>
+    </section>
+  );
+}
+
+/** A row of mutually exclusive choices drawn as one pill (macOS segmented control). */
+function Segmented<Id extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { id: Id; label: string; hint?: string }[];
+  value: Id;
+  onChange: (id: Id) => void;
+}) {
+  return (
+    <div className="bg-sunken flex items-center rounded-lg p-0.5" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          role="radio"
+          aria-checked={value === o.id}
+          title={o.hint}
+          onClick={() => onChange(o.id)}
+          className={cn(
+            'rounded-md px-2.5 py-1 text-[12px] whitespace-nowrap',
+            value === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** New-mail notification policy; the sync process reads this at ingest time. */
 function NotificationsRow() {
   const [mode, setMode] = useState<NotifyMode>('all');
@@ -153,30 +213,18 @@ function NotificationsRow() {
     setMode(m);
     void api.command('settings:set', { key: 'notifications', value: m });
   };
-  const options: { id: NotifyMode; label: string; hint: string }[] = [
-    { id: 'all', label: 'All new mail', hint: 'Every new email notifies, like Mail or Gmail' },
-    { id: 'smart', label: 'Important only', hint: 'Personal mail and invites from known senders' },
-    { id: 'off', label: 'Off', hint: 'No new-mail notifications' },
-  ];
   return (
-    <Row label="Notifications">
-      <div className="bg-sunken flex items-center rounded-lg p-0.5" role="radiogroup" aria-label="Notifications">
-        {options.map((o) => (
-          <button
-            key={o.id}
-            role="radio"
-            aria-checked={mode === o.id}
-            title={o.hint}
-            onClick={() => pick(o.id)}
-            className={cn(
-              'rounded-md px-2.5 py-1 text-[12px]',
-              mode === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
-            )}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
+    <Row label="Notify me about">
+      <Segmented
+        label="Notify me about"
+        value={mode}
+        onChange={pick}
+        options={[
+          { id: 'all', label: 'All mail', hint: 'Every new email notifies, like Mail or Gmail' },
+          { id: 'smart', label: 'Important', hint: 'Personal mail and invites from known senders' },
+          { id: 'off', label: 'Off', hint: 'No new-mail notifications' },
+        ]}
+      />
     </Row>
   );
 }
@@ -194,66 +242,96 @@ function DefaultMailAppRow() {
     });
   };
   return (
-    <Field
-      label="Default mail app"
-      hint="Email links in your browser and other apps open a new message in Uniox."
-    >
+    <Row label="Default mail app">
       {isDefault ? (
-        <p className="text-ink-muted text-[12px]">Uniox is your default mail app.</p>
+        <span
+          className="text-ink-muted inline-flex items-center gap-1.5 text-[12px]"
+          title="Email links in your browser and other apps open a new message in Uniox."
+        >
+          <Check size={13} strokeWidth={2.4} />
+          Uniox is the default
+        </span>
       ) : (
-        <div>
-          <button
-            onClick={makeDefault}
-            disabled={isDefault === null}
-            className="bg-accent rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            Make Uniox the default mail app
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={makeDefault}
+          disabled={isDefault === null}
+          title="Email links in your browser and other apps will open a new message in Uniox."
+          className="bg-accent rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white hover:opacity-90 disabled:opacity-50"
+        >
+          Make Uniox the default
+        </button>
       )}
-    </Field>
+    </Row>
   );
 }
 
-/** The notification island's look: a solid tinted card, or a clear panel over macOS's blur. */
-function IslandStyleField() {
+/**
+ * The notification island (⌥⌘N list, reply widget, toasts): its look, and for
+ * Liquid glass how much of what's behind shows through.
+ */
+function IslandGroup() {
   const [style, setStyle] = useState<IslandStyle>(DEFAULT_ISLAND_STYLE);
+  const [clear, setClear] = useState(DEFAULT_ISLAND_GLASS_CLEAR);
   useEffect(() => {
     void api.query('settings:get', { key: ISLAND_STYLE_KEY }).then((v) => {
       if (v === 'glass' || v === 'frosted') setStyle(v);
     });
+    void api.query('settings:get', { key: ISLAND_GLASS_CLEAR_KEY }).then((v) => setClear(islandGlassClear(v)));
   }, []);
   const pick = (next: IslandStyle) => {
     setStyle(next);
     void api.command('settings:set', { key: ISLAND_STYLE_KEY, value: next });
   };
-  const options: { id: IslandStyle; name: string; blurb: string }[] = [
-    { id: 'glass', name: 'Solid card', blurb: 'Opaque' },
-    { id: 'frosted', name: 'Liquid glass', blurb: 'See-through' },
+  const slide = (next: number) => {
+    setClear(next);
+    void api.command('settings:set', { key: ISLAND_GLASS_CLEAR_KEY, value: next });
+  };
+  const options: { id: IslandStyle; name: string; blurb: string; hint: string }[] = [
+    {
+      id: 'glass',
+      name: 'Solid card',
+      blurb: 'Opaque',
+      hint: 'A solid tinted card that keeps text crisp on any background. Follows light and dark.',
+    },
+    {
+      id: 'frosted',
+      name: 'Liquid glass',
+      blurb: 'See-through',
+      hint: 'A clear panel that blurs whatever is behind it, like macOS Liquid Glass. Follows light and dark.',
+    },
   ];
   return (
-    <Field
-      label="Island style"
-      hint={
-        style === 'frosted'
-          ? 'A clear panel that blurs whatever is behind it, like macOS Liquid Glass. Follows light and dark.'
-          : 'A solid tinted card that keeps text crisp on any background. Follows light and dark.'
+    <Group
+      label="Notification island"
+      action={
+        <button
+          type="button"
+          onClick={() => void api.command('quick-reply:show', { mode: 'list' })}
+          className="border-hairline bg-surface text-ink hover:bg-sunken rounded-lg border px-2.5 py-1 text-[12px]"
+        >
+          Preview <span className="text-ink-faint ml-1">⌥⌘N</span>
+        </button>
       }
     >
-      <div className="flex items-start gap-3">
-        <div className="grid flex-1 grid-cols-2 gap-2" role="radiogroup" aria-label="Island style">
+      <div className="border-hairline border-b py-3 last:border-b-0">
+        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Island style">
           {options.map((o) => (
             <button
               key={o.id}
+              type="button"
               role="radio"
               aria-checked={style === o.id}
+              title={o.hint}
               onClick={() => pick(o.id)}
               className={cn(
-                'flex flex-col gap-1.5 rounded-xl p-1.5 text-left',
-                style === o.id ? 'bg-accent-soft' : 'hover:bg-sunken',
+                'flex flex-col gap-1.5 rounded-xl border p-1.5 text-left',
+                style === o.id
+                  ? 'bg-accent-soft border-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]'
+                  : 'hover:bg-sunken border-transparent',
               )}
             >
-              <IslandStylePreview frosted={o.id === 'frosted'} />
+              <IslandStylePreview frosted={o.id === 'frosted'} clear={clear} />
               <span className="flex items-baseline gap-1.5 px-0.5 text-[12px]">
                 <span className={style === o.id ? 'font-semibold' : 'text-ink-muted'}>{o.name}</span>
                 <span className="text-ink-faint text-[11px]">{o.blurb}</span>
@@ -261,19 +339,39 @@ function IslandStyleField() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => void api.command('quick-reply:show', { mode: 'list' })}
-          className="border-hairline text-ink-muted hover:text-ink mt-1 shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px]"
-        >
-          Preview <span className="text-ink-faint ml-1">⌥⌘N</span>
-        </button>
       </div>
-    </Field>
+      {style === 'frosted' && (
+        <div className="border-hairline flex flex-col gap-2 border-b py-3 last:border-b-0">
+          <label htmlFor="island-clear" className="text-[12.5px]">
+            Transparency behind
+          </label>
+          <div className="flex items-center gap-3">
+            <input
+              id="island-clear"
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={clear}
+              onChange={(e) => slide(Number(e.target.value))}
+              aria-valuetext={`${clear}% clear`}
+              className="accent-accent min-w-0 flex-1"
+            />
+            <span className="w-9 text-right text-[12px] font-semibold tabular-nums">{clear}%</span>
+          </div>
+          <div className="text-ink-muted flex justify-between pr-12 text-[11px]">
+            <span>Frosted</span>
+            <span>Clear</span>
+          </div>
+        </div>
+      )}
+      <IslandDisplayRow />
+    </Group>
   );
 }
 
 /** Which screen ⌥⌘N opens on, for setups with more than one display. */
-function IslandDisplayField() {
+function IslandDisplayRow() {
   const [display, setDisplay] = useState<IslandDisplay>(DEFAULT_ISLAND_DISPLAY);
   useEffect(() => {
     void api.query('settings:get', { key: ISLAND_DISPLAY_KEY }).then((v) => {
@@ -284,56 +382,51 @@ function IslandDisplayField() {
     setDisplay(next);
     void api.command('settings:set', { key: ISLAND_DISPLAY_KEY, value: next });
   };
-  const options: { id: IslandDisplay; name: string }[] = [
-    { id: 'pointer', name: 'Where the mouse is' },
-    { id: 'primary', name: 'Primary display' },
-  ];
   return (
-    <Field
-      label="Open ⌥⌘N on"
-      hint={
-        display === 'primary'
-          ? 'The notification list and quick reply always open on your main display (the one with the menu bar).'
-          : 'The notification list and quick reply open on whichever display the mouse is on.'
-      }
-    >
-      <div className="bg-sunken inline-flex rounded-lg p-0.5" role="radiogroup" aria-label="Open ⌥⌘N on">
-        {options.map((o) => (
-          <button
-            key={o.id}
-            role="radio"
-            aria-checked={display === o.id}
-            onClick={() => pick(o.id)}
-            className={cn(
-              'rounded-md px-2.5 py-1 text-[12px]',
-              display === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
-            )}
-          >
-            {o.name}
-          </button>
-        ))}
-      </div>
-    </Field>
+    <Row label="Open ⌥⌘N on">
+      <Segmented
+        label="Open ⌥⌘N on"
+        value={display}
+        onChange={pick}
+        options={[
+          {
+            id: 'pointer',
+            label: 'Where the mouse is',
+            hint: 'The notification list and quick reply open on whichever display the mouse is on.',
+          },
+          {
+            id: 'primary',
+            label: 'Primary display',
+            hint: 'The notification list and quick reply always open on your main display (the one with the menu bar).',
+          },
+        ]}
+      />
+    </Row>
   );
 }
 
-/** A tiny desktop with an island on it: opaque for Solid card, see-through and blurred for Liquid glass. */
-function IslandStylePreview({ frosted }: { frosted: boolean }) {
+/**
+ * A tiny desktop with an island on it: opaque for Solid card, see-through and
+ * blurred for Liquid glass, frosted over as Transparency behind goes down.
+ */
+function IslandStylePreview({ frosted, clear }: { frosted: boolean; clear: number }) {
+  const frost = islandGlassFrost(clear);
+  const layer = `color-mix(in srgb, var(--color-surface) ${frost}%, transparent)`;
   return (
     <span
       aria-hidden
-      className="border-hairline relative block h-[74px] overflow-hidden rounded-lg border"
+      className="border-hairline relative block h-[70px] overflow-hidden rounded-lg border"
       style={{ background: 'linear-gradient(135deg,#5e6fd8,#9b7fe0 50%,#f0a8c8)' }}
     >
-      <span className="absolute left-2 top-2 h-5 w-14 rounded bg-[#f6a35c]" />
-      <span className="absolute left-12 top-9 h-6 w-10 rounded bg-[#4fbf7a]" />
-      <span className="absolute right-3 top-3 h-4 w-12 rounded bg-white/90" />
+      <span className="absolute top-2 left-2 h-5 w-14 rounded bg-[#f6a35c]" />
+      <span className="absolute top-9 left-12 h-6 w-10 rounded bg-[#4fbf7a]" />
+      <span className="absolute top-3 right-3 h-4 w-12 rounded bg-white/90" />
       <span
-        className="absolute inset-x-5 bottom-2.5 top-4 flex flex-col gap-1.5 rounded-[10px] p-2"
+        className="absolute inset-x-5 top-4 bottom-2.5 flex flex-col gap-1.5 rounded-[10px] p-2"
         style={
           frosted
             ? {
-                background: 'rgb(255 255 255 / 0.22)',
+                background: `linear-gradient(${layer}, ${layer}), rgb(255 255 255 / 0.22)`,
                 backdropFilter: 'blur(8px) saturate(1.6)',
                 border: '1px solid rgb(255 255 255 / 0.6)',
               }
@@ -344,16 +437,16 @@ function IslandStylePreview({ frosted }: { frosted: boolean }) {
               }
         }
       >
-        <span className={cn('h-1 w-1/2 rounded-full', frosted ? 'bg-white' : 'bg-ink/70')} />
-        <span className={cn('h-1 w-full rounded-full', frosted ? 'bg-white/60' : 'bg-ink/25')} />
-        <span className={cn('h-1 w-3/4 rounded-full', frosted ? 'bg-white/60' : 'bg-ink/25')} />
+        <span className={cn('h-1 w-1/2 rounded-full', frosted && frost < 45 ? 'bg-white' : 'bg-ink/70')} />
+        <span className={cn('h-1 w-full rounded-full', frosted && frost < 45 ? 'bg-white/60' : 'bg-ink/25')} />
+        <span className={cn('h-1 w-3/4 rounded-full', frosted && frost < 45 ? 'bg-white/60' : 'bg-ink/25')} />
       </span>
     </span>
   );
 }
 
 /** Who draws notifications: Uniox's own cards (default) or the macOS banner. */
-function NotificationStyleField() {
+function NotificationStyleRow() {
   const [style, setStyle] = useState<NotifyStyle>(DEFAULT_NOTIFY_STYLE);
   useEffect(() => {
     void api.query('settings:get', { key: 'notificationStyle' }).then((v) => {
@@ -364,51 +457,42 @@ function NotificationStyleField() {
     setStyle(next);
     void api.command('settings:set', { key: 'notificationStyle', value: next });
   };
-  const options: { id: NotifyStyle; label: string }[] = [
-    { id: 'uniox', label: 'Uniox' },
-    { id: 'system', label: 'macOS' },
-  ];
   return (
-    <Field
-      label="Notification style"
-      hint={
-        style === 'uniox'
-          ? 'Uniox cards with a preview and quick actions. They show even when macOS Focus is on. Press ⌥⌘N to see the ones you missed.'
-          : 'The standard macOS banner, managed in System Settings → Notifications.'
-      }
-    >
-      <div className="flex items-center gap-2">
-        <div className="bg-sunken flex items-center rounded-lg p-0.5" role="radiogroup" aria-label="Notification style">
-          {options.map((o) => (
-            <button
-              key={o.id}
-              role="radio"
-              aria-checked={style === o.id}
-              onClick={() => pick(o.id)}
-              className={cn(
-                'rounded-md px-2.5 py-1 text-[12px]',
-                style === o.id ? 'bg-surface text-ink font-semibold shadow-sm' : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+    <Row label="Banner">
+      <div className="flex items-center gap-3">
         {style === 'uniox' && (
           <button
+            type="button"
             onClick={() => void api.command('notify:preview', undefined)}
-            className="border-hairline text-ink-muted hover:text-ink rounded-lg border px-2.5 py-1 text-[12px]"
+            className="text-accent text-[12px] hover:underline"
           >
             Show a preview
           </button>
         )}
+        <Segmented
+          label="Banner"
+          value={style}
+          onChange={pick}
+          options={[
+            {
+              id: 'uniox',
+              label: 'Uniox',
+              hint: 'Uniox cards with a preview and quick actions. They show even when macOS Focus is on.',
+            },
+            {
+              id: 'system',
+              label: 'macOS',
+              hint: 'The standard macOS banner, managed in System Settings → Notifications.',
+            },
+          ]}
+        />
       </div>
-    </Field>
+    </Row>
   );
 }
 
-/** The new-mail chime. Selecting a sound plays it, so choosing is auditioning. */
-function NotificationSoundField() {
+/** The new-mail chime. Choosing a sound plays it, so choosing is auditioning. */
+function NotificationSoundRow() {
   const [sound, setSound] = useState<NotifySound>(DEFAULT_NOTIFY_SOUND);
   useEffect(() => {
     void api.query('settings:get', { key: 'notificationSound' }).then((v) => {
@@ -423,27 +507,28 @@ function NotificationSoundField() {
     if (s !== 'None') void api.command('notify-sound:preview', { sound: s });
   };
   return (
-    <Field label="New-mail sound" hint="Plays with the notification banner. Select a sound to hear it.">
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="New-mail sound">
-        {(['None', ...NOTIFY_SOUNDS] as NotifySound[]).map((s) => (
-          <button
-            key={s}
-            role="radio"
-            aria-checked={sound === s}
-            onClick={() => pick(s)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px]',
-              sound === s
-                ? 'border-accent bg-accent-soft text-accent font-semibold'
-                : 'border-hairline bg-sunken text-ink-muted hover:text-ink',
-            )}
-          >
-            {s === 'None' && <VolumeX size={12} />}
-            {s === 'None' ? 'Silent' : s}
-          </button>
-        ))}
-      </div>
-    </Field>
+    <Row label="Sound">
+      <span className="relative inline-flex">
+        <select
+          value={sound}
+          onChange={(e) => pick(e.target.value as NotifySound)}
+          aria-label="New-mail sound"
+          title="Plays with the notification banner. Choosing a sound plays it."
+          className="border-hairline bg-surface text-ink focus:ring-accent appearance-none rounded-lg border py-1 pr-7 pl-2.5 text-[12px] focus:ring-2 focus:outline-none"
+        >
+          {(['None', ...NOTIFY_SOUNDS] as NotifySound[]).map((s) => (
+            <option key={s} value={s}>
+              {s === 'None' ? 'Silent' : s}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={12}
+          aria-hidden
+          className="text-ink-muted pointer-events-none absolute top-1/2 right-2 -translate-y-1/2"
+        />
+      </span>
+    </Row>
   );
 }
 
@@ -839,72 +924,57 @@ function AppearanceTab() {
   const themeAccent = dark
     ? DARK_PALETTE_INFO.find((p) => p.id === darkPalette)?.accent
     : LIGHT_PALETTE_INFO.find((p) => p.id === lightPalette)?.accent;
-  const options: { id: ThemePref; label: string }[] = [
-    { id: 'system', label: 'System' },
-    { id: 'light', label: 'Light' },
-    { id: 'dark', label: 'Dark' },
-  ];
   return (
-    <div>
-      <NameRow />
-      <Row label="Theme">
-        <div
-          className="bg-sunken flex items-center rounded-lg p-0.5"
-          role="radiogroup"
-          aria-label="Theme"
-        >
-          {options.map((o) => (
-            <button
-              key={o.id}
-              role="radio"
-              aria-checked={theme === o.id}
-              onClick={() => setTheme(o.id)}
-              className={cn(
-                'rounded-md px-2.5 py-1 text-[12px]',
-                theme === o.id
-                  ? 'bg-surface text-ink font-semibold shadow-sm'
-                  : 'text-ink-muted hover:text-ink',
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </Row>
-      <Field label="Dark theme" hint="Colors used when the app is dark.">
-        <PalettePicker
-          label="Dark theme"
-          options={DARK_PALETTE_INFO}
-          value={darkPalette}
-          onSelect={setDarkPalette}
-        />
-      </Field>
-      <Field label="Light theme" hint="Colors used when the app is light.">
-        <PalettePicker
-          label="Light theme"
-          options={LIGHT_PALETTE_INFO}
-          value={lightPalette}
-          onSelect={setLightPalette}
-        />
-      </Field>
-      <Field
-        label="Accent color"
-        hint="Tints buttons, links, and selected rows across the app. Overrides the theme's accent."
-      >
-        <ColorPicker
-          ariaLabel="Accent color"
-          value={accentColor}
-          defaultColor={themeAccent ?? '#2f63e7'}
-          onSelect={(hex) => setAccentColor(hex)}
-          onReset={() => setAccentColor(null)}
-        />
-      </Field>
-      <DefaultMailAppRow />
-      <NotificationsRow />
-      <NotificationStyleField />
-      <IslandStyleField />
-      <IslandDisplayField />
-      <NotificationSoundField />
+    <div className="pb-2">
+      <Group label="Theme">
+        <Row label="Mode">
+          <Segmented<ThemePref>
+            label="Mode"
+            value={theme}
+            onChange={setTheme}
+            options={[
+              { id: 'system', label: 'System' },
+              { id: 'light', label: 'Light' },
+              { id: 'dark', label: 'Dark' },
+            ]}
+          />
+        </Row>
+        <Field label="Light colors">
+          <PalettePicker
+            label="Light colors"
+            options={LIGHT_PALETTE_INFO}
+            value={lightPalette}
+            onSelect={setLightPalette}
+          />
+        </Field>
+        <Field label="Dark colors">
+          <PalettePicker
+            label="Dark colors"
+            options={DARK_PALETTE_INFO}
+            value={darkPalette}
+            onSelect={setDarkPalette}
+          />
+        </Field>
+        <Field label="Accent" hint="Tints buttons, links and selected rows. Overrides the theme's accent.">
+          <ColorPicker
+            ariaLabel="Accent color"
+            value={accentColor}
+            defaultColor={themeAccent ?? '#2f63e7'}
+            onSelect={(hex) => setAccentColor(hex)}
+            onReset={() => setAccentColor(null)}
+          />
+        </Field>
+      </Group>
+      <IslandGroup />
+      <Group label="New mail">
+        <NotificationsRow />
+        <NotificationStyleRow />
+        <NotificationSoundRow />
+      </Group>
+      <Group label="General">
+        <NameRow />
+        <DefaultMailAppRow />
+      </Group>
     </div>
   );
 }

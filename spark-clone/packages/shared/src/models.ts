@@ -315,6 +315,23 @@ export type IslandStyle = 'glass' | 'frosted';
 export const DEFAULT_ISLAND_STYLE: IslandStyle = 'glass';
 export const ISLAND_STYLE_KEY = 'islandStyle';
 /**
+ * Settings → Appearance → Transparency behind (Liquid glass only): how much
+ * of what's behind the island shows through, 0 (frosted, nearly solid) to
+ * 100 (clear, no fill of its own). 100 is the look before the setting existed.
+ */
+export const ISLAND_GLASS_CLEAR_KEY = 'islandGlassClear';
+export const DEFAULT_ISLAND_GLASS_CLEAR = 100;
+/** A stored transparency, clamped to 0–100 in steps of 5; anything else is the default. */
+export function islandGlassClear(value: unknown): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  if (!Number.isFinite(n)) return DEFAULT_ISLAND_GLASS_CLEAR;
+  return Math.min(100, Math.max(0, Math.round(n / 5) * 5));
+}
+/** The share of the theme's surface colour laid over the glass for a transparency: 90% at 0, none at 100. */
+export function islandGlassFrost(clear: unknown): number {
+  return Math.round((100 - islandGlassClear(clear)) * 0.9);
+}
+/**
  * Settings → Appearance → Island display: which screen the ⌥⌘N list and the
  * reply widget open on. 'pointer' follows the mouse; 'primary' is always the
  * main display (the one with the menu bar in System Settings → Displays).
