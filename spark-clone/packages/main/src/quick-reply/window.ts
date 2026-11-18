@@ -31,10 +31,10 @@ function trackAppActive(): void {
 
 /**
  * The quick-reply overlay: one frameless, transparent window covering the
- * whole display the pointer is on. The page dims everything behind it and
+ * whole display the pointer is on. The page leaves the screen undimmed and
  * draws either the notification list (⌥⌘N) or the chat-style reply widget.
  *
- * It floats above other apps (and full-screen Spaces), so the dim works even
+ * It floats above other apps (and full-screen Spaces), so it works even
  * while Uniox is in the background. On macOS it is a panel: it takes the
  * keyboard without pulling the main Uniox window forward.
  *
@@ -141,7 +141,7 @@ export class QuickReplyWindow {
     if (!win.isVisible()) {
       this.place(win);
       // Show the (transparent) window first, then tell the page: it fades the
-      // dim and the card in from nothing on screen, instead of painting them
+      // card in from nothing on screen, instead of painting it
       // while hidden and popping in at full strength.
       win.show();
     }
@@ -198,7 +198,7 @@ export class QuickReplyWindow {
   }
 
   /**
-   * Fade out and hide. `returnFocus` (Esc, a click on the dim, ⌥⌘N again)
+   * Fade out and hide. `returnFocus` (Esc, a click outside the panel, ⌥⌘N again)
    * hands the keyboard back to whatever had it before the overlay opened;
    * leave it off when the user switched apps (blur) or Uniox's own window is
    * about to take over.

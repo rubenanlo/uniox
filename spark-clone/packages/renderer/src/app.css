@@ -793,8 +793,8 @@ body {
 }
 
 /* ── Quick reply overlay (#quick-reply) ─────────────────────────────────
-   A transparent full-screen window: the page dims the screen and floats a
-   glass card. Motion is CSS-only (entrance + drag lift), nothing loops. */
+   A transparent full-screen window: the page floats a glass card over the
+   screen as it is (no dim, so the Frosted style's blur reads). Motion is CSS-only (entrance + drag lift), nothing loops. */
 html.quick-reply,
 html.quick-reply body {
   background: transparent;
@@ -803,7 +803,8 @@ html.quick-reply body {
    transparent, then the page flips it on), so both directions ease and a
    reopen mid-fade just reverses. Only opacity and transform move. */
 .qr-scrim {
-  background: rgb(14 14 24 / 0.42);
+  /* Clear: it only catches clicks outside the panel (they close it). */
+  background: transparent;
   opacity: 0;
   transition: opacity 180ms cubic-bezier(0.4, 0, 1, 1);
 }
@@ -818,9 +819,6 @@ html.quick-reply body {
 .qr-scrim[data-open='true'] > .qr-stage {
   transform: none;
   transition: transform 340ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.dark .qr-scrim {
-  background: rgb(0 0 0 / 0.58);
 }
 /* In the components layer so a panel's own utility (absolute, fixed) wins:
    unlayered, this beat Tailwind's layered utilities and dropped the AI
@@ -839,7 +837,7 @@ html.quick-reply body {
     0 30px 80px -20px rgb(20 20 60 / 0.38),
     0 8px 24px -8px rgb(20 20 60 / 0.2),
     inset 0 1px 0 rgb(255 255 255 / 0.4);
-  /* No backdrop-filter: behind the card is only the flat scrim, and a
+  /* No backdrop-filter: it can't see other apps anyway, and a
      backdrop blur under a fading ancestor drops out and back in at the end
      of the fade (a visible flick) while costing a full-screen blur. */
 }
@@ -851,14 +849,10 @@ html.quick-reply body {
     0 8px 24px -8px rgb(0 0 0 / 0.5),
     inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
-/* Frosted island (Settings → Appearance → Island style): no dim, and each
-   panel is clear over macOS's own blur of whatever is behind it (a vibrancy
+/* Frosted island (Settings → Appearance → Island style): each panel is clear over macOS's own blur of whatever is behind it (a vibrancy
    window main keeps under every .qr-glass, see main/src/glass.ts). Only the
    panel's fill, rim and shadow change; what's inside stays as it is. The soft
    inner glow covers the thin edge that blur window leaves for the corners. */
-html[data-island='frosted'] .qr-scrim {
-  background: transparent;
-}
 html[data-island='frosted'] .qr-glass {
   background: linear-gradient(160deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0.08));
   border-color: rgb(255 255 255 / 0.55);

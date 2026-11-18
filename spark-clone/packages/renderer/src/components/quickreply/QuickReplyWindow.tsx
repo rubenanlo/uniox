@@ -38,9 +38,9 @@ function useInboxItems(): { rows: QuickReplyItem[]; loaded: boolean } {
 }
 
 /**
- * The quick-reply overlay window (#quick-reply). It covers the screen: the
- * dim scrim, then the notification list (⌥⌘N) or the reply widget for one
- * email. A click on the dimmed area closes it; so does Esc, except in a reply
+ * The quick-reply overlay window (#quick-reply). It covers the screen with a
+ * clear layer (no dim), then the notification list (⌥⌘N) or the reply widget
+ * for one email. A click outside the panel closes it; so does Esc, except in a reply
  * opened from the list, where Esc steps back to the list.
  */
 export function QuickReplyWindow() {
@@ -61,7 +61,7 @@ export function QuickReplyWindow() {
     return () => clearTimeout(t);
   }, []);
   // Flipped one frame after the page learns it is shown (and is ready), so the
-  // dim and the card ease in from transparent rather than appearing at full
+  // card eases in from transparent rather than appearing at full
   // strength.
   const [entered, setEntered] = useState(false);
   const shown = !!state?.shown && ready;
