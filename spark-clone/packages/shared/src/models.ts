@@ -305,3 +305,20 @@ export const DEFAULT_NOTIFY_SOUND: NotifySound = 'Glass';
 /** Who draws notifications: Uniox's own cards, or the macOS banner. */
 export type NotifyStyle = 'uniox' | 'system';
 export const DEFAULT_NOTIFY_STYLE: NotifyStyle = 'uniox';
+
+/**
+ * Settings → Appearance → Island style: the look of the notification island
+ * (⌥⌘N list, reply widget, toasts). Glass is a solid tinted card; Frosted is
+ * a clear panel over macOS's own blur of whatever is behind it (macOS only).
+ */
+export type IslandStyle = 'glass' | 'frosted';
+export const DEFAULT_ISLAND_STYLE: IslandStyle = 'glass';
+export const ISLAND_STYLE_KEY = 'islandStyle';
+/** One glass panel on screen, in its window's CSS pixels, for the native blur behind it. */
+export interface GlassRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+}

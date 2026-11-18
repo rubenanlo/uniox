@@ -9,6 +9,7 @@ import { useUi, type ThemePref } from '../../state/store';
 import { AppToaster } from '../AppToaster';
 import { NotificationList } from './NotificationList';
 import { ReplyWidget } from './ReplyWidget';
+import { useGlassBackdrops } from './useGlassBackdrops';
 
 /**
  * How many inbox threads the list loads (all accounts, read and unread; the
@@ -71,6 +72,12 @@ export function QuickReplyWindow() {
   const stageRef = useRef<HTMLDivElement>(null);
   useTheme();
   useAccentColor();
+  // Frosted island: the panels are clear and macOS blurs what's behind them.
+  const frosted = state?.island === 'frosted';
+  useEffect(() => {
+    document.documentElement.dataset.island = frosted ? 'frosted' : 'glass';
+  }, [frosted]);
+  useGlassBackdrops(frosted && shown);
 
   useEffect(() => {
     document.documentElement.classList.add('quick-reply');

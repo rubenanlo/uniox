@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, screen, type WebContents, type WebPreferences } from 'electron';
-import type { DeltaEvent, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
+import type { DeltaEvent, GlassRect, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
+import { GlassBackdrops } from '../glass';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -57,6 +58,9 @@ export class QuickReplyWindow {
   private backToList = false;
   /** The Uniox window that had the keyboard when the overlay opened (null: another app did). */
   private returnTo: BrowserWindow | null = null;
+  /** Settings → Appearance → Island style. Frosted puts macOS's blur behind the page's panels. */
+  private island: IslandStyle = 'glass';
+  private readonly backdrops = new GlassBackdrops();
 
   constructor(
     private readonly opts: {
@@ -87,7 +91,28 @@ export class QuickReplyWindow {
       send: this.pendingSend,
       canGoBack: this.mode === 'reply' && this.backToList,
       view: this.view,
+      island: this.island,
     };
+  }
+
+  /** The island's look (frosted only on macOS) and the app's light/dark, for the blur's material. */
+  setIsland(style: IslandStyle, dark: boolean): void {
+    this.backdrops.setDark(dark);
+    const next: IslandStyle = style === 'frosted' && process.platform === 'darwin' ? 'frosted' : 'glass';
+    if (next === this.island) return;
+    this.island = next;
+    if (next === 'glass') this.backdrops.hide();
+    if (this.visible()) this.push();
+  }
+
+  /** Frosted: the page reports where its glass panels are; the blur follows them. */
+  glass(rects: GlassRect[]): void {
+    const win = this.win;
+    if (this.island !== 'frosted' || !win || win.isDestroyed() || !win.isVisible() || !this.shown) {
+      this.backdrops.hide();
+      return;
+    }
+    this.backdrops.sync(rects, win.getBounds());
   }
 
   /**
@@ -183,6 +208,8 @@ export class QuickReplyWindow {
     if (!win || win.isDestroyed() || !win.isVisible() || !this.shown) return;
     this.shown = false;
     this.backToList = false;
+    // The blur can't fade with the page, so it leaves first; the panels fade out over the screen.
+    this.backdrops.hide();
     const returnTo = this.returnTo;
     this.returnTo = null;
     this.push();
@@ -228,6 +255,7 @@ export class QuickReplyWindow {
   destroy(): void {
     this.clearTimers();
     this.shown = false;
+    this.backdrops.destroy();
     this.win?.destroy();
   }
 
@@ -289,6 +317,7 @@ export class QuickReplyWindow {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     // Switching to another app hides the overlay, Spotlight-style.
     win.on('blur', () => this.close());
+    win.on('hide', () => this.backdrops.hide());
     win.on('closed', () => {
       if (this.win === win) this.win = null;
     });

@@ -22,9 +22,11 @@ import { basename, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   DEFAULT_NOTIFY_SOUND,
+  DEFAULT_ISLAND_STYLE,
   DEFAULT_NOTIFY_STYLE,
   DEFAULT_SCHEDULING,
   GMAIL_ENDPOINTS,
+  ISLAND_STYLE_KEY,
   KANBAN_STATUSES,
   NOTIFY_SOUNDS,
   parseMailto,
@@ -34,6 +36,8 @@ import {
   type ComposerState,
   type ComposerWindowState,
   type DeltaEvent,
+  type GlassRect,
+  type IslandStyle,
   type MailtoDraft,
   type NotifyContext,
   type NotifyPayload,
@@ -497,6 +501,7 @@ function notifyOverlay(): NotifyOverlay {
     preload: join(__dirname, '../preload/notify.js'),
     onAction: (payload, action) => void onNotifyAction(payload, action),
   });
+  overlay.setIsland(islandStyle);
   return overlay;
 }
 
@@ -510,7 +515,31 @@ function quickReplyWin(): QuickReplyWindow {
     guard: guardNavigation,
     saveKept: (items) => void bridge?.query('settings:set', { key: QUICK_REPLY_KEPT_KEY, value: items }).catch(() => {}),
   });
+  quickReply.setIsland(islandStyle, appDark);
   return quickReply;
+}
+
+/** Settings → Appearance → Island style, and the app's light/dark (from the main window) for the blur. */
+let islandStyle: IslandStyle = DEFAULT_ISLAND_STYLE;
+let appDark = nativeTheme.shouldUseDarkColors;
+function setIslandStyle(value: unknown): void {
+  islandStyle = value === 'frosted' ? 'frosted' : 'glass';
+  applyIsland();
+}
+function applyIsland(): void {
+  quickReply?.setIsland(islandStyle, appDark);
+  overlay?.setIsland(islandStyle);
+}
+
+/** A page's report of its glass panels: a short list of finite numbers, nothing else. */
+function glassRects(args: unknown): GlassRect[] {
+  const rects = (args as { rects?: unknown } | null)?.rects;
+  if (!Array.isArray(rects)) return [];
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+  return rects
+    .slice(0, 8)
+    .map((r) => ({ x: num(r?.x), y: num(r?.y), width: num(r?.width), height: num(r?.height), radius: num(r?.radius) }))
+    .filter((r) => Object.values(r).every((v) => !Number.isNaN(v)));
 }
 
 function focusMain(): void {
@@ -740,6 +769,7 @@ function registerIpc(): void {
     const settingKey = channel === 'settings:set' ? (args as { key?: string } | null)?.key : undefined;
     if (settingKey === 'notificationSound') notifySoundCache = null;
     if (settingKey === 'notificationStyle') notifyStyleCache = null;
+    if (settingKey === ISLAND_STYLE_KEY) setIslandStyle((args as { value?: unknown }).value);
     switch (channel) {
       case 'mailto:make-default': {
         // macOS: needs the CFBundleURLTypes entry electron-builder writes
@@ -780,6 +810,9 @@ function registerIpc(): void {
         return { ok: true };
       case 'quick-reply:view':
         quickReply?.setView((args as { view: QuickReplyView }).view === 'unread' ? 'unread' : 'inbox');
+        return { ok: true };
+      case 'quick-reply:glass':
+        if (quickReply?.owns(event.sender)) quickReply.glass(glassRects(args));
         return { ok: true };
       case 'quick-reply:dismiss':
         quickReply?.dismiss((args as { id: string }).id);
@@ -942,6 +975,8 @@ function registerIpc(): void {
         }
       }
       case 'notify:context':
+        appDark = !!(args as NotifyContext).dark;
+        applyIsland();
         notifyOverlay().setContext(args as NotifyContext);
         return { ok: true };
       case 'notify:preview':
@@ -1116,6 +1151,10 @@ void app.whenReady().then(() => {
   void bridge
     .query('settings:get', { key: QUICK_REPLY_KEPT_KEY })
     .then((saved) => quickReplyWin().restoreKept(saved))
+    .catch(() => {});
+  void bridge
+    .query('settings:get', { key: ISLAND_STYLE_KEY })
+    .then(setIslandStyle)
     .catch(() => {});
 
   // Sleep/wake: the sync utility process isn't subject to renderer

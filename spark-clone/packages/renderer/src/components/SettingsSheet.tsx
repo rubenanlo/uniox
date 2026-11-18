@@ -1,10 +1,13 @@
 import {
+  DEFAULT_ISLAND_STYLE,
   DEFAULT_NOTIFY_SOUND,
   DEFAULT_NOTIFY_STYLE,
   DEFAULT_SCHEDULING,
+  ISLAND_STYLE_KEY,
   normalizeAvailability,
   NOTIFY_SOUNDS,
   type AvailabilityPrefs,
+  type IslandStyle,
   type NotifySound,
   type NotifyStyle,
   type SchedulingPresets,
@@ -204,6 +207,98 @@ function DefaultMailAppRow() {
         </div>
       )}
     </Field>
+  );
+}
+
+/** The notification island's look: a solid tinted card, or a clear panel over macOS's blur. */
+function IslandStyleField() {
+  const [style, setStyle] = useState<IslandStyle>(DEFAULT_ISLAND_STYLE);
+  useEffect(() => {
+    void api.query('settings:get', { key: ISLAND_STYLE_KEY }).then((v) => {
+      if (v === 'glass' || v === 'frosted') setStyle(v);
+    });
+  }, []);
+  const pick = (next: IslandStyle) => {
+    setStyle(next);
+    void api.command('settings:set', { key: ISLAND_STYLE_KEY, value: next });
+  };
+  const options: { id: IslandStyle; name: string; blurb: string }[] = [
+    { id: 'glass', name: 'Glass', blurb: 'Solid card' },
+    { id: 'frosted', name: 'Frosted', blurb: 'See-through' },
+  ];
+  return (
+    <Field
+      label="Island style"
+      hint={
+        style === 'frosted'
+          ? 'A clear panel that blurs whatever is behind it, like macOS Control Center. Follows light and dark.'
+          : 'A solid tinted card that keeps text crisp on any background. Follows light and dark.'
+      }
+    >
+      <div className="flex items-start gap-3">
+        <div className="grid flex-1 grid-cols-2 gap-2" role="radiogroup" aria-label="Island style">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              role="radio"
+              aria-checked={style === o.id}
+              onClick={() => pick(o.id)}
+              className={cn(
+                'flex flex-col gap-1.5 rounded-xl p-1.5 text-left',
+                style === o.id ? 'bg-accent-soft' : 'hover:bg-sunken',
+              )}
+            >
+              <IslandStylePreview frosted={o.id === 'frosted'} />
+              <span className="flex items-baseline gap-1.5 px-0.5 text-[12px]">
+                <span className={style === o.id ? 'font-semibold' : 'text-ink-muted'}>{o.name}</span>
+                <span className="text-ink-faint text-[11px]">{o.blurb}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => void api.command('quick-reply:show', { mode: 'list' })}
+          className="border-hairline text-ink-muted hover:text-ink mt-1 shrink-0 rounded-lg border px-2.5 py-1.5 text-[12px]"
+        >
+          Preview <span className="text-ink-faint ml-1">⌥⌘N</span>
+        </button>
+      </div>
+    </Field>
+  );
+}
+
+/** A tiny desktop with an island on it: solid for Glass, see-through and blurred for Frosted. */
+function IslandStylePreview({ frosted }: { frosted: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="border-hairline relative block h-[74px] overflow-hidden rounded-lg border"
+      style={{ background: 'linear-gradient(135deg,#5e6fd8,#9b7fe0 50%,#f0a8c8)' }}
+    >
+      <span className="absolute left-2 top-2 h-5 w-14 rounded bg-[#f6a35c]" />
+      <span className="absolute left-12 top-9 h-6 w-10 rounded bg-[#4fbf7a]" />
+      <span className="absolute right-3 top-3 h-4 w-12 rounded bg-white/90" />
+      <span
+        className="absolute inset-x-5 bottom-2.5 top-4 flex flex-col gap-1.5 rounded-[10px] p-2"
+        style={
+          frosted
+            ? {
+                background: 'rgb(255 255 255 / 0.22)',
+                backdropFilter: 'blur(8px) saturate(1.6)',
+                border: '1px solid rgb(255 255 255 / 0.6)',
+              }
+            : {
+                background: 'var(--color-surface)',
+                border: '1px solid rgb(255 255 255 / 0.6)',
+                boxShadow: '0 6px 16px -6px rgb(0 0 0 / 0.35)',
+              }
+        }
+      >
+        <span className={cn('h-1 w-1/2 rounded-full', frosted ? 'bg-white' : 'bg-ink/70')} />
+        <span className={cn('h-1 w-full rounded-full', frosted ? 'bg-white/60' : 'bg-ink/25')} />
+        <span className={cn('h-1 w-3/4 rounded-full', frosted ? 'bg-white/60' : 'bg-ink/25')} />
+      </span>
+    </span>
   );
 }
 
@@ -675,6 +770,7 @@ function AppearanceTab() {
       <DefaultMailAppRow />
       <NotificationsRow />
       <NotificationStyleField />
+      <IslandStyleField />
       <NotificationSoundField />
     </div>
   );
