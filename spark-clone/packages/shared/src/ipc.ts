@@ -198,7 +198,12 @@ export interface Commands {
     result: { ok: boolean };
   };
   /** Hide the overlay (it stays warm for a minute, so a pending Undo Send still fires). */
-  'quick-reply:close': { args: undefined; result: { ok: boolean } };
+  /**
+   * Close the overlay. `returnFocus` (default true) hands the keyboard back to
+   * whatever was in front before it opened; false when the page just opened
+   * something else (a meeting link) that should keep it.
+   */
+  'quick-reply:close': { args: { returnFocus?: boolean } | undefined; result: { ok: boolean } };
   /** Drop a handled notification from the list (done, or dismissed with ⌫). */
   'quick-reply:dismiss': { args: { id: string }; result: { ok: boolean } };
   /** Keep an email in the list (or let it go again): a listed one by id, or an unread thread by payload. */
@@ -346,6 +351,8 @@ export interface QuickReplyState {
   shown: boolean;
   /** A reply typed in Notification Center: the widget for item `id` sends it once (seq tells repeats apart). */
   send?: { id: string; text: string; seq: number } | null;
+  /** The widget was opened from the ⌥⌘N list: Esc goes back to it instead of closing. */
+  canGoBack?: boolean;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */

@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, type WebContents, type WebPreferences } from 'electron';
+import { app, BrowserWindow, Menu, screen, type WebContents, type WebPreferences } from 'electron';
 import type { DeltaEvent, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState } from '@app/shared';
 import { QuickReplyQueue } from './queue';
 
@@ -11,6 +11,22 @@ const IDLE_DESTROY_MS = 60_000;
  * .qr-scrim fade-out (180 ms) plus a little slack.
  */
 const CLOSE_FADE_MS = 210;
+/** Longest wait for macOS to hand activation back after app.hide() before Uniox's windows come back. */
+const UNHIDE_FALLBACK_MS = 300;
+
+/**
+ * Whether Uniox is the active macOS app. Electron has no getter, so follow the
+ * app events once the overlay exists, starting from whether a window has focus.
+ */
+let appActive = false;
+let trackingActive = false;
+function trackAppActive(): void {
+  if (trackingActive || process.platform !== 'darwin') return;
+  trackingActive = true;
+  appActive = BrowserWindow.getFocusedWindow() !== null;
+  app.on('did-become-active', () => (appActive = true));
+  app.on('did-resign-active', () => (appActive = false));
+}
 
 /**
  * The quick-reply overlay: one frameless, transparent window covering the
@@ -35,6 +51,10 @@ export class QuickReplyWindow {
   /** A reply typed in Notification Center, for the widget to send (with Undo). */
   private pendingSend: QuickReplyState['send'] = null;
   private sendSeq = 0;
+  /** The list opened this widget, so Esc steps back to it. */
+  private backToList = false;
+  /** The Uniox window that had the keyboard when the overlay opened (null: another app did). */
+  private returnTo: BrowserWindow | null = null;
 
   constructor(
     private readonly opts: {
@@ -44,7 +64,9 @@ export class QuickReplyWindow {
       /** Kept emails changed: save them so they come back after a restart. */
       saveKept?: (items: QuickReplyItem[]) => void;
     },
-  ) {}
+  ) {
+    trackAppActive();
+  }
 
   /** Remember a notification for the list; refresh an open list. */
   record(payload: NotifyPayload): void {
@@ -55,7 +77,14 @@ export class QuickReplyWindow {
   state(): QuickReplyState {
     const items = this.queue.list();
     const current = this.queue.get(this.currentId) ? this.currentId : (items[0]?.id ?? null);
-    return { mode: this.mode, items, currentId: current, shown: this.shown, send: this.pendingSend };
+    return {
+      mode: this.mode,
+      items,
+      currentId: current,
+      shown: this.shown,
+      send: this.pendingSend,
+      canGoBack: this.mode === 'reply' && this.backToList,
+    };
   }
 
   /**
@@ -65,6 +94,14 @@ export class QuickReplyWindow {
    */
   open(mode: QuickReplyMode, current?: string | NotifyPayload | null, opts?: { send?: string }): void {
     this.clearTimers();
+    const wasOpen = this.shown && this.visible();
+    if (!wasOpen) {
+      const focused = BrowserWindow.getFocusedWindow();
+      this.returnTo = focused && focused !== this.win ? focused : null;
+    }
+    // From the list into a reply: Esc comes back. ←/→ between replies keeps it.
+    if (mode === 'list' || !wasOpen) this.backToList = false;
+    else if (this.mode === 'list') this.backToList = true;
     this.shown = true;
     this.mode = mode;
     if (typeof current === 'string' || current === null) this.currentId = current;
@@ -85,7 +122,7 @@ export class QuickReplyWindow {
 
   /** ⌥⌘N while open closes it again. */
   toggleList(): void {
-    if (this.visible() && this.shown) this.close();
+    if (this.visible() && this.shown) this.close({ returnFocus: true });
     else this.open('list', null);
   }
 
@@ -120,17 +157,57 @@ export class QuickReplyWindow {
     this.opts.saveKept?.(this.queue.kept());
   }
 
-  close(): void {
+  /**
+   * Fade out and hide. `returnFocus` (Esc, a click on the dim, ⌥⌘N again)
+   * hands the keyboard back to whatever had it before the overlay opened;
+   * leave it off when the user switched apps (blur) or Uniox's own window is
+   * about to take over.
+   */
+  close(opts?: { returnFocus?: boolean }): void {
     const win = this.win;
     if (!win || win.isDestroyed() || !win.isVisible() || !this.shown) return;
     this.shown = false;
+    this.backToList = false;
+    const returnTo = this.returnTo;
+    this.returnTo = null;
     this.push();
     this.hideTimer = setTimeout(() => {
       this.hideTimer = null;
       if (win.isDestroyed()) return;
       win.hide();
+      if (opts?.returnFocus) this.giveFocusBack(returnTo);
       this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
     }, CLOSE_FADE_MS);
+  }
+
+  /**
+   * After the overlay hides, macOS picks who gets the keyboard. When Uniox
+   * ended up the active app (a click on a notification activates it) but has
+   * no window on this screen, macOS activated whichever app owns the next
+   * window (often an unrelated one, like ForkLift) instead of the one you
+   * were in. So: a Uniox window that had focus gets it back; otherwise, if
+   * Uniox is active, hide it (macOS then reactivates the previous app, as ⌘H
+   * does) and bring its windows straight back without activating them.
+   */
+  private giveFocusBack(returnTo: BrowserWindow | null): void {
+    if (returnTo && !returnTo.isDestroyed() && returnTo.isVisible() && !returnTo.isMinimized()) {
+      returnTo.focus();
+      return;
+    }
+    if (process.platform !== 'darwin' || !appActive) return;
+    let done = false;
+    const unhide = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(fallback);
+      app.off('did-resign-active', unhide);
+      // NSApplication's unhideWithoutActivation: Uniox's windows (and its
+      // notification toasts) show again while the other app keeps the keyboard.
+      Menu.sendActionToFirstResponder('unhideWithoutActivation');
+    };
+    const fallback = setTimeout(unhide, UNHIDE_FALLBACK_MS);
+    app.on('did-resign-active', unhide);
+    app.hide();
   }
 
   destroy(): void {

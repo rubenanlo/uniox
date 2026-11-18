@@ -775,7 +775,7 @@ function registerIpc(): void {
         return { ok: !!id, id };
       }
       case 'quick-reply:close':
-        quickReply?.close();
+        quickReply?.close({ returnFocus: (args as { returnFocus?: boolean } | undefined)?.returnFocus !== false });
         return { ok: true };
       case 'quick-reply:dismiss':
         quickReply?.dismiss((args as { id: string }).id);
