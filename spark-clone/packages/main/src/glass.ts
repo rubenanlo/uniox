@@ -43,9 +43,11 @@ export class GlassBackdrops {
     this.pool.length = 0;
   }
 
-  /** HUD is always dark; popover is the light frosted material (Control Center's look). */
-  private material(): 'hud' | 'popover' {
-    return this.dark ? 'hud' : 'popover';
+  /** HUD is always dark. In light mode 'under-window' is the thinnest material:
+   *  'popover' laid a milky grey-white of its own over the blur, so the panel
+   *  read as a flat card instead of the AI windows' see-through glass. */
+  private material(): 'hud' | 'under-window' {
+    return this.dark ? 'hud' : 'under-window';
   }
 
   private create(): BrowserWindow {

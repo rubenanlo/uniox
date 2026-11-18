@@ -880,8 +880,14 @@ html.dark[data-island='frosted'] .qr-glass {
   --color-ink-muted: rgb(255 255 255 / 0.75);
   --color-ink-faint: rgb(255 255 255 / 0.55);
 }
-html[data-island='frosted'] .qr-tint {
-  display: none;
+/* A fainter version of the theme haze: the AI windows pick up colour from
+   the app behind their CSS blur; macOS's blur here is neutral, so this adds
+   that soft violet/azure cast back. */
+html[data-island='frosted'] .qr-tint::before {
+  opacity: 0.55;
+}
+html.dark[data-island='frosted'] .qr-tint::before {
+  opacity: 0.4;
 }
 /* The theme-coloured haze inside the glass (violet / azure / aqua corners). */
 .qr-tint {
