@@ -254,36 +254,52 @@ export class QuickReplyWindow {
     this.hideTimer = setTimeout(() => {
       this.hideTimer = null;
       if (win.isDestroyed()) return;
-      win.hide();
-      if (opts?.returnFocus) this.giveFocusBack(returnTo);
+      if (opts?.returnFocus) this.hideAndGiveFocusBack(win, returnTo);
+      else win.hide();
       this.idleTimer = setTimeout(() => this.destroy(), IDLE_DESTROY_MS);
     }, CLOSE_FADE_MS);
   }
 
   /**
-   * After the overlay hides, macOS picks who gets the keyboard. When Uniox
-   * ended up the active app (a click on a notification activates it) but has
-   * no window on this screen, macOS activated whichever app owns the next
-   * window (often an unrelated one, like ForkLift) instead of the one you
-   * were in. So: a Uniox window that had focus gets it back; otherwise, if
-   * Uniox is active, hide it (macOS then reactivates the previous app, as ⌘H
-   * does) and bring its windows straight back without activating them.
+   * Hide the overlay and hand the keyboard back. When Uniox ended up the
+   * active app (a click on a notification, or the panel taking the keyboard,
+   * activates it) the order matters:
+   *
+   * - A Uniox window that had focus at open gets it back.
+   * - Otherwise, hiding the panel on its own makes macOS give the keyboard to
+   *   Uniox's next window and raise it: the main window flashed up in front
+   *   of the app you were in, or another app (ForkLift) came forward. So hide
+   *   the whole app in one step instead, panel included (its page has already
+   *   faded to nothing). macOS then reactivates the previous app, as ⌘H does;
+   *   once it has, drop the panel and bring Uniox's other windows back behind
+   *   it without activating them.
    */
-  private giveFocusBack(returnTo: BrowserWindow | null): void {
+  private hideAndGiveFocusBack(win: BrowserWindow, returnTo: BrowserWindow | null): void {
     if (returnTo && !returnTo.isDestroyed() && returnTo.isVisible() && !returnTo.isMinimized()) {
+      win.hide();
       returnTo.focus();
       return;
     }
-    if (process.platform !== 'darwin' || !appActive) return;
+    if (process.platform !== 'darwin' || !appActive) {
+      win.hide();
+      return;
+    }
     let done = false;
     const unhide = () => {
       if (done) return;
       done = true;
       clearTimeout(fallback);
       app.off('did-resign-active', unhide);
+      // Order the panel out while the app is hidden so unhiding leaves it out
+      // (unless ⌥⌘N opened it again in the meantime).
+      const dropPanel = () => {
+        if (!win.isDestroyed() && !this.shown) win.hide();
+      };
+      dropPanel();
       // NSApplication's unhideWithoutActivation: Uniox's windows (and its
       // notification toasts) show again while the other app keeps the keyboard.
       Menu.sendActionToFirstResponder('unhideWithoutActivation');
+      dropPanel();
     };
     const fallback = setTimeout(unhide, UNHIDE_FALLBACK_MS);
     app.on('did-resign-active', unhide);
