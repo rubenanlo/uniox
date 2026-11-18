@@ -1,14 +1,37 @@
 import type { DarkPalette, LightPalette, QuickReplyItem, QuickReplyState } from '@app/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { itemPayload, queuePosition, stepItem } from '../../lib/quickReply';
+import { itemPayload, queuePosition, stepItem, unreadItem } from '../../lib/quickReply';
 import { useAccentColor, useTheme } from '../../lib/theme';
 import { wireAssistant } from '../../state/assistant';
-import { useDelta } from '../../state/queries';
+import { useAccounts, useDelta } from '../../state/queries';
 import { useUi, type ThemePref } from '../../state/store';
 import { AppToaster } from '../AppToaster';
 import { NotificationList } from './NotificationList';
 import { ReplyWidget } from './ReplyWidget';
+
+/** How many unread threads the list loads (all accounts; the account switch filters them). */
+const UNREAD_LIMIT = 200;
+/** Fade in anyway if a first load hangs, rather than never showing. */
+const READY_TIMEOUT_MS = 800;
+
+/** Unread inbox threads, refreshed as mail changes while the window lives. */
+function useUnreadItems(): { rows: QuickReplyItem[]; loaded: boolean } {
+  const [rows, setRows] = useState<QuickReplyItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const refresh = useCallback(() => {
+    void api
+      .query('threads:unread', { limit: UNREAD_LIMIT })
+      .then((threads) => setRows(threads.map(unreadItem)))
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+  useEffect(refresh, [refresh]);
+  useDelta((e) => {
+    if (e.kind === 'threads-changed' || e.kind === 'accounts-changed') refresh();
+  });
+  return { rows, loaded };
+}
 
 /**
  * The quick-reply overlay window (#quick-reply). It covers the screen: the
@@ -17,10 +40,26 @@ import { ReplyWidget } from './ReplyWidget';
  */
 export function QuickReplyWindow() {
   const [state, setState] = useState<QuickReplyState | null>(null);
-  // Flipped one frame after the page learns it is shown, so the dim and the
-  // card ease in from transparent rather than appearing at full strength.
+  const [prefsReady, setPrefsReady] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const unread = useUnreadItems();
+  const { accounts, loaded: accountsLoaded } = useAccounts();
+  // The window is created on the first open and shown straight away, while
+  // this page is still loading. Hold the page back until the user's theme,
+  // accounts and unread mail are in: otherwise the first open fades in with
+  // the default palette and an empty list, then snaps to the real colours
+  // while rows spring in and the account pill pops up. Later opens reuse the
+  // warm window, which is why only the first one looked glitchy.
+  const ready = !!state && (timedOut || (prefsReady && accountsLoaded && unread.loaded));
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), READY_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  // Flipped one frame after the page learns it is shown (and is ready), so the
+  // dim and the card ease in from transparent rather than appearing at full
+  // strength.
   const [entered, setEntered] = useState(false);
-  const shown = !!state?.shown;
+  const shown = !!state?.shown && ready;
   useEffect(() => {
     const raf = requestAnimationFrame(() => setEntered(shown));
     return () => cancelAnimationFrame(raf);
@@ -32,25 +71,29 @@ export function QuickReplyWindow() {
   useEffect(() => {
     document.documentElement.classList.add('quick-reply');
     // Wear the main window's look (read only: the main window owns these prefs).
-    void api.query('settings:get', { key: 'ui-prefs' }).then((stored) => {
-      if (!stored || typeof stored !== 'object') return;
-      const p = stored as Partial<{
-        theme: ThemePref;
-        darkPalette: DarkPalette;
-        lightPalette: LightPalette;
-        accentColor: string | null;
-        accountColors: Record<string, string>;
-        accountLabels: Record<string, string>;
-      }>;
-      useUi.setState({
-        ...(p.theme ? { theme: p.theme } : {}),
-        ...(p.darkPalette ? { darkPalette: p.darkPalette } : {}),
-        ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
-        ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
-        ...(p.accountColors ? { accountColors: p.accountColors } : {}),
-        ...(p.accountLabels ? { accountLabels: p.accountLabels } : {}),
-      });
-    });
+    void api
+      .query('settings:get', { key: 'ui-prefs' })
+      .then((stored) => {
+        if (!stored || typeof stored !== 'object') return;
+        const p = stored as Partial<{
+          theme: ThemePref;
+          darkPalette: DarkPalette;
+          lightPalette: LightPalette;
+          accentColor: string | null;
+          accountColors: Record<string, string>;
+          accountLabels: Record<string, string>;
+        }>;
+        useUi.setState({
+          ...(p.theme ? { theme: p.theme } : {}),
+          ...(p.darkPalette ? { darkPalette: p.darkPalette } : {}),
+          ...(p.lightPalette ? { lightPalette: p.lightPalette } : {}),
+          ...(p.accentColor !== undefined ? { accentColor: p.accentColor } : {}),
+          ...(p.accountColors ? { accountColors: p.accountColors } : {}),
+          ...(p.accountLabels ? { accountLabels: p.accountLabels } : {}),
+        });
+      })
+      .catch(() => {})
+      .finally(() => setPrefsReady(true));
     void api.query('quick-reply:state', undefined).then(setState);
     return wireAssistant();
   }, []);
@@ -81,7 +124,7 @@ export function QuickReplyWindow() {
     show('reply', item.id);
   };
 
-  if (!state) return null;
+  if (!state || !ready) return null;
   const current = state.items.find((i) => i.id === state.currentId) ?? null;
   const replying = state.mode === 'reply' && current?.threadId;
 
@@ -113,7 +156,14 @@ export function QuickReplyWindow() {
             }}
           />
         ) : (
-          <NotificationList items={state.items} startId={state.currentId} onOpen={open} onClose={close} />
+          <NotificationList
+            items={state.items}
+            unreadItems={unread.rows}
+            accounts={accounts}
+            startId={state.currentId}
+            onOpen={open}
+            onClose={close}
+          />
         )}
       </div>
       <AppToaster />
