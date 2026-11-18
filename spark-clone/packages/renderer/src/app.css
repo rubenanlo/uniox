@@ -912,6 +912,15 @@ html.dark[data-glass='liquid'] .qr-glass {
 html[data-glass='liquid'] .qr-tint {
   display: none;
 }
+/* Dark mode on Liquid Glass: all text white (the glass under it gets a dark
+   tint from main, see glass.ts), with a faint shadow for bright spots. */
+html.dark[data-glass='liquid'] .qr-glass {
+  --color-ink: #fff;
+  --color-ink-muted: rgb(255 255 255 / 0.86);
+  --color-ink-faint: rgb(255 255 255 / 0.7);
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
 /* The theme-coloured haze inside the glass (violet / azure / aqua corners). */
 .qr-tint {
   position: absolute;

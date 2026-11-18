@@ -162,6 +162,13 @@ body {
   border-color: transparent;
   box-shadow: 0 14px 36px rgb(0 0 0 / 0.18);
 }
+/* Dark mode on Liquid Glass: all text white over the dark-tinted glass. */
+.dark.liquid {
+  --ink: #fff;
+  --ink-muted: rgb(255 255 255 / 0.86);
+  --ink-faint: rgb(255 255 255 / 0.7);
+}
+.dark.liquid .card { color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
 .frosted .deck div { background: rgb(255 255 255 / 0.55); border-color: rgb(255 255 255 / 0.6); }
 .dark.frosted .deck div { background: rgb(70 70 82 / 0.7); border-color: rgb(255 255 255 / 0.18); }
 @media (prefers-reduced-motion: reduce) {

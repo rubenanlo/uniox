@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, screen, type WebContents, type WebPreferences } from 'electron';
+import { app, BrowserWindow, Menu, screen, type Rectangle, type WebContents, type WebPreferences } from 'electron';
 import type { DeltaEvent, GlassRect, IslandDisplay, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { GlassBackdrops } from '../glass';
 import { QuickReplyQueue } from './queue';
@@ -146,11 +146,15 @@ export class QuickReplyWindow {
       opts?.send && this.currentId ? { id: this.currentId, text: opts.send, seq: ++this.sendSeq } : null;
     const win = this.ensureWindow();
     if (!win.isVisible()) {
-      this.place(win);
+      const bounds = this.place(win);
       // Show the (transparent) window first, then tell the page: it fades the
       // dim and the card in from nothing on screen, instead of painting them
       // while hidden and popping in at full strength.
       win.show();
+      // macOS can move a hidden window back to the main display as it shows
+      // it (seen on a secondary screen): put it back on the chosen screen
+      // right after, and again a beat later in case the move lands late.
+      this.keepOn(win, bounds);
     }
     win.focus();
     this.push();
@@ -293,10 +297,22 @@ export class QuickReplyWindow {
   }
 
   /** Cover the whole display (the pointer's or the primary one, per Settings), menu bar and Dock included. */
-  private place(win: BrowserWindow): void {
+  private place(win: BrowserWindow): Rectangle {
     const { bounds } =
       this.display === 'primary' ? screen.getPrimaryDisplay() : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     win.setBounds(bounds);
+    return bounds;
+  }
+
+  private keepOn(win: BrowserWindow, bounds: Rectangle): void {
+    const fix = () => {
+      if (win.isDestroyed() || !win.isVisible()) return;
+      const b = win.getBounds();
+      if (b.x !== bounds.x || b.y !== bounds.y || b.width !== bounds.width || b.height !== bounds.height) win.setBounds(bounds);
+    };
+    fix();
+    setTimeout(fix, 60);
+    setTimeout(fix, 250);
   }
 
   private ensureWindow(): BrowserWindow {

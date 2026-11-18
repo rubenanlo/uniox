@@ -46,9 +46,12 @@ export function liquidGlass(): LiquidGlassApi | null {
  */
 export class GlassBackdrops {
   private readonly pool: BrowserWindow[] = [];
-  /** The corner radius each pooled window's glass was made with (Liquid Glass can't change it later). */
-  private readonly radii = new WeakMap<BrowserWindow, number>();
+  /** The radius and tint each pooled window's glass was made with (Liquid Glass can't change them later). */
+  private readonly made = new WeakMap<BrowserWindow, string>();
   private dark = false;
+
+  /** The last panels synced, to rebuild them when the theme changes while they're up. */
+  private last: { rects: GlassRect[]; origin: { x: number; y: number } } | null = null;
 
   /** True when panels sit on real Liquid Glass (the page then drops its own fill). */
   get liquid(): boolean {
@@ -58,13 +61,20 @@ export class GlassBackdrops {
   setDark(dark: boolean): void {
     if (this.dark === dark) return;
     this.dark = dark;
-    if (this.liquid) return; // Liquid Glass follows the app's appearance by itself
+    // Liquid Glass keeps the tint it was made with: drop the pool, the next sync remakes it.
+    if (this.liquid) {
+      const shown = this.pool.some((w) => !w.isDestroyed() && w.isVisible());
+      this.destroy();
+      if (shown && this.last) this.sync(this.last.rects, this.last.origin);
+      return;
+    }
     for (const w of this.pool) if (!w.isDestroyed()) w.setVibrancy(this.material());
   }
 
   /** Put a blur behind each rect (window coordinates of the window at `origin`); hide the rest. */
   sync(rects: GlassRect[], origin: { x: number; y: number }): void {
     if (process.platform !== 'darwin') return;
+    this.last = rects.length ? { rects, origin } : null;
     const liquid = this.liquid;
     const panels = rects
       .map((r) => ({ radius: Math.round(r.radius), bounds: liquid ? fullBounds(r, origin) : backdropBounds(r, origin) }))
@@ -73,7 +83,7 @@ export class GlassBackdrops {
     panels.forEach(({ radius, bounds: b }, i) => {
       let w: BrowserWindow | undefined = this.pool[i];
       // Liquid Glass keeps the corner radius it was made with: remake for a rounder or squarer panel.
-      if (w && !w.isDestroyed() && liquid && this.radii.get(w) !== radius) w.destroy();
+      if (w && !w.isDestroyed() && liquid && this.made.get(w) !== this.key(radius)) w.destroy();
       if (!w || w.isDestroyed()) w = this.pool[i] = this.create(radius);
       w.setBounds(b, false);
       if (!w.isVisible()) w.showInactive();
@@ -82,12 +92,26 @@ export class GlassBackdrops {
   }
 
   hide(): void {
+    this.last = null;
     for (const w of this.pool) if (!w.isDestroyed() && w.isVisible()) w.hide();
   }
 
   destroy(): void {
     for (const w of this.pool) if (!w.isDestroyed()) w.destroy();
     this.pool.length = 0;
+  }
+
+  private key(radius: number): string {
+    return `${radius}:${this.dark ? 'dark' : 'light'}`;
+  }
+
+  /**
+   * In dark mode the glass gets a dark smoke tint: Liquid Glass on its own
+   * turns light over bright windows, and the island's white text then
+   * vanishes. Light mode keeps the plain glass (Clear / Tinted as set).
+   */
+  private tint(): string | undefined {
+    return this.dark ? '#14141acc' : undefined;
   }
 
   /** HUD is always dark. In light mode 'under-window' is the thinnest material:
@@ -121,9 +145,10 @@ export class GlassBackdrops {
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     w.setIgnoreMouseEvents(true);
     if (liquid) {
-      this.radii.set(w, radius);
+      this.made.set(w, this.key(radius));
+      const tintColor = this.tint();
       w.webContents.once('did-finish-load', () => {
-        if (!w.isDestroyed()) liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius });
+        if (!w.isDestroyed()) liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius, ...(tintColor ? { tintColor } : {}) });
       });
     }
     void w.loadURL('about:blank');
