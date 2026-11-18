@@ -1,6 +1,7 @@
-import { app, BrowserWindow, Menu, screen, type Rectangle, type WebContents, type WebPreferences } from 'electron';
+import { BrowserWindow, screen, type Rectangle, type WebContents, type WebPreferences } from 'electron';
 import type { DeltaEvent, GlassRect, IslandDisplay, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { GlassBackdrops } from '../glass';
+import { giveActivationBack, makeNonActivating, trackAppActive } from '../mac-activation';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -14,23 +15,6 @@ const IDLE_DESTROY_MS = 60_000;
 const CLOSE_FADE_MS = 210;
 /** The page's own fade-out (.qr-scrim), which the glass behind its panels follows. */
 const PAGE_FADE_MS = 180;
-/** Longest wait for macOS to hand activation back after app.hide() before Uniox's windows come back. */
-const UNHIDE_FALLBACK_MS = 300;
-
-/**
- * Whether Uniox is the active macOS app. Electron has no getter, so follow the
- * app events once the overlay exists, starting from whether a window has focus.
- */
-let appActive = false;
-let trackingActive = false;
-function trackAppActive(): void {
-  if (trackingActive || process.platform !== 'darwin') return;
-  trackingActive = true;
-  appActive = BrowserWindow.getFocusedWindow() !== null;
-  app.on('did-become-active', () => (appActive = true));
-  app.on('did-resign-active', () => (appActive = false));
-}
-
 /**
  * The quick-reply overlay: one frameless, transparent window covering the
  * whole display the pointer is on. The page dims everything behind it and
@@ -79,6 +63,11 @@ export class QuickReplyWindow {
     },
   ) {
     trackAppActive();
+  }
+
+  /** On screen (not closing). */
+  get isOpen(): boolean {
+    return this.shown && this.visible();
   }
 
   /** Remember a notification for the list; refresh an open list. */
@@ -285,33 +274,11 @@ export class QuickReplyWindow {
       returnTo.focus();
       return;
     }
-    if (process.platform !== 'darwin') {
-      win.hide();
-      return;
-    }
-    let done = false;
-    const unhide = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(fallback);
-      app.off('did-resign-active', unhide);
-      // Order the panel out while the app is hidden so unhiding leaves it out
-      // (unless ⌥⌘N opened it again in the meantime).
-      const dropPanel = () => {
-        if (!win.isDestroyed() && !this.shown) win.hide();
-      };
-      dropPanel();
-      // NSApplication's unhideWithoutActivation: Uniox's windows (and its
-      // notification toasts) show again while the other app keeps the keyboard.
-      Menu.sendActionToFirstResponder('unhideWithoutActivation');
-      dropPanel();
-    };
-    const fallback = setTimeout(unhide, UNHIDE_FALLBACK_MS);
-    app.on('did-resign-active', unhide);
-    app.hide();
-    // Uniox wasn't the active app (or hide already handed activation back):
-    // nothing to wait for, so its windows come straight back.
-    if (!appActive) unhide();
+    // Order the panel out while the app is hidden so unhiding leaves it out
+    // (unless ⌥⌘N opened it again in the meantime).
+    giveActivationBack(() => {
+      if (!win.isDestroyed() && !this.shown) win.hide();
+    });
   }
 
   destroy(): void {
@@ -388,6 +355,7 @@ export class QuickReplyWindow {
       ...(mac ? { type: 'panel' } : {}),
       webPreferences: { ...this.opts.webPreferences, backgroundThrottling: false },
     });
+    makeNonActivating(win);
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     // Switching to another app hides the overlay, Spotlight-style.

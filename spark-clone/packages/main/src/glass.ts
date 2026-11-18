@@ -1,6 +1,7 @@
 import { BrowserWindow, type Rectangle } from 'electron';
 import type { GlassRect } from '@app/shared';
 import { backdropBounds } from './glass-geometry';
+import { makeNonActivating } from './mac-activation';
 
 /** Corner radii this close share a Liquid Glass window (see sync). */
 const RADIUS_SLACK = 3;
@@ -205,6 +206,7 @@ export class GlassBackdrops {
     w.setAlwaysOnTop(true, 'pop-up-menu');
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     w.setIgnoreMouseEvents(true);
+    makeNonActivating(w);
     if (liquid) {
       this.radii.set(w, radius);
       this.unglazed.add(w);

@@ -73,6 +73,7 @@ import { NotifyOverlay } from './notify/overlay';
 import type { CardAction } from './notify/card';
 import { nativeEntry } from './notify/native';
 import { QuickReplyWindow } from './quick-reply/window';
+import { markUnioxWanted } from './mac-activation';
 
 /** Opens the quick-reply notification list from any app. */
 const QUICK_REPLY_SHORTCUT = 'Alt+CommandOrControl+N';
@@ -505,6 +506,7 @@ function notifyOverlay(): NotifyOverlay {
   overlay ??= new NotifyOverlay({
     preload: join(__dirname, '../preload/notify.js'),
     onAction: (payload, action) => void onNotifyAction(payload, action),
+    busy: () => !!quickReply?.isOpen,
   });
   overlay.setIsland(islandStyle);
   overlay.setFrost(islandFrost);
@@ -565,6 +567,7 @@ function glassRects(args: unknown): GlassRect[] {
 }
 
 function focusMain(): void {
+  markUnioxWanted();
   if (!mainWindow) createWindow();
   mainWindow?.show();
   mainWindow?.focus();
