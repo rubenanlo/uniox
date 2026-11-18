@@ -74,9 +74,12 @@ export function QuickReplyWindow() {
   useAccentColor();
   // Frosted island: the panels are clear and macOS blurs what's behind them.
   const frosted = state?.island === 'frosted';
+  const liquid = frosted && !!state?.liquid;
   useEffect(() => {
     document.documentElement.dataset.island = frosted ? 'frosted' : 'glass';
-  }, [frosted]);
+    if (liquid) document.documentElement.dataset.glass = 'liquid';
+    else delete document.documentElement.dataset.glass;
+  }, [frosted, liquid]);
   useGlassBackdrops(frosted && shown);
 
   useEffect(() => {

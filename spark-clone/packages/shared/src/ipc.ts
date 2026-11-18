@@ -370,6 +370,8 @@ export interface QuickReplyState {
   view: QuickReplyView;
   /** The island's look; the page styles its panels to match. */
   island?: IslandStyle;
+  /** Panels sit on real macOS Liquid Glass (macOS 26+): the page drops its own fill. */
+  liquid?: boolean;
 }
 
 /** Per-account label and colour for notification cards, plus the app theme. */

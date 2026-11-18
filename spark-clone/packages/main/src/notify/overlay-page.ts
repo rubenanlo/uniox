@@ -155,6 +155,13 @@ body {
   border-color: rgb(255 255 255 / 0.2);
   box-shadow: 0 14px 36px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 10px 3px rgb(255 255 255 / 0.05);
 }
+/* Real Liquid Glass (macOS 26+): macOS draws the glass and its edge. */
+.liquid .card,
+.dark.liquid .card {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.18);
+}
 .frosted .deck div { background: rgb(255 255 255 / 0.55); border-color: rgb(255 255 255 / 0.6); }
 .dark.frosted .deck div { background: rgb(70 70 82 / 0.7); border-color: rgb(255 255 255 / 0.18); }
 @media (prefers-reduced-motion: reduce) {

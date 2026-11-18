@@ -901,6 +901,17 @@ html[data-island='frosted'] .qr-tint::before {
 html.dark[data-island='frosted'] .qr-tint::before {
   opacity: 0.4;
 }
+/* Real Liquid Glass (macOS 26+): macOS draws the glass, its edge and its
+   Clear/Tinted look, so the panel adds no fill, rim, glow or haze of its own. */
+html[data-glass='liquid'] .qr-glass,
+html.dark[data-glass='liquid'] .qr-glass {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: 0 24px 60px -28px rgb(0 0 0 / 0.28);
+}
+html[data-glass='liquid'] .qr-tint {
+  display: none;
+}
 /* The theme-coloured haze inside the glass (violet / azure / aqua corners). */
 .qr-tint {
   position: absolute;

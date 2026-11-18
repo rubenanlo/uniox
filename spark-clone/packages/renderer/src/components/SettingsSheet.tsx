@@ -228,15 +228,15 @@ function IslandStyleField() {
     void api.command('settings:set', { key: ISLAND_STYLE_KEY, value: next });
   };
   const options: { id: IslandStyle; name: string; blurb: string }[] = [
-    { id: 'glass', name: 'Glass', blurb: 'Solid card' },
-    { id: 'frosted', name: 'Frosted', blurb: 'See-through' },
+    { id: 'glass', name: 'Solid card', blurb: 'Opaque' },
+    { id: 'frosted', name: 'Liquid glass', blurb: 'See-through' },
   ];
   return (
     <Field
       label="Island style"
       hint={
         style === 'frosted'
-          ? 'A clear panel that blurs whatever is behind it, like macOS Control Center. Follows light and dark.'
+          ? 'A clear panel that blurs whatever is behind it, like macOS Liquid Glass. Follows light and dark.'
           : 'A solid tinted card that keeps text crisp on any background. Follows light and dark.'
       }
     >
@@ -317,7 +317,7 @@ function IslandDisplayField() {
   );
 }
 
-/** A tiny desktop with an island on it: solid for Glass, see-through and blurred for Frosted. */
+/** A tiny desktop with an island on it: opaque for Solid card, see-through and blurred for Liquid glass. */
 function IslandStylePreview({ frosted }: { frosted: boolean }) {
   return (
     <span
