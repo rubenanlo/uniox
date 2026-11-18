@@ -2,8 +2,10 @@ import { ArrowDown, ArrowUp, Settings2, SquarePen, Square, X } from 'lucide-reac
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type RefObject,
 } from 'react';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
@@ -193,6 +195,60 @@ function contextChips(view: string, reading: boolean, composerOpen: boolean): Ch
   return [{ id: 'summarize-emails', label: 'Summarize emails' }];
 }
 
+// Gap between the Assistant and the in-window composer, and the panel's sizes.
+const DOCK_GAP = 12;
+const EDGE = 16;
+const PANEL_W = 400;
+const PANEL_MIN_W = 300;
+
+/**
+ * While the in-window composer is open, park the Assistant to its left instead
+ * of under it. Tracks the composer's width (expand / collapse) and window
+ * resizes. When there is no room on the left, the panel sits at the left edge
+ * above the composer, so it is never hidden behind it.
+ */
+function useComposerDock(
+  panelRef: RefObject<HTMLDivElement | null>,
+  /** The open composer's state while the panel is shown; a new composer re-measures. */
+  composer: unknown,
+): CSSProperties | undefined {
+  const [style, setStyle] = useState<CSSProperties>();
+
+  useLayoutEffect(() => {
+    if (!composer) return;
+    const panel = panelRef.current;
+    const host = panel?.offsetParent as HTMLElement | null;
+    const card = host?.querySelector<HTMLElement>('[data-composer]');
+    if (!host || !card) return;
+    // ResizeObserver also fires once on observe, before paint.
+    const ro = new ResizeObserver(() => {
+      const h = host.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      const room = c.left - h.left - EDGE - DOCK_GAP;
+      setStyle(
+        room >= PANEL_MIN_W
+          ? {
+              right: h.right - c.left + DOCK_GAP,
+              width: Math.min(PANEL_W, room),
+            }
+          : // Too tight: hug the left edge above the composer so its header
+            // controls and Send stay reachable.
+            {
+              left: EDGE,
+              right: 'auto',
+              width: Math.min(PANEL_MIN_W, h.width - 2 * EDGE),
+              zIndex: 50,
+            },
+      );
+    });
+    ro.observe(card);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, [panelRef, composer]);
+
+  return composer ? style : undefined;
+}
+
 export function AssistantModal() {
   const reduced = usePrefersReducedMotion();
   const open = useAssistant((s) => s.open);
@@ -206,12 +262,15 @@ export function AssistantModal() {
 
   const view = useUi((s) => s.view);
   const selectedThreadId = useUi((s) => s.selectedThreadId);
-  const composerOpen = useUi((s) => !!s.composer);
+  const composer = useUi((s) => s.composer);
+  const composerOpen = !!composer;
   const reading = view !== 'home' && !!selectedThreadId && !selectedThreadId.startsWith('bundle:');
 
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dockStyle = useComposerDock(panelRef, open ? composer : null);
   const transcriptShown = open && configured;
   const { edges, onScroll } = useScrollFade(scrollRef, transcriptShown);
   const { showJump, jumpToLatest } = useStickToBottom(scrollRef, transcriptShown);
@@ -245,8 +304,10 @@ export function AssistantModal() {
 
   return (
     <div
+      ref={panelRef}
       role="dialog"
       aria-label="Assistant"
+      style={dockStyle}
       className="orb-menu-in ai-glass absolute right-4 bottom-4 z-40 flex h-[min(560px,72vh)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[22px]"
     >
       <header className="ai-rule flex h-11 shrink-0 items-center gap-2 border-b px-4">
