@@ -54,9 +54,18 @@ const UNHIDE_FALLBACK_MS = 300;
  * Uniox's windows straight back behind it without activating them.
  * `whileHidden` runs with every Uniox window hidden: order out a panel there,
  * so it can't hand the keyboard to Uniox's main window on its way out.
+ *
+ * When Uniox isn't the active app (the usual case for the ⌥⌘N island) there
+ * is nothing to hand back, so it only runs `whileHidden` and never hides the
+ * app. Hiding it there used to strand Uniox hidden: app.hide() lands a beat
+ * later, after the unhideWithoutActivation sent right behind it, so that
+ * unhide did nothing. The next island open then unhid the whole app and
+ * Uniox's main window popped up over the app you were in. With the panel's
+ * non-activating mask applied (makeNonActivating), ordering it out on its own
+ * doesn't activate Uniox.
  */
 export function giveActivationBack(whileHidden?: () => void): void {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' || !isAppActive()) {
     whileHidden?.();
     return;
   }
@@ -75,6 +84,4 @@ export function giveActivationBack(whileHidden?: () => void): void {
   const fallback = setTimeout(unhide, UNHIDE_FALLBACK_MS);
   app.on('did-resign-active', unhide);
   app.hide();
-  // Uniox wasn't active (or hiding already handed activation back): nothing to wait for.
-  if (!isAppActive()) unhide();
 }
