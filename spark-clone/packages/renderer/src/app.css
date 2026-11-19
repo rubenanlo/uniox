@@ -954,7 +954,6 @@ html[data-glass='liquid'] .qr-tint {
 }
 .qr-bubble-in {
   background: color-mix(in oklch, var(--color-surface) 92%, transparent);
-  border: 1px solid color-mix(in oklch, var(--color-ink) 8%, transparent);
 }
 .dark .qr-bubble-in {
   background: rgb(255 255 255 / 0.06);
@@ -1019,15 +1018,13 @@ html[data-glass='liquid'] .qr-tint {
   color: var(--color-accent);
 }
 /* Liquid glass island: the inner surfaces (email bubbles, attachment and time
-   cards, the reply field) are panes of the same glass, a faint white film with
-   a light rim, instead of near-opaque white tiles on the clear panel. */
+   cards, the reply field) are panes of the same glass, a faint white film (the
+   email bubbles have no rim), instead of near-opaque white tiles on the clear panel. */
 html[data-island='frosted'] .qr-bubble-in {
   background: rgb(255 255 255 / 0.2);
-  border-color: rgb(255 255 255 / 0.5);
 }
 html.dark[data-island='frosted'] .qr-bubble-in {
   background: rgb(255 255 255 / 0.06);
-  border-color: rgb(255 255 255 / 0.12);
 }
 html[data-island='frosted'] .qr-field {
   background: rgb(255 255 255 / 0.16);
