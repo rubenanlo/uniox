@@ -2,6 +2,7 @@ import { BrowserWindow, screen, type Rectangle, type WebContents, type WebPrefer
 import type { DeltaEvent, GlassRect, IslandDisplay, IslandStyle, NotifyPayload, QuickReplyItem, QuickReplyMode, QuickReplyState, QuickReplyView } from '@app/shared';
 import { GlassBackdrops } from '../glass';
 import { giveActivationBack, makeNonActivating, trackAppActive } from '../mac-activation';
+import { trace, traceWindow } from '../debug-activation';
 import { QuickReplyQueue } from './queue';
 
 /** After the overlay is closed, keep it warm this long (and let an Undo Send finish), then free it. */
@@ -130,6 +131,7 @@ export class QuickReplyWindow {
    * widget sends straight away, Undo included.
    */
   open(mode: QuickReplyMode, current?: string | NotifyPayload | null, opts?: { send?: string }): void {
+    trace('island:open', { mode });
     this.clearTimers();
     const wasOpen = this.shown && this.visible();
     if (!wasOpen) {
@@ -228,6 +230,7 @@ export class QuickReplyWindow {
    * about to take over.
    */
   close(opts?: { returnFocus?: boolean }): void {
+    trace('island:close', opts ?? {});
     if (this.pendingShow) {
       this.pendingShow = false;
       this.shown = false;
@@ -357,6 +360,7 @@ export class QuickReplyWindow {
       ...(mac ? { type: 'panel' } : {}),
       webPreferences: { ...this.opts.webPreferences, backgroundThrottling: false },
     });
+    traceWindow(win, 'island');
     makeNonActivating(win);
     win.setAlwaysOnTop(true, 'screen-saver');
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
