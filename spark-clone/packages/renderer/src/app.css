@@ -921,6 +921,30 @@ html.dark[data-glass='liquid'] .qr-glass {
 html[data-glass='liquid'] .qr-tint {
   display: none;
 }
+/* Lens (E2): the glass's clear edge refracts what's behind it (main keeps a
+   plain blur window over each panel's middle, 18px in, see glass.ts); this
+   soft-edged dim over that middle keeps the text readable on a busy screen.
+   Same 18px as lensRim() in main/src/glass-geometry.ts. */
+html[data-glass='liquid'] .qr-glass {
+  isolation: isolate;
+}
+html[data-glass='liquid'] .qr-glass::after {
+  content: '';
+  position: absolute;
+  inset: 16px;
+  z-index: -1;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.2);
+  filter: blur(5px);
+  pointer-events: none;
+}
+html.dark[data-glass='liquid'] .qr-glass::after {
+  background: rgb(10 10 16 / 0.28);
+}
+/* Capsules and other small panels are all rim. */
+html[data-glass='liquid'] .qr-glass.rounded-full::after {
+  display: none;
+}
 /* The theme-coloured haze inside the glass (violet / azure / aqua corners). */
 .qr-tint {
   position: absolute;
