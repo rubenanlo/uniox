@@ -268,6 +268,8 @@ export class QuickReplyWindow {
    *   nothing). Nothing of Uniox is left to take the keyboard, and macOS gives
    *   it back to the app you were in, as ⌘H does. Then drop the panel and
    *   bring Uniox's other windows back behind that app without activating.
+   *   When Uniox isn't the active app there's nothing to hand back, and
+   *   giveActivationBack just orders the panel out (see its comment).
    */
   private hideAndGiveFocusBack(win: BrowserWindow, returnTo: BrowserWindow | null): void {
     if (returnTo && !returnTo.isDestroyed() && returnTo.isVisible() && !returnTo.isMinimized()) {
