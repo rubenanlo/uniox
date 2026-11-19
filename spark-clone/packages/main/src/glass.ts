@@ -1,6 +1,6 @@
 import { BrowserWindow, type Rectangle } from 'electron';
 import type { GlassRect } from '@app/shared';
-import { backdropBounds } from './glass-geometry';
+import { backdropBounds, lensCoreBounds } from './glass-geometry';
 import { makeNonActivating } from './mac-activation';
 
 /** Corner radii this close share a Liquid Glass window (see sync). */
@@ -68,6 +68,23 @@ export class GlassBackdrops {
   private readonly glassIds = new WeakMap<BrowserWindow, number>();
   /** Settings → Transparency behind at Clear: the clear variant, with no frost of its own. */
   private clear = false;
+  /**
+   * Lens look (the ⌥⌘N island, design E2): the Liquid Glass view is left on
+   * its default variant, so it follows System Settings → Appearance → Liquid
+   * Glass (macOS 27's clear-to-tinted slider) and keeps its refracting edge;
+   * a plain blur window sits over each panel's middle, inside that edge, so
+   * the text reads over a busy screen. Only with real Liquid Glass.
+   */
+  private readonly lens: boolean;
+  /** The blurred middles of lens panels, one per panel (same index as the pool). */
+  private readonly cores: BrowserWindow[] = [];
+  /** The last panels synced, for a core that waits on its glass window. */
+  private lastRects: GlassRect[] = [];
+  private lastOrigin = { x: 0, y: 0 };
+
+  constructor(opts: { lens?: boolean } = {}) {
+    this.lens = !!opts.lens;
+  }
 
   /** True when panels sit on real Liquid Glass (the page then drops its own fill). */
   get liquid(): boolean {
@@ -77,6 +94,7 @@ export class GlassBackdrops {
   setDark(dark: boolean): void {
     if (this.dark === dark) return;
     this.dark = dark;
+    for (const w of this.cores) if (!w.isDestroyed()) w.setVibrancy(this.material());
     if (this.liquid) return; // Liquid Glass follows the app's appearance by itself
     for (const w of this.pool) if (!w.isDestroyed()) w.setVibrancy(this.material());
   }
@@ -92,6 +110,8 @@ export class GlassBackdrops {
   }
 
   private applyVariant(w: BrowserWindow): void {
+    // Lens: never force a variant, so the glass follows the system's Liquid Glass slider.
+    if (this.lens) return;
     const id = this.glassIds.get(w);
     if (id === undefined || id < 0) return;
     try {
@@ -130,6 +150,33 @@ export class GlassBackdrops {
       this.wanted.delete(w);
       conceal(w);
     }
+    this.lastRects = liquid ? rects : [];
+    this.lastOrigin = origin;
+    this.syncCores(this.lastRects, origin, wasFading);
+  }
+
+  /** A glass window just loaded its view: give its panel the blurred middle it waited for. */
+  private resyncCores(): void {
+    if (this.lens && this.lastRects.length) this.syncCores(this.lastRects, this.lastOrigin, false);
+  }
+
+  /** Lens: a plain blur over each panel's middle, inside its clear rim; hidden for the rest. */
+  private syncCores(rects: GlassRect[], origin: { x: number; y: number }, wasFading: boolean): void {
+    const cores = this.lens ? rects.map((r) => lensCoreBounds(r, origin)) : [];
+    cores.forEach((b, i) => {
+      let w: BrowserWindow | undefined = this.cores[i];
+      // No middle, or its glass hasn't loaded yet (a bare blur box without the rim): hidden.
+      const glass = this.pool[i];
+      if (!b || !glass || glass.isDestroyed() || !glass.isVisible()) {
+        if (w && !w.isDestroyed()) conceal(w);
+        return;
+      }
+      if (!w || w.isDestroyed()) w = this.cores[i] = this.createCore();
+      w.setBounds(b, false);
+      if (!w.isVisible()) reveal(w);
+      else if (wasFading) w.setOpacity(1);
+    });
+    for (const w of this.cores.slice(cores.length)) if (!w.isDestroyed()) conceal(w);
   }
 
   /**
@@ -139,7 +186,7 @@ export class GlassBackdrops {
    */
   fadeOut(ms: number): void {
     this.stopFade();
-    const shown = this.pool.filter((w) => !w.isDestroyed() && w.isVisible());
+    const shown = [...this.pool, ...this.cores].filter((w) => !w.isDestroyed() && w.isVisible());
     // A panel whose glass loads late must not show up mid-close.
     for (const w of this.pool) this.wanted.delete(w);
     if (!shown.length) return this.hide();
@@ -168,12 +215,15 @@ export class GlassBackdrops {
       this.wanted.delete(w);
       conceal(w);
     }
+    for (const w of this.cores) if (!w.isDestroyed()) conceal(w);
+    this.lastRects = [];
   }
 
   destroy(): void {
     this.stopFade();
-    for (const w of this.pool) if (!w.isDestroyed()) w.destroy();
+    for (const w of [...this.pool, ...this.cores]) if (!w.isDestroyed()) w.destroy();
     this.pool.length = 0;
+    this.cores.length = 0;
   }
 
   /** HUD is always dark. In light mode 'under-window' is the thinnest material:
@@ -183,8 +233,37 @@ export class GlassBackdrops {
     return this.dark ? 'hud' : 'under-window';
   }
 
+  /** A lens panel's blurred middle: a vibrancy window one step above the glass windows. */
+  private createCore(): BrowserWindow {
+    const w = this.baseWindow(true);
+    w.setAlwaysOnTop(true, 'pop-up-menu', 1);
+    void w.loadURL('about:blank');
+    return w;
+  }
+
   private create(radius: number): BrowserWindow {
     const liquid = liquidGlass();
+    const w = this.baseWindow(!liquid);
+    if (liquid) {
+      this.radii.set(w, radius);
+      this.unglazed.add(w);
+      w.webContents.once('did-finish-load', () => {
+        if (w.isDestroyed()) return;
+        this.glassIds.set(w, liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius }));
+        this.applyVariant(w);
+        this.unglazed.delete(w);
+        if (this.wanted.has(w) && !w.isVisible()) {
+          reveal(w);
+          this.resyncCores();
+        }
+      });
+    }
+    void w.loadURL('about:blank');
+    return w;
+  }
+
+  /** An empty, click-through, non-activating window over every app (vibrancy optional). */
+  private baseWindow(vibrancy: boolean): BrowserWindow {
     const w = new BrowserWindow({
       show: false,
       frame: false,
@@ -199,7 +278,7 @@ export class GlassBackdrops {
       skipTaskbar: true,
       focusable: false,
       type: 'panel',
-      ...(liquid ? {} : { vibrancy: this.material(), visualEffectState: 'active' as const }),
+      ...(vibrancy ? { vibrancy: this.material(), visualEffectState: 'active' as const } : {}),
       webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false },
     });
     // Under the island (screen-saver level) but over every app window and the menu bar.
@@ -207,18 +286,6 @@ export class GlassBackdrops {
     w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     w.setIgnoreMouseEvents(true);
     makeNonActivating(w);
-    if (liquid) {
-      this.radii.set(w, radius);
-      this.unglazed.add(w);
-      w.webContents.once('did-finish-load', () => {
-        if (w.isDestroyed()) return;
-        this.glassIds.set(w, liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius }));
-        this.applyVariant(w);
-        this.unglazed.delete(w);
-        if (this.wanted.has(w) && !w.isVisible()) reveal(w);
-      });
-    }
-    void w.loadURL('about:blank');
     return w;
   }
 }
