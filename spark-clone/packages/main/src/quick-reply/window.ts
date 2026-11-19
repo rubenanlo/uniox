@@ -51,8 +51,7 @@ export class QuickReplyWindow {
   /** Settings → Appearance → Island style. Frosted puts macOS's blur behind the page's panels. */
   private island: IslandStyle = 'glass';
   private display: IslandDisplay = 'pointer';
-  /** Lens look (E2): clear refracting rim that follows the system's Liquid Glass slider, blurred middle. */
-  private readonly backdrops = new GlassBackdrops({ lens: true });
+  private readonly backdrops = new GlassBackdrops();
 
   constructor(
     private readonly opts: {

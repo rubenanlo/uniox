@@ -29,25 +29,3 @@ export function backdropBounds(rect: GlassRect, origin: { x: number; y: number }
   return { x: Math.round(origin.x + rect.x + d), y: Math.round(origin.y + rect.y + d), width, height };
 }
 
-
-/** The clear, refracting band Liquid Glass keeps around a lens panel (E2), in CSS px; thinner on small panels. */
-export function lensRim(rect: GlassRect): number {
-  return Math.max(0, Math.min(18, Math.floor(Math.min(rect.width, rect.height) / 6)));
-}
-
-/** Smallest core worth blurring: below this a panel is all rim. */
-const MIN_CORE = 48;
-
-/**
- * Where a lens panel's softly blurred middle goes: inside its clear rim, and
- * far enough in that the blur window's own 10px corners stay under the
- * panel's curve. Null when the panel is too small to have a middle.
- */
-export function lensCoreBounds(rect: GlassRect, origin: { x: number; y: number }): Bounds | null {
-  const rim = lensRim(rect);
-  const d = Math.max(rim, backdropInset(rect.radius));
-  const width = Math.round(rect.width - d * 2);
-  const height = Math.round(rect.height - d * 2);
-  if (width < MIN_CORE || height < MIN_CORE) return null;
-  return { x: Math.round(origin.x + rect.x + d), y: Math.round(origin.y + rect.y + d), width, height };
-}
