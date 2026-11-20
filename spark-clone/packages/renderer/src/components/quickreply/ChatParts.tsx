@@ -60,7 +60,7 @@ function AiRow({ children, className }: { children: React.ReactNode; className?:
   );
 }
 
-/** One message as a chat bubble (yours on the right), with its files as cards below. */
+/** One message as a chat bubble (yours on the right), shown in full, with its files as cards below. */
 export function Bubble({
   message,
   body,
@@ -76,9 +76,7 @@ export function Bubble({
   /** Keep text bubbles to a readable chat width (the wide reading pane). */
   narrow?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const text = messageVisibleText(body, message.snippet);
-  const long = text.length > 700;
   const files = body ? cardAttachments(body.attachments, body.html) : [];
   // A designed or image-led email (or one whose text is really markup) shows as itself.
   const source = markupSource(body);
@@ -108,16 +106,10 @@ export function Bubble({
               mine
                 ? 'qr-bubble-out text-ink-muted rounded-[17px_17px_6px_17px] text-[13px]'
                 : 'qr-bubble-in rounded-[6px_17px_17px_17px] text-[13.5px]',
-              long && !open && 'line-clamp-[10]',
             )}
           >
             {text || <span className="text-ink-faint italic">Loading…</span>}
           </div>
-        )}
-        {long && !render && (
-          <button onClick={() => setOpen(!open)} className="text-ink-faint hover:text-ink -mt-1 text-[11.5px]">
-            {open ? 'Show less' : 'Show the whole email'}
-          </button>
         )}
         {files.length > 0 && (
           <div className={cn('flex flex-wrap gap-2', mine && 'justify-end')}>

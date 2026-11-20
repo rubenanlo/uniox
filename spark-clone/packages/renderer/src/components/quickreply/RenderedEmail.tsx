@@ -3,9 +3,6 @@ import { buildSrcdoc, IFRAME_SANDBOX, sanitizeEmailHtml } from '@app/email-rende
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useIsDark } from '../../lib/useIsDark';
 
-/** Folded height of a rendered email in the chat; "Show the whole email" lifts it. */
-const FOLDED_PX = 340;
-
 /**
  * An email that won't read as a chat bubble (a designed newsletter, an
  * image-led mail, or a text part that is really HTML), shown as the email
@@ -19,7 +16,6 @@ export function RenderedEmail({ html, attachments }: { html: string; attachments
   // Natural height of the email, and how much a wider-than-the-bubble layout is scaled down.
   const [height, setHeight] = useState(120);
   const [fit, setFit] = useState<{ scale: number; width: number | null }>({ scale: 1, width: null });
-  const [open, setOpen] = useState(false);
 
   const srcdoc = useMemo(() => {
     const clean = sanitizeEmailHtml(html, { allowRemoteImages: true, attachments, darkMode: dark });
@@ -71,14 +67,14 @@ export function RenderedEmail({ html, attachments }: { html: string; attachments
     };
   }, [srcdoc]);
 
+  // Shown in full: the conversation scrolls instead of folding the email.
   const shown = Math.ceil(height * fit.scale);
-  const tall = shown > FOLDED_PX + 40;
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
       <div
         ref={boxRef}
         className="qr-bubble-in relative overflow-hidden rounded-[6px_17px_17px_17px] select-text"
-        style={{ height: tall && !open ? FOLDED_PX : shown }}
+        style={{ height: shown }}
       >
         <iframe
           ref={frameRef}
@@ -95,13 +91,7 @@ export function RenderedEmail({ html, attachments }: { html: string; attachments
             transformOrigin: 'top left',
           }}
         />
-        {tall && !open && <div className="qr-fold pointer-events-none absolute inset-x-0 bottom-0 h-16" />}
       </div>
-      {tall && (
-        <button onClick={() => setOpen(!open)} className="text-ink-faint hover:text-ink self-start text-[11.5px]">
-          {open ? 'Show less' : 'Show the whole email'}
-        </button>
-      )}
     </div>
   );
 }
