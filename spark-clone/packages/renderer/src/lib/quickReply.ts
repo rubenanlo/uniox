@@ -24,6 +24,7 @@ const QUOTE_HEADER = [
  * is left (a message that is only a quote).
  */
 export function visibleText(text: string): string {
+  text = cleanPlainText(text);
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -46,6 +47,32 @@ export function visibleText(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return trimmed || text.trim();
+}
+
+/**
+ * Undo what mail apps do when they flatten HTML into the text/plain part:
+ * Gmail writes bold as *bold* and every link as "text <url>" (wrapped over
+ * lines when long), and an image link becomes "* <url>*". Drop the link
+ * targets and emphasis stars so the chat shows the words people see.
+ */
+export function cleanPlainText(text: string): string {
+  return (
+    text
+      .replace(/\r\n?/g, '\n')
+      // A line that is only a link target (a logo or address link): drop the line.
+      .replace(/^[ \t]*<(?:https?:\/\/|mailto:)[^<>\s]*(?:\n[^<>\s]+)*>[ \t]*(?:\n|$)/gim, '')
+      // "label <https://…>" / "<mailto:…>", possibly wrapped across lines.
+      .replace(/[ \t]*<(?:https?:\/\/|mailto:)[^<>\s]*(?:\n[^<>\s]+)*>/gi, '')
+      // "name@x.org <other@x.org>": a link target after visible text.
+      .replace(/(\S)[ \t]*<[^<>\s@]+@[^<>\s]+>/g, '$1')
+      // *emphasis* (Gmail's bold), including nested **…*.
+      .replace(/(^|[\s([|,;:])\*+(?=[^\s*])/gm, '$1')
+      .replace(/([^\s*])\*+(?=$|[\s)\].,;:!?|])/gm, '$1')
+      // Lines left with nothing but stars or bullets (an image link).
+      .split('\n')
+      .filter((line) => !/^[ \t]*[*•][ \t*]*$/.test(line))
+      .join('\n')
+  );
 }
 
 function escapeHtml(s: string): string {

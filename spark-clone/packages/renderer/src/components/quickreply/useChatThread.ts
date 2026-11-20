@@ -14,12 +14,12 @@ import {
 import {
   askAbout,
   draftFromIntent,
-  replyIdeas,
   rewriteDraft,
   summarizeThread,
   threadContext,
   translateLatest,
 } from '../../lib/quickReplyAi';
+import { cachedReplyIdeas } from '../../lib/replyIdeasCache';
 import { deferSend } from '../../lib/sendDraft';
 import { normalizeSignatureHtml, signatureBlock, signatureText } from '../../lib/signature';
 import { useAssistant } from '../../state/assistant';
@@ -191,7 +191,7 @@ export function useChatThread(
     if (!latest || !latestBody || !configured || ideasFor.current === latest.id) return;
     ideasFor.current = latest.id;
     setIdeas('loading');
-    replyIdeas(context).then(
+    cachedReplyIdeas(latest.id, context).then(
       (read) => {
         setIdeas(read);
         // The assistant spotted a meeting ask the keyword check missed.
