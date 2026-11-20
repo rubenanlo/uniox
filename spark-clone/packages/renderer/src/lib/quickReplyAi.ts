@@ -140,6 +140,18 @@ export function askAbout(context: string, question: string): Promise<string> {
     .then((s) => s.trim());
 }
 
+/** The latest message in the thread, translated into English (as the ⌘. menu's "Translate into English"). */
+export function translateLatest(context: string): Promise<string> {
+  return useAssistant
+    .getState()
+    .complete(
+      'Translate the latest message in this thread into English. Keep its paragraphs and lists. ' +
+        'Return only the translation, no preamble. If it is already in English, say so in one line.',
+      context,
+    )
+    .then((s) => s.trim());
+}
+
 export function summarizeThread(context: string): Promise<string> {
   return useAssistant
     .getState()

@@ -123,13 +123,14 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
     chat.setDraft('');
   };
 
-  // Inside the pane, ⌘J opens the chat's AI menu (as on the island) instead of
-  // the global palette; ⌘⇧A checks availability, ⌘⇧F forwards.
+  // Inside the pane, ⌘. opens the chat's one AI menu: the reply rewrites (as on
+  // the island) plus ⌘.'s email actions (summary, write a reply, translate).
+  // ⌘⇧A checks availability, ⌘⇧F forwards.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (paneEscape(e)) return;
     const meta = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
-    if (meta && !e.shiftKey && !e.altKey && k === 'j') {
+    if (meta && !e.shiftKey && !e.altKey && k === '.') {
       e.preventDefault();
       e.stopPropagation();
       setMenu((m) => !m);
@@ -228,7 +229,8 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
                 hasDraft={!!chat.draft.trim()}
                 onPick={onMenuPick}
                 onClose={() => setMenu(false)}
-                className="ai-glass bottom-[calc(100%+6px)] left-6"
+                translate
+                className="ai-glass chat-menu bottom-[calc(100%+6px)] left-6"
               />
             )}
             <ReplyField
@@ -239,7 +241,7 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
                   <button
                     data-ai-toggle
                     onClick={() => setMenu((m) => !m)}
-                    title="Assistant  ⌘J"
+                    title="Assistant  ⌘."
                     className={cn(tool, 'text-accent font-medium')}
                   >
                     <Sparkles size={13} /> Assistant

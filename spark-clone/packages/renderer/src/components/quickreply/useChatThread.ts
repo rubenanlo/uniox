@@ -18,6 +18,7 @@ import {
   rewriteDraft,
   summarizeThread,
   threadContext,
+  translateLatest,
 } from '../../lib/quickReplyAi';
 import { deferSend } from '../../lib/sendDraft';
 import { normalizeSignatureHtml, signatureBlock, signatureText } from '../../lib/signature';
@@ -285,10 +286,11 @@ export function useChatThread(
     }
   };
 
-  /** A pick from the AI menu (⌘J): rewrite the draft, summarize, write, or ask. */
+  /** A pick from the AI menu: rewrite the draft, summarize, write, or ask. */
   const runAiPick = async (pick: AiMenuPick) => {
     if (!configured) return void toast('Add your Claude API key in Settings to use the assistant.');
     if (pick.kind === 'summarize') return void addNote(() => summarizeThread(context));
+    if (pick.kind === 'translate-thread') return void addNote(() => translateLatest(context));
     if (pick.kind === 'ask') return void addNote(() => askAbout(context, pick.question), pick.question);
     if (pick.kind === 'write') return void writeFromIntent('Whatever reply fits best');
     setWriting(true);

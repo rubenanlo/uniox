@@ -455,6 +455,13 @@ body {
   background: rgb(255 255 255 / 0.06);
   box-shadow: 0 8px 24px -14px rgb(0 0 0 / 0.6);
 }
+/* The chat's ⌘. menu floats over the messages: frosted, but dense enough to read. */
+.ai-glass.chat-menu {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.9));
+}
+.dark .ai-glass.chat-menu {
+  background: linear-gradient(160deg, rgb(52 52 60 / 0.96), rgb(32 32 38 / 0.94));
+}
 /* Reply-idea chips inside the frosted AI bubble keep a visible rim. */
 .chat-wash .chat-ai-bubble .qr-field {
   background: rgb(255 255 255 / 0.55);
