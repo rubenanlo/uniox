@@ -122,8 +122,8 @@ export class GlassBackdrops {
       if (!w || w.isDestroyed()) w = this.pool[i] = this.create(radius);
       w.setBounds(b, false);
       this.wanted.add(w);
-      if (!w.isVisible() && !this.unglazed.has(w)) reveal(w);
-      else if (wasFading && w.isVisible()) w.setOpacity(1);
+      if (!onScreen(w) && !this.unglazed.has(w)) reveal(w);
+      else if (wasFading && onScreen(w)) w.setOpacity(1);
     });
     for (const w of this.pool.slice(bounds.length)) {
       if (w.isDestroyed()) continue;
@@ -139,7 +139,7 @@ export class GlassBackdrops {
    */
   fadeOut(ms: number): void {
     this.stopFade();
-    const shown = this.pool.filter((w) => !w.isDestroyed() && w.isVisible());
+    const shown = this.pool.filter((w) => !w.isDestroyed() && onScreen(w));
     // A panel whose glass loads late must not show up mid-close.
     for (const w of this.pool) this.wanted.delete(w);
     if (!shown.length) return this.hide();
@@ -215,7 +215,7 @@ export class GlassBackdrops {
         this.glassIds.set(w, liquid.addView(w.getNativeWindowHandle(), { cornerRadius: radius }));
         this.applyVariant(w);
         this.unglazed.delete(w);
-        if (this.wanted.has(w) && !w.isVisible()) reveal(w);
+        if (this.wanted.has(w) && !onScreen(w)) reveal(w);
       });
     }
     void w.loadURL('about:blank');
@@ -223,21 +223,37 @@ export class GlassBackdrops {
   }
 }
 
+/**
+ * Glass windows that are out of sight but still ordered in: transparent and
+ * click-through (they always ignore the mouse), never hidden. See conceal().
+ */
+const parked = new WeakSet<BrowserWindow>();
+
+/** On screen right now: ordered in and not parked. */
+function onScreen(w: BrowserWindow): boolean {
+  return w.isVisible() && !parked.has(w);
+}
+
 function reveal(w: BrowserWindow): void {
-  w.showInactive();
+  if (!w.isVisible()) w.showInactive();
+  parked.delete(w);
   w.setOpacity(1);
 }
 
 /**
- * Hide at once. macOS fades a panel out when it's ordered out, and a glass
- * window caught in that fade lost its rounded mask: a grey rectangle lingered
- * after the notification had gone. Dropping the opacity first makes the fade
- * invisible.
+ * Take a panel off screen by parking it (opacity 0), never by ordering it
+ * out. Ordering a Uniox window out while another app is in front activated
+ * Uniox: on Ruben's Mac (2026-11-20), the moment a toast's glass window was
+ * hidden, Uniox became the front app with its main window focused, and
+ * AeroSpace jumped to its workspace. Parking also skips macOS's order-out
+ * fade, in which a glass window lost its rounded mask (a grey rectangle
+ * lingered after the notification had gone). Parked windows cost nothing and
+ * go when the pool is destroyed.
  */
 function conceal(w: BrowserWindow): void {
-  if (!w.isVisible()) return;
+  if (!onScreen(w)) return;
   w.setOpacity(0);
-  w.hide();
+  parked.add(w);
 }
 
 /** Liquid Glass draws its own rounded corners, so its window covers the whole panel. */
