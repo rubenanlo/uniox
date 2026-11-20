@@ -259,3 +259,36 @@ describe('⌥⌘N list sections', () => {
     expect(accountForDigit(4, ['a1', 'a2'])).toBeNull();
   });
 });
+
+describe('cleanPlainText', () => {
+  it('drops Gmail link targets and bold stars from a flattened signature', async () => {
+    const { cleanPlainText } = await import('../src/lib/quickReply');
+    const raw = [
+      'Thanks, see you *Monday*.',
+      '',
+      '* <http://www.unsdsn.org/>*',
+      '*Aline Mosnier*',
+      '*Scientific Director, **FABLE Consortium*',
+      'Sustainable Development Solutions Network',
+      '19, Rue Bergère | 75009 Paris',
+      '<https://maps.google.com/?',
+      'q=19,+Rue+Berg%C3%A8re+%7C+75009+Paris&entry=gmail&source=g>',
+      'Mobile: + 33 (0) 7 69 40 77 86',
+      'aline.mosnier@unsdsn.org <marine.formentini@unsdsn.org>',
+      'Read the report <https://example.org/r> today, 2 * 3 = 6',
+    ].join('\n');
+    expect(cleanPlainText(raw)).toBe(
+      [
+        'Thanks, see you Monday.',
+        '',
+        'Aline Mosnier',
+        'Scientific Director, FABLE Consortium',
+        'Sustainable Development Solutions Network',
+        '19, Rue Bergère | 75009 Paris',
+        'Mobile: + 33 (0) 7 69 40 77 86',
+        'aline.mosnier@unsdsn.org',
+        'Read the report today, 2 * 3 = 6',
+      ].join('\n'),
+    );
+  });
+});
