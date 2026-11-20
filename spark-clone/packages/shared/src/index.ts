@@ -8,3 +8,4 @@ export * from './search';
 export * from './mailto';
 export * from './compose';
 export * from './eventDedupe';
+export * from './ical';

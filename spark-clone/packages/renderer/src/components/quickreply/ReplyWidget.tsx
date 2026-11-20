@@ -18,6 +18,7 @@ import { Keycaps } from '../ui/Keycap';
 import { AiMenu, type AiMenuPick } from './AiMenu';
 import {
   AssistantRead,
+  InviteNote,
   Bubble,
   ChatAvatar,
   ForwardNote,
@@ -339,6 +340,7 @@ export function ReplyWidget({
           ))}
 
           {latest && <AssistantRead chat={chat} />}
+          <InviteNote chat={chat} />
           <TimesNote chat={chat} />
           <ForwardNote chat={chat} />
           <NotesList chat={chat} />

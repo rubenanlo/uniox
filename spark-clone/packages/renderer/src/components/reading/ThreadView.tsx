@@ -22,6 +22,7 @@ import { useThreadMessages } from '../../state/queries';
 import { useUi } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
 import { Tip } from '../ui/Tip';
+import { InviteCard } from '../invite/InviteCard';
 import { AvailabilitySuggestions } from './AvailabilitySuggestions';
 import { ChatThreadView } from './ChatThreadView';
 import { MessageBody } from './MessageBody';
@@ -229,6 +230,11 @@ function MessageItem({
           <Keycaps keys={['↩']} /> {expanded ? 'collapse' : 'expand'}
         </span>
       </button>
+      {expanded && (
+        <div className="pt-3 empty:hidden">
+          <InviteCard messageId={message.id} />
+        </div>
+      )}
       {expanded && <MessageBody messageId={message.id} />}
       {expanded && latest && <AvailabilitySuggestions message={message} />}
     </article>

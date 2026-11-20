@@ -6,6 +6,7 @@ import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
 import { Keycaps } from '../ui/Keycap';
 import { FileCard, SLOT_DRAG_TYPE, SlotCard, slotDay } from './Cards';
+import { InviteCard, useInvite } from '../invite/InviteCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
 import { firstName, listNames, nameOf, type ChatThread } from './useChatThread';
@@ -77,7 +78,12 @@ export function Bubble({
   narrow?: boolean;
 }) {
   const text = messageVisibleText(body, message.snippet);
-  const files = body ? cardAttachments(body.attachments, body.html) : [];
+  // An invite's calendar part is answered on the invite card, not opened as a file.
+  const files = body
+    ? cardAttachments(body.attachments, body.html).filter(
+        (f) => !/^(text\/calendar|application\/ics)/i.test(f.contentType) && !/\.ics$/i.test(f.filename),
+      )
+    : [];
   // A designed or image-led email (or one whose text is really markup) shows as itself.
   const source = markupSource(body);
   const render = !mine && !!source && (htmlNeedsRender(source) || looksLikeMarkup(text) || !text.trim());
@@ -157,6 +163,23 @@ export function AssistantRead({ chat }: { chat: ChatThread }) {
           )}
         </>
       )}
+    </AiRow>
+  );
+}
+
+/** A meeting invite in the thread: answer it on the invite itself (Accept / Maybe / Decline / Propose). */
+export function InviteNote({ chat }: { chat: ChatThread }) {
+  const { latest } = chat;
+  const { info } = useInvite(latest?.id);
+  if (!latest || !info || info.isOrganizer) return null;
+  return (
+    <AiRow className="qr-msg-in">
+      <p className="mb-2 text-[14.5px] leading-normal">
+        {info.kind === 'cancel'
+          ? 'This meeting was cancelled.'
+          : 'Answer the invite here. It goes straight to the event, no email to write.'}
+      </p>
+      <InviteCard messageId={latest.id} variant="island" info={info} />
     </AiRow>
   );
 }

@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { AiMenu, type AiMenuPick } from '../quickreply/AiMenu';
 import {
   AssistantRead,
+  InviteNote,
   Bubble,
   ChatSurface,
   ForwardNote,
@@ -215,7 +216,7 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
               })}
 
               {latest && <AssistantRead chat={chat} />}
-              {/* Room for cards about the email itself, e.g. an invite's Accept / Decline / Propose card. */}
+              <InviteNote chat={chat} />
               <TimesNote chat={chat} />
               <ForwardNote chat={chat} />
               <NotesList chat={chat} />
