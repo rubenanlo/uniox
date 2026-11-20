@@ -148,49 +148,47 @@ body {
 .btn:hover { background: var(--sunken-hover); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
 .btn.primary:hover { filter: brightness(1.08); }
-/* Settings → Transparency behind: a layer of the theme's surface over the glass
-   (none at Clear, 90% at Frosted). Only the frosted looks read it. */
-.frosted { --frost-base: 255 255 255; }
-.dark.frosted { --frost-base: 32 32 38; }
-/* Frosted island: the card is clear over macOS's own blur (a vibrancy window
-   behind it, see glass.ts); only its fill, rim and shadow change. The soft
-   inner glow covers the thin edge the blur window leaves for the corners. */
+/* Glass looks (Frosted / Liquid glass): smoked glass. macOS's glass turns
+   mid-grey over busy or dark windows and the theme's grey ink vanished on
+   it, so the glass gets a dark smoked tint with white ink, the same in light
+   and dark mode (like the system volume HUD). Settings → Transparency behind
+   can only make the smoke denser, never thinner than the floor. */
+.frosted, .dark.frosted {
+  --smoke: 16 16 20;
+  --smoke-floor: 0.62;
+  --ink: #ffffff;
+  --ink-muted: rgb(255 255 255 / 0.78);
+  --ink-faint: rgb(255 255 255 / 0.58);
+  --sunken: rgb(255 255 255 / 0.12);
+  --sunken-hover: rgb(255 255 255 / 0.18);
+  --hairline: rgb(255 255 255 / 0.14);
+  --surface: #1d1d22;
+  --accent: #ffffff;
+  --on-accent: #111216;
+  --aqua: oklch(0.82 0.13 178);
+  --azure: oklch(0.7 0.15 250);
+  --violet: oklch(0.72 0.17 295);
+  --priority: #eba13f;
+}
+.dark.frosted { --smoke: 10 10 14; --smoke-floor: 0.7; }
 .frosted .card {
-  background: linear-gradient(rgb(var(--frost-base) / var(--glass-frost, 0)), rgb(var(--frost-base) / var(--glass-frost, 0))),
-    linear-gradient(160deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.14));
-  border-color: rgb(255 255 255 / 0.6);
-  box-shadow: 0 14px 36px rgb(20 20 40 / 0.16), inset 0 1px 0 rgb(255 255 255 / 0.55), inset 0 0 10px 3px rgb(255 255 255 / 0.2);
+  background: rgb(var(--smoke) / max(var(--smoke-floor), var(--glass-frost, 0)));
+  border-color: rgb(255 255 255 / 0.22);
+  border-width: 0.5px;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 0.28);
 }
-.dark.frosted .card {
-  background: linear-gradient(rgb(var(--frost-base) / var(--glass-frost, 0)), rgb(var(--frost-base) / var(--glass-frost, 0))),
-    linear-gradient(160deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.04));
-  border-color: rgb(255 255 255 / 0.2);
-  box-shadow: 0 14px 36px rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.14), inset 0 0 10px 3px rgb(255 255 255 / 0.05);
-}
-/* Real Liquid Glass (macOS 26+): macOS draws the glass and its edge. */
-.liquid .card,
-.dark.liquid .card {
-  background: rgb(var(--frost-base) / var(--glass-frost, 0));
-  border-color: transparent;
-  box-shadow: 0 14px 36px rgb(0 0 0 / 0.18);
-}
-.frosted .deck div { background: rgb(255 255 255 / 0.55); border-color: rgb(255 255 255 / 0.6); }
-.dark.frosted .deck div { background: rgb(70 70 82 / 0.7); border-color: rgb(255 255 255 / 0.18); }
+.frosted .deck div { background: rgb(28 28 34 / 0.82); border-color: rgb(255 255 255 / 0.16); }
 /* Liquid Glass can't follow a card while it slides (the glass window trails
    it by a frame or more and showed as an empty capsule), so a card in motion
    gets a painted fill instead, and the glass takes over once it has settled:
    the fill fades out just as the glass appears under it. */
 .card::before {
   content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(160deg, rgb(255 255 255 / 0.86), rgb(255 255 255 / 0.7));
-  border: 1px solid rgb(255 255 255 / 0.7);
+  background: rgb(30 30 36 / 0.92);
+  border: 0.5px solid rgb(255 255 255 / 0.2);
   opacity: 0; transition: opacity 200ms ease-out 120ms;
 }
-.dark .card::before { background: linear-gradient(160deg, rgb(64 64 74 / 0.86), rgb(40 40 48 / 0.8)); border-color: rgb(255 255 255 / 0.16); }
 .liquid .card.moving::before { opacity: 1; transition: none; }
-/* Nothing blurs behind the deck slivers, so they need enough body to read as cards. */
-.liquid .deck div { background: rgb(255 255 255 / 0.82); border-color: rgb(255 255 255 / 0.7); }
-.dark.liquid .deck div { background: rgb(52 52 62 / 0.88); border-color: rgb(255 255 255 / 0.16); }
 @media (prefers-reduced-motion: reduce) {
   .card, .card.leave, .card.rise, .card.swap, .more, .bar i { transition-duration: 1ms !important; }
 }
