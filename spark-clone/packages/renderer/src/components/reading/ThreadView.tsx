@@ -1,6 +1,16 @@
 import type { Address, MessageMeta, ThreadSummary } from '@app/shared';
 import { textToHtml } from '@app/email-render';
-import { AlarmClock, Bell, Forward, Layers, Printer, Reply, ReplyAll } from 'lucide-react';
+import {
+  AlarmClock,
+  Bell,
+  Forward,
+  Layers,
+  MessagesSquare,
+  Printer,
+  Reply,
+  ReplyAll,
+  Rows3,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ACTIONS, keysFor, markThreadRead } from '../../actions/registry';
@@ -14,6 +24,7 @@ import { Keycaps } from '../ui/Keycap';
 import { Tip } from '../ui/Tip';
 import { InviteCard } from '../invite/InviteCard';
 import { AvailabilitySuggestions } from './AvailabilitySuggestions';
+import { ChatThreadView } from './ChatThreadView';
 import { MessageBody } from './MessageBody';
 
 const UNDO_SEND_MS = 5000;
@@ -23,7 +34,7 @@ const UNDO_SEND_MS = 5000;
  * Delete / Edit / Send inline. Send reuses the normal send pipeline and then
  * removes the draft from the server.
  */
-function DraftItem({ message }: { message: MessageMeta }) {
+export function DraftItem({ message }: { message: MessageMeta }) {
   const openComposer = useUi((s) => s.openComposer);
   const recipients = message.to.map((a) => a.name || a.email);
   const toLabel = recipients.length
@@ -230,16 +241,17 @@ function MessageItem({
   );
 }
 
-export function ThreadView({ thread }: { thread: ThreadSummary }) {
-  const messages = useThreadMessages(thread.id);
+/**
+ * Opening a thread marks it read. Deliberately opening it (click / Enter /
+ * notification) marks it read immediately, Spark-style. Arrow-key browsing in
+ * split view previews: settling on an unread email for a beat marks it read
+ * (so it reads once you move on), while quickly passing over mail leaves it
+ * unread — as does mail explicitly marked unread with U. Single pane: showing
+ * is opening.
+ */
+export function useOpenMarksRead(thread: ThreadSummary) {
   const auto = useUi((s) => s.selectionAuto);
   const split = useUi((s) => s.split);
-
-  // Deliberately opening a thread (click / Enter / notification) marks it
-  // read immediately, Spark-style. Arrow-key browsing in split view previews:
-  // settling on an unread email for a beat marks it read (so it reads once
-  // you move on), while quickly passing over mail leaves it unread — as does
-  // mail explicitly marked unread with U. Single pane: showing is opening.
   useEffect(() => {
     if (thread.unreadCount === 0) return;
     if (!auto || !split) {
@@ -250,16 +262,128 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread.id, auto, split]);
+}
+
+/** Esc goes back to the list, unless a sheet or the composer has it. */
+export function paneEscape(e: React.KeyboardEvent): boolean {
+  if (e.key !== 'Escape' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return false;
+  const ui = useUi.getState();
+  if (ui.commandOpen || ui.composer || ui.picker || ui.shortcutsOpen || ui.settingsOpen)
+    return false;
+  e.preventDefault();
+  e.stopPropagation();
+  focusPanelLeft();
+  return true;
+}
+
+/** Plain clicks on the pane background make it the keyboard section; controls keep their own focus. */
+export function focusPaneOnBackground(e: React.MouseEvent<HTMLElement>) {
+  const el = e.target as HTMLElement;
+  if (!el.closest('button, a, input, textarea, iframe, [contenteditable]')) e.currentTarget.focus();
+}
+
+const iconBtn = 'text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5';
+
+/** The thread's subject and actions, with the reading-layout switch (cards or chat). */
+export function ThreadHeader({ thread }: { thread: ThreadSummary }) {
+  const layout = useUi((s) => s.readingLayout);
+  const setLayout = useUi((s) => s.setReadingLayout);
+  const respond = (id: string) => ACTIONS.find((a) => a.id === id)?.perform(thread.id);
+  return (
+    <div className="border-hairline flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
+      <h2 className="min-w-0 flex-1 text-[15px] leading-snug font-bold tracking-tight">
+        {thread.subject || '(no subject)'}
+      </h2>
+      <div className="flex shrink-0 items-center gap-1">
+        <div
+          className="bg-sunken mr-1 flex items-center rounded-lg p-0.5"
+          role="group"
+          aria-label="Reading layout"
+        >
+          {(
+            [
+              { id: 'classic', icon: Rows3, label: 'Read as cards' },
+              { id: 'chat', icon: MessagesSquare, label: 'Read as a chat' },
+            ] as const
+          ).map(({ id, icon: Icon, label }) => (
+            <Tip key={id} label={label} keys={keysFor('toggle-reading-chat')}>
+              <button
+                onClick={() => setLayout(id)}
+                aria-pressed={layout === id}
+                aria-label={label}
+                className={cn(
+                  'rounded-md px-1.5 py-1',
+                  layout === id ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+                )}
+              >
+                <Icon size={14} />
+              </button>
+            </Tip>
+          ))}
+        </div>
+        <Tip label="Snooze" keys={keysFor('snooze')}>
+          <button onClick={() => respond('snooze')} className={iconBtn}>
+            <AlarmClock size={15} />
+          </button>
+        </Tip>
+        <Tip label="Set Aside" keys={keysFor('set-aside')}>
+          <button onClick={() => respond('set-aside')} className={iconBtn}>
+            <Layers size={15} />
+          </button>
+        </Tip>
+        <Tip label="Remind me" keys={keysFor('remind')}>
+          <button onClick={() => respond('remind')} className={iconBtn}>
+            <Bell size={15} />
+          </button>
+        </Tip>
+        <Tip label="Print" keys={keysFor('print')}>
+          <button onClick={() => void printThread(thread.id)} className={iconBtn}>
+            <Printer size={15} />
+          </button>
+        </Tip>
+        <span className="bg-hairline mx-1 h-4 w-px" />
+        <Tip label="Reply" keys={keysFor('reply')}>
+          <button onClick={() => respond('reply')} className={iconBtn}>
+            <Reply size={15} />
+          </button>
+        </Tip>
+        <Tip label="Reply All" keys={keysFor('reply-all')}>
+          <button onClick={() => respond('reply-all')} className={iconBtn}>
+            <ReplyAll size={15} />
+          </button>
+        </Tip>
+        <Tip label="Forward" keys={keysFor('forward')} align="end">
+          <button onClick={() => respond('forward')} className={iconBtn}>
+            <Forward size={15} />
+          </button>
+        </Tip>
+      </div>
+    </div>
+  );
+}
+
+/** The open thread, in the reading layout picked in its header (cards or chat). */
+export function ThreadView({ thread }: { thread: ThreadSummary }) {
+  const layout = useUi((s) => s.readingLayout);
+  return layout === 'chat' ? (
+    <ChatThreadView thread={thread} />
+  ) : (
+    <CardsThreadView thread={thread} />
+  );
+}
+
+function CardsThreadView({ thread }: { thread: ThreadSummary }) {
+  const messages = useThreadMessages(thread.id);
+  useOpenMarksRead(thread);
 
   const lastId = useMemo(() => messages[messages.length - 1]?.id, [messages]);
   const latestMailId = useMemo(() => [...messages].reverse().find((m) => !m.draft)?.id, [messages]);
-
-  const respond = (id: string) => ACTIONS.find((a) => a.id === id)?.perform(thread.id);
 
   // ← is handled by the global panel navigation; Esc mirrors it here, and
   // ↑/↓ on a message header walk the thread's messages instead of moving
   // the mail-list selection out from under the reader.
   const onPaneKeyDown = (e: React.KeyboardEvent) => {
+    if (paneEscape(e)) return;
     if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       const headers = [...e.currentTarget.querySelectorAll<HTMLElement>('article > button')];
@@ -269,14 +393,7 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
         e.stopPropagation();
         headers[idx + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
       }
-      return;
     }
-    if (e.key !== 'Escape') return;
-    const ui = useUi.getState();
-    if (ui.commandOpen || ui.composer || ui.picker || ui.shortcutsOpen || ui.settingsOpen) return;
-    e.preventDefault();
-    e.stopPropagation();
-    focusPanelLeft();
   };
 
   return (
@@ -284,77 +401,9 @@ export function ThreadView({ thread }: { thread: ThreadSummary }) {
       className="reading-pane flex h-full min-w-0 flex-col focus:outline-none"
       tabIndex={-1}
       onKeyDown={onPaneKeyDown}
-      // Plain clicks on the pane background make it the keyboard section;
-      // clicks on controls keep their own focus (keys still bubble here).
-      onMouseDown={(e) => {
-        const el = e.target as HTMLElement;
-        if (!el.closest('button, a, input, iframe, [contenteditable]')) e.currentTarget.focus();
-      }}
+      onMouseDown={focusPaneOnBackground}
     >
-      <div className="border-hairline flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
-        <h2 className="min-w-0 flex-1 text-[15px] leading-snug font-bold tracking-tight">
-          {thread.subject || '(no subject)'}
-        </h2>
-        <div className="flex shrink-0 items-center gap-1">
-          <Tip label="Snooze" keys={keysFor('snooze')}>
-            <button
-              onClick={() => respond('snooze')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <AlarmClock size={15} />
-            </button>
-          </Tip>
-          <Tip label="Set Aside" keys={keysFor('set-aside')}>
-            <button
-              onClick={() => respond('set-aside')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <Layers size={15} />
-            </button>
-          </Tip>
-          <Tip label="Remind me" keys={keysFor('remind')}>
-            <button
-              onClick={() => respond('remind')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <Bell size={15} />
-            </button>
-          </Tip>
-          <Tip label="Print" keys={keysFor('print')}>
-            <button
-              onClick={() => void printThread(thread.id)}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <Printer size={15} />
-            </button>
-          </Tip>
-          <span className="bg-hairline mx-1 h-4 w-px" />
-          <Tip label="Reply" keys={keysFor('reply')}>
-            <button
-              onClick={() => respond('reply')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <Reply size={15} />
-            </button>
-          </Tip>
-          <Tip label="Reply All" keys={keysFor('reply-all')}>
-            <button
-              onClick={() => respond('reply-all')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <ReplyAll size={15} />
-            </button>
-          </Tip>
-          <Tip label="Forward" keys={keysFor('forward')} align="end">
-            <button
-              onClick={() => respond('forward')}
-              className="text-ink-muted hover:bg-sunken hover:text-ink rounded-md p-1.5"
-            >
-              <Forward size={15} />
-            </button>
-          </Tip>
-        </div>
-      </div>
+      <ThreadHeader thread={thread} />
       <div className="flex-1 overflow-y-auto p-3">
         {messages.map((m) =>
           m.draft ? (

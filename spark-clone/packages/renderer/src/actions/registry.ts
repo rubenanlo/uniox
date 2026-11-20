@@ -667,6 +667,17 @@ export const ACTIONS: AppAction[] = [
     perform: () => useUi.getState().setListLayout('simple'),
   },
   {
+    id: 'toggle-reading-chat',
+    label: 'Read emails as a chat / as cards',
+    combo: { key: '4', meta: true, alt: true },
+    context: 'global',
+    section: 'Layout',
+    perform: () => {
+      const ui = useUi.getState();
+      ui.setReadingLayout(ui.readingLayout === 'chat' ? 'classic' : 'chat');
+    },
+  },
+  {
     id: 'toggle-sidebar',
     label: 'Show / hide sidebar',
     combo: { key: '/' },

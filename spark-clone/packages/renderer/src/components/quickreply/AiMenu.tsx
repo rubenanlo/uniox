@@ -19,6 +19,7 @@ export type AiMenuPick =
   | { kind: 'rewrite'; action: DraftRewrite; language?: string }
   | { kind: 'summarize' }
   | { kind: 'write' }
+  | { kind: 'translate-thread' }
   | { kind: 'ask'; question: string };
 
 interface Row {
@@ -48,9 +49,12 @@ const EMAIL_ROWS: Row[] = [
   { label: 'Summarize the thread', icon: ScrollText, pick: { kind: 'summarize' } },
   { label: 'Write the reply for me', icon: Reply, pick: { kind: 'write' } },
 ];
+/** Extra row for the reading pane's chat, where this menu also stands in for ⌘.'s email actions. */
+const TRANSLATE_ROW: Row = { label: 'Translate into English', icon: Languages, pick: { kind: 'translate-thread' } };
 
 /**
- * The rail's AI menu (⌘J): pick with ↑/↓ ↩ or 1–7, or ask anything about the
+ * The rail's AI menu (⌘J on the island, ⌘. in the reading pane's chat): pick
+ * with ↑/↓ ↩ or the number keys, or ask anything about the
  * email in the field at the bottom. Draft rewrites grey out until there is a
  * draft to rewrite.
  */
@@ -58,12 +62,19 @@ export function AiMenu({
   hasDraft,
   onPick,
   onClose,
+  className = 'qr-glass left-[calc(100%+14px)] top-0',
+  translate = false,
 }: {
   hasDraft: boolean;
   onPick: (pick: AiMenuPick) => void;
   onClose: () => void;
+  /** Surface and position (default: glass, beside the island's rail). */
+  className?: string;
+  /** Also offer "Translate into English" for the email. */
+  translate?: boolean;
 }) {
-  const rows = [...DRAFT_ROWS, ...EMAIL_ROWS];
+  const emailRows = translate ? [...EMAIL_ROWS, TRANSLATE_ROW] : EMAIL_ROWS;
+  const rows = [...DRAFT_ROWS, ...emailRows];
   const usable = (r: Row) => !r.needsDraft || hasDraft;
   const [active, setActive] = useState(() => rows.findIndex(usable));
   const [question, setQuestion] = useState('');
@@ -101,7 +112,7 @@ export function AiMenu({
         e.preventDefault();
         e.stopPropagation();
         choose(rows[active]);
-      } else if (/^[1-7]$/.test(e.key) && !e.metaKey && !e.ctrlKey) {
+      } else if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         e.stopPropagation();
         choose(rows[Number(e.key) - 1]);
@@ -144,7 +155,7 @@ export function AiMenu({
       ref={ref}
       role="menu"
       aria-label="Assistant"
-      className="qr-glass qr-enter absolute left-[calc(100%+14px)] top-0 z-20 w-[300px] rounded-2xl p-2"
+      className={cn('qr-enter absolute z-20 w-[300px] rounded-2xl p-2', className)}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {picking ? (
@@ -162,7 +173,7 @@ export function AiMenu({
           <p className="text-ink-faint px-2.5 pb-1 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.06em]">
             This email
           </p>
-          {EMAIL_ROWS.map((r, i) => item(r, i + DRAFT_ROWS.length))}
+          {emailRows.map((r, i) => item(r, i + DRAFT_ROWS.length))}
           <form
             className="qr-field mx-1 mb-0.5 mt-1.5 flex h-[34px] items-center gap-2 rounded-[10px] px-2.5"
             onSubmit={(e) => {
