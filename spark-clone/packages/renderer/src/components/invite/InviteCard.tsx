@@ -47,8 +47,8 @@ export function useInvite(messageId: string | undefined) {
   return { info, setInfo, reload: load };
 }
 
-const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+export const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+export const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /** "Tue, Nov 24 · 10:00 – 11:00" (all-day: "Tue, Nov 24 · All day"). */
 export function inviteWhen(i: Pick<InviteInfo, 'startMs' | 'endMs' | 'allDay'>): string {
@@ -64,7 +64,7 @@ export function inviteWhen(i: Pick<InviteInfo, 'startMs' | 'endMs' | 'allDay'>):
     : `${dayFmt.format(i.startMs)} ${timeFmt.format(i.startMs)} – ${dayFmt.format(i.endMs)} ${timeFmt.format(i.endMs)}`;
 }
 
-const first = (p: { name?: string; email: string } | null | undefined) =>
+export const first = (p: { name?: string; email: string } | null | undefined) =>
   (p?.name || p?.email || '').split(/[\s@,]/)[0] || 'the organizer';
 
 const STATUS_LABEL: Record<InviteInfo['myStatus'], string> = {
@@ -75,7 +75,7 @@ const STATUS_LABEL: Record<InviteInfo['myStatus'], string> = {
 };
 
 /** What else is on your calendars at the invite's time (the invite itself left out). */
-function useClashes(info: InviteInfo | null): CalendarEvent[] | null {
+export function useClashes(info: InviteInfo | null): CalendarEvent[] | null {
   const [found, setFound] = useState<{ key: string; clashes: CalendarEvent[] | null } | null>(null);
   const wanted = !!info && !info.allDay && info.kind === 'request';
   const key = info ? `${info.startMs}-${info.endMs}-${info.summary}` : '';
@@ -134,7 +134,7 @@ const toLocalInput = (ms: number) => {
   };
 };
 
-function ProposePanel({
+export function ProposePanel({
   info,
   onSent,
   onCancel,

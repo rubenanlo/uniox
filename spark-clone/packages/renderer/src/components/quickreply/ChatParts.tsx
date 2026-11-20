@@ -6,7 +6,8 @@ import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
 import { Keycaps } from '../ui/Keycap';
 import { FileCard, SLOT_DRAG_TYPE, SlotCard, slotDay } from './Cards';
-import { InviteCard, useInvite } from '../invite/InviteCard';
+import { useInvite } from '../invite/InviteCard';
+import { InviteChatCard } from './InviteChatCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
 import { firstName, listNames, nameOf, type ChatThread } from './useChatThread';
@@ -174,12 +175,7 @@ export function InviteNote({ chat }: { chat: ChatThread }) {
   if (!latest || !info || info.isOrganizer) return null;
   return (
     <AiRow className="qr-msg-in">
-      <p className="mb-2 text-[14.5px] leading-normal">
-        {info.kind === 'cancel'
-          ? 'This meeting was cancelled.'
-          : 'Answer the invite here. It goes straight to the event, no email to write.'}
-      </p>
-      <InviteCard messageId={latest.id} variant="island" info={info} />
+      <InviteChatCard info={info} />
     </AiRow>
   );
 }
