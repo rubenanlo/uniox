@@ -425,6 +425,46 @@ body {
   user-select: text;
 }
 
+/* Chat reading layout (ChatThreadView): the island's conversation on a soft
+   daylight wash, so the email bubbles read as white panes like on the glass. */
+.chat-wash {
+  background:
+    radial-gradient(120% 70% at 100% 0%, color-mix(in oklch, var(--color-azure) 7%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 0% 100%, color-mix(in oklch, var(--color-violet) 5%, transparent), transparent 60%),
+    color-mix(in oklch, var(--color-sunken) 45%, var(--color-paper));
+}
+.dark .chat-wash {
+  background:
+    radial-gradient(120% 70% at 100% 0%, color-mix(in oklch, var(--color-azure) 9%, transparent), transparent 60%),
+    radial-gradient(90% 60% at 0% 100%, color-mix(in oklch, var(--color-violet) 7%, transparent), transparent 60%),
+    color-mix(in oklch, var(--color-sunken) 55%, var(--color-paper));
+}
+.chat-wash .qr-bubble-in {
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgb(20 30 70 / 0.06);
+}
+.dark .chat-wash .qr-bubble-in {
+  background: rgb(255 255 255 / 0.07);
+  box-shadow: none;
+}
+.chat-wash .chat-reply {
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px -14px rgb(20 30 70 / 0.3);
+}
+.dark .chat-wash .chat-reply {
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: 0 8px 24px -14px rgb(0 0 0 / 0.6);
+}
+/* Reply-idea chips inside the frosted AI bubble keep a visible rim. */
+.chat-wash .chat-ai-bubble .qr-field {
+  background: rgb(255 255 255 / 0.55);
+  border-color: color-mix(in oklch, var(--color-ink) 12%, transparent);
+}
+.dark .chat-wash .chat-ai-bubble .qr-field {
+  background: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.16);
+}
+
 /* Home screen: a short load stagger and a soft clock colon.
    The global reduced-motion rule above neutralizes both. */
 @keyframes home-rise {

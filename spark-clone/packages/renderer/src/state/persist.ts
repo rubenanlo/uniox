@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { DarkPalette, LightPalette } from '@app/shared';
 import { api } from '../lib/api';
 import { loadPrioritySenders, seedLegacyPriorityEmails, wirePriorityDeltaRefresh } from './priority';
-import { useUi, type ListDensity, type ListLayout, type ThemePref } from './store';
+import { useUi, type ListDensity, type ListLayout, type ReadingLayout, type ThemePref } from './store';
 
 const KEY = 'ui-prefs';
 
@@ -12,6 +12,7 @@ interface UiPrefs {
   lightPalette: LightPalette;
   listLayout: ListLayout;
   density: ListDensity;
+  readingLayout: ReadingLayout;
   split: boolean;
   smartInbox: boolean;
   sidebarExpanded: boolean;
@@ -30,6 +31,7 @@ const pick = (s: ReturnType<typeof useUi.getState>): UiPrefs => ({
   lightPalette: s.lightPalette,
   listLayout: s.listLayout,
   density: s.density,
+  readingLayout: s.readingLayout,
   split: s.split,
   smartInbox: s.smartInbox,
   sidebarExpanded: s.sidebarExpanded,

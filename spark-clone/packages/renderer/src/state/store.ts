@@ -12,6 +12,8 @@ export type ListLayout = 'focused' | 'cards' | 'simple';
 /** Row spacing: compressed = flush rows with hairline dividers; expanded = spaced cards. */
 export type ListDensity = 'compressed' | 'expanded';
 export type ThemePref = 'system' | 'light' | 'dark';
+/** How an open thread reads: stacked message cards, or a chat like the ⌥⌘N island. */
+export type ReadingLayout = 'classic' | 'chat';
 
 /**
  * A selectable row in the mail list. Bundle rows (Smart Inbox groups) are
@@ -42,6 +44,7 @@ interface UiState {
   accountFilter: string | undefined;
   listLayout: ListLayout;
   density: ListDensity;
+  readingLayout: ReadingLayout;
   split: boolean;
   sidebarExpanded: boolean;
   theme: ThemePref;
@@ -111,6 +114,7 @@ interface UiState {
   setAccountFilter(id: string | undefined): void;
   setListLayout(layout: ListLayout): void;
   setDensity(density: ListDensity): void;
+  setReadingLayout(layout: ReadingLayout): void;
   toggleSplit(): void;
   toggleSidebar(): void;
   setTheme(theme: ThemePref): void;
@@ -153,6 +157,7 @@ export const useUi = create<UiState>((set) => ({
   accountFilter: undefined,
   listLayout: 'focused',
   density: 'compressed',
+  readingLayout: 'classic',
   split: true,
   sidebarExpanded: false,
   theme: 'system',
@@ -203,6 +208,7 @@ export const useUi = create<UiState>((set) => ({
   setAccountFilter: (accountFilter) => set({ accountFilter, ...NO_MULTI }),
   setListLayout: (listLayout) => set({ listLayout }),
   setDensity: (density) => set({ density }),
+  setReadingLayout: (readingLayout) => set({ readingLayout }),
   toggleSplit: () => set((s) => ({ split: !s.split })),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   setTheme: (theme) => set({ theme }),

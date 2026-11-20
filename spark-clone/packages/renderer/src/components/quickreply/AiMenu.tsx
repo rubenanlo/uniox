@@ -58,10 +58,13 @@ export function AiMenu({
   hasDraft,
   onPick,
   onClose,
+  className = 'qr-glass left-[calc(100%+14px)] top-0',
 }: {
   hasDraft: boolean;
   onPick: (pick: AiMenuPick) => void;
   onClose: () => void;
+  /** Surface and position (default: glass, beside the island's rail). */
+  className?: string;
 }) {
   const rows = [...DRAFT_ROWS, ...EMAIL_ROWS];
   const usable = (r: Row) => !r.needsDraft || hasDraft;
@@ -144,7 +147,7 @@ export function AiMenu({
       ref={ref}
       role="menu"
       aria-label="Assistant"
-      className="qr-glass qr-enter absolute left-[calc(100%+14px)] top-0 z-20 w-[300px] rounded-2xl p-2"
+      className={cn('qr-enter absolute z-20 w-[300px] rounded-2xl p-2', className)}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {picking ? (
