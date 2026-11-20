@@ -47,6 +47,7 @@ import { useDelta } from '../../state/queries';
 import { Keycaps } from '../ui/Keycap';
 import { AiMenu, type AiMenuPick } from './AiMenu';
 import { FileCard, SLOT_DRAG_TYPE, SlotCard, slotDay } from './Cards';
+import { InviteCard, useInvite } from '../invite/InviteCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
 
@@ -149,7 +150,12 @@ function Bubble({ message, body, mine }: { message: MessageMeta; body?: MessageB
   const [open, setOpen] = useState(false);
   const text = messageVisibleText(body, message.snippet);
   const long = text.length > 700;
-  const files = body ? cardAttachments(body.attachments, body.html) : [];
+  // An invite's calendar part is answered on the invite card, not opened as a file.
+  const files = body
+    ? cardAttachments(body.attachments, body.html).filter(
+        (f) => !/^(text\/calendar|application\/ics)/i.test(f.contentType) && !/\.ics$/i.test(f.filename),
+      )
+    : [];
   // A designed or image-led email (or one whose text is really markup) shows as itself.
   const source = markupSource(body);
   const render = !mine && !!source && (htmlNeedsRender(source) || looksLikeMarkup(text) || !text.trim());
@@ -286,6 +292,7 @@ export function ReplyWidget({
   const latest = messages[messages.length - 1];
   const latestBody = latest ? bodies[latest.id] : undefined;
   const accountId = latest?.accountId ?? item.accountId ?? '';
+  const { info: invite } = useInvite(latest?.id);
   const context = useMemo(() => threadContext(messages, bodies, own), [messages, bodies, own]);
   const others = useMemo(() => (latest ? othersOn(latest, own) : []), [latest, own]);
   const all = replyAll ?? others.length > 1;
@@ -713,6 +720,21 @@ export function ReplyWidget({
                     )}
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* A meeting invite: answer it on the invite itself */}
+          {latest && invite && !invite.isOrganizer && (
+            <div className="qr-msg-in flex items-start gap-2.5">
+              <AiMark />
+              <div className="min-w-0 flex-1 pt-0.5">
+                <p className="mb-2 text-[14.5px] leading-normal">
+                  {invite.kind === 'cancel'
+                    ? 'This meeting was cancelled.'
+                    : 'Answer the invite here. It goes straight to the event, no email to write.'}
+                </p>
+                <InviteCard messageId={latest.id} variant="island" info={invite} />
               </div>
             </div>
           )}

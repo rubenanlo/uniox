@@ -72,6 +72,8 @@ export async function replyIdeas(context: string): Promise<ReplyIdeas> {
         'summary: one or two short sentences on what the sender wants from me, addressed to me ("Maya wants…"). ' +
         'suggestions: up to 3 distinct replies I might send, each a 2–5 word intent in my voice ' +
         '("Accept Tuesday", "Ask for the agenda", "Decline politely"); [] when no reply is needed. ' +
+        'For a calendar invitation, leave out accept, decline and maybe (those are answered on the ' +
+        'invite itself, not by email); suggest only replies with something to say, else []. ' +
         'forwardTo: when the email asks me to forward or send something to a specific person whose ' +
         'address appears in the thread, that person; else null. meetingMinutes: when the email asks ' +
         'me for my availability or to agree on a time to meet or talk, the meeting length it asks for ' +

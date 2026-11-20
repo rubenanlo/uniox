@@ -101,7 +101,7 @@ export async function composeRaw(
 export async function smtpSend(
   account: Account,
   password: string,
-  draft: OutgoingDraft,
+  draft: Pick<OutgoingDraft, 'to' | 'cc' | 'bcc'>,
   raw: Buffer,
 ): Promise<void> {
   const { smtp } = account;

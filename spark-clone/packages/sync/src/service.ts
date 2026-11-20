@@ -12,6 +12,8 @@ import type {
   DeltaEvent,
   Folder,
   FolderRole,
+  InviteInfo,
+  InviteResponse,
   MessageMeta,
   OutgoingDraft,
   PersonFreeBusy,
@@ -32,6 +34,7 @@ import {
   putGmailAutoReply,
   saveLocalAutoReply,
 } from './auto-reply';
+import { composeItip, describeInvite, findGoogleEvent, readInvite, respondOnGoogle } from './invites';
 import { dueAlerts, nextAlertDeadline, START_GRACE_MS } from './event-alerts';
 import {
   categoryLabelName,
@@ -41,6 +44,7 @@ import {
   isGmailAccount,
 } from './folders';
 import {
+  type GEventItem,
   calendarRowId,
   getCalendarTimeZone,
   deleteGoogleEvent,
@@ -97,6 +101,9 @@ export class SyncService {
   private eventAlertTimer: NodeJS.Timeout | null = null;
   /** alertKey → event startMs, for pruning entries once long past. */
   private readonly firedEventAlerts = new Map<string, number>();
+  /** RSVP card lookups by message id: the Google event (or null) and when it was fetched. */
+  private inviteCache = new Map<string, { at: number; google: GEventItem | null }>();
+
   /** The last `calendar:search:remote` hits by event id, for `calendar:search:keep`. */
   private remoteSearchHits = new Map<string, MappedGoogleEvent>();
 
@@ -466,6 +473,98 @@ export class SyncService {
     });
   }
 
+  // ---- invites (RSVP on the invite itself) -----------------------------------
+
+  private inviteContext(messageId: string) {
+    const msg = this.db.getMessage(messageId);
+    const account = msg && this.db.getAccount(msg.accountId);
+    const invite = account ? readInvite(this.db, this.attachmentsDir, messageId) : null;
+    return msg && account && invite ? { msg, account, invite } : null;
+  }
+
+  private async inviteGoogleEvent(
+    messageId: string,
+    account: Account,
+    invite: NonNullable<ReturnType<typeof readInvite>>,
+    fresh = false,
+  ): Promise<GEventItem | null> {
+    if (account.authType !== 'oauth-google') return null;
+    const hit = this.inviteCache.get(messageId);
+    if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.google;
+    try {
+      const token = await this.freshSecret(account.id);
+      const google = await findGoogleEvent(token, invite);
+      this.inviteCache.set(messageId, { at: Date.now(), google });
+      return google;
+    } catch (err) {
+      console.error('[sync] invite lookup on Google failed:', err);
+      return hit?.google ?? null;
+    }
+  }
+
+  private async inviteInfo(messageId: string): Promise<InviteInfo | null> {
+    const ctx = this.inviteContext(messageId);
+    if (!ctx) return null;
+    const google = await this.inviteGoogleEvent(messageId, ctx.account, ctx.invite);
+    const info = describeInvite(messageId, ctx.account, ctx.invite, google);
+    if (info && info.via === 'email') {
+      const sent = this.db.getSetting(`invite-answer:${messageId}`) as InviteResponse | null;
+      if (sent) info.myStatus = sent;
+    }
+    return info;
+  }
+
+  private async respondToInvite(
+    messageId: string,
+    response: InviteResponse,
+    note?: string,
+  ): Promise<{ ok: boolean; error?: string; info?: InviteInfo | null }> {
+    const ctx = this.inviteContext(messageId);
+    if (!ctx) return { ok: false, error: 'This invite isn’t downloaded yet.' };
+    const { account, invite } = ctx;
+    try {
+      const google = await this.inviteGoogleEvent(messageId, account, invite, true);
+      if (google) {
+        const token = await this.freshSecret(account.id);
+        await respondOnGoogle(token, google, account, response, note);
+        this.inviteCache.delete(messageId);
+        void this.syncAccountCalendars(account.id);
+      } else {
+        const { raw, to } = await composeItip(account, invite, response, { note });
+        const password = await this.freshSecret(account.id);
+        await smtpSend(account, password, { to: [{ email: to }], cc: [], bcc: [] }, raw);
+        // The emailed invite still says NEEDS-ACTION: remember what was sent.
+        this.db.setSetting(`invite-answer:${messageId}`, response);
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    this.delta({ kind: 'calendar-changed' });
+    return { ok: true, info: await this.inviteInfo(messageId) };
+  }
+
+  private async proposeInviteTime(
+    messageId: string,
+    startMs: number,
+    endMs: number,
+    note?: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const ctx = this.inviteContext(messageId);
+    if (!ctx) return { ok: false, error: 'This invite isn’t downloaded yet.' };
+    if (!(endMs > startMs)) return { ok: false, error: 'The new time needs an end after its start.' };
+    try {
+      const { raw, to } = await composeItip(ctx.account, ctx.invite, 'tentative', {
+        note,
+        counter: { startMs, endMs },
+      });
+      const password = await this.freshSecret(ctx.account.id);
+      await smtpSend(ctx.account, password, { to: [{ email: to }], cc: [], bcc: [] }, raw);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   async handleQuery(channel: string, args: unknown): Promise<unknown> {
     switch (channel) {
       case 'accounts:list':
@@ -704,6 +803,18 @@ export class SyncService {
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
+      }
+      case 'invite:get': {
+        const { messageId } = args as { messageId: string };
+        return this.inviteInfo(messageId);
+      }
+      case 'invite:respond': {
+        const { messageId, response, note } = args as Commands['invite:respond']['args'];
+        return this.respondToInvite(messageId, response, note);
+      }
+      case 'invite:propose': {
+        const { messageId, startMs, endMs, note } = args as Commands['invite:propose']['args'];
+        return this.proposeInviteTime(messageId, startMs, endMs, note);
       }
       case 'calendar:event:delete': {
         // Google rows are deleted upstream first; otherwise the next sync

@@ -1153,6 +1153,8 @@ function registerIpc(): void {
       case 'calendar:event:patch':
       case 'calendar:setVisible':
       case 'calendar:event:delete':
+      case 'invite:respond':
+      case 'invite:propose':
       case 'calendar:subscribe':
       case 'calendar:unsubscribe':
       case 'calendar:search:keep':

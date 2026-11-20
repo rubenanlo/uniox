@@ -24,6 +24,7 @@ import type { KanbanBoard, NotionBlock } from './notion';
 import type { MailtoDraft } from './mailto';
 import type { ComposerState, ComposerWindowState } from './compose';
 import type { OutgoingDraft, Task } from './tasks';
+import type { InviteInfo, InviteResponse } from './ical';
 
 /** Typed invoke channels: renderer → main → (mostly) sync process. */
 export interface Queries {
@@ -44,6 +45,8 @@ export interface Queries {
   /** One thread regardless of view filters, for reading what the list hides. */
   'thread:get': { args: { threadId: string }; result: ThreadSummary | null };
   'message:body': { args: { messageId: string }; result: MessageBodyPayload | null };
+  /** The meeting invite a message carries (null when none, or not downloaded yet). */
+  'invite:get': { args: { messageId: string }; result: InviteInfo | null };
   /** The quick-reply overlay's notifications and what it is showing (main process). */
   'quick-reply:state': { args: undefined; result: QuickReplyState };
   /** A downloaded attachment's bytes, so a quick forward can carry the original files. */
@@ -286,6 +289,20 @@ export interface Commands {
   'calendar:search:keep': { args: { id: string }; result: { ok: boolean } };
   /** Delete a calendar event; Google-sourced events are deleted upstream first. */
   'calendar:event:delete': { args: { id: string }; result: { ok: boolean; error?: string } };
+  /**
+   * Answer an emailed invite on the event itself: Google accounts set your
+   * status on the Google event (Google tells the organizer); others send the
+   * iTIP calendar REPLY. Never a written email.
+   */
+  'invite:respond': {
+    args: { messageId: string; response: InviteResponse; note?: string };
+    result: { ok: boolean; error?: string; info?: InviteInfo | null };
+  };
+  /** Propose a new time to the organizer (iTIP COUNTER). */
+  'invite:propose': {
+    args: { messageId: string; startMs: number; endMs: number; note?: string };
+    result: { ok: boolean; error?: string };
+  };
   /**
    * Partial update (drag reschedule / edit) that keeps the event's source.
    * Google-sourced events PATCH upstream first; text fields only when changed.
