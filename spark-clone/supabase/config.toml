@@ -1,0 +1,16 @@
+# Supabase CLI config for the Uniox phone backend (project ref ffijcbzozucfyvtakacd).
+project_id = "uniox"
+
+[functions.google-connect]
+# Google redirects the browser here without a Supabase JWT.
+verify_jwt = false
+
+[functions.sync]
+# Called by pg_cron with a shared secret, and by the app with a user JWT.
+verify_jwt = false
+
+[functions.mail]
+verify_jwt = true
+
+[functions.ai]
+verify_jwt = true
