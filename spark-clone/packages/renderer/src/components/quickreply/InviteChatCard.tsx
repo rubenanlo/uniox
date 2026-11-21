@@ -85,13 +85,19 @@ const organizerName = (info: InviteInfo, capital = false) =>
   info.organizer?.name?.trim().split(/\s+/)[0] ||
   (capital ? "The organizer" : "the organizer");
 
+/** Guests other than the organizer, who is often listed among them too. */
+const otherGuests = (info: InviteInfo) =>
+  info.attendees.filter(
+    (p) => p.email.toLowerCase() !== info.organizer?.email.toLowerCase(),
+  );
+
 const isMeet = (loc?: string) =>
   !!loc && /meet\.google\.com|zoom\.us|teams\.microsoft/i.test(loc);
 
 function Faces({ info }: { info: InviteInfo }) {
   const people = [
     ...(info.organizer ? [info.organizer] : []),
-    ...info.attendees,
+    ...otherGuests(info),
   ];
   if (!people.length) return null;
   return (
@@ -125,7 +131,7 @@ export function InviteChatCard({ info: given }: { info: InviteInfo }) {
 
   const canAnswer = info.kind === "request" && !info.past;
   const cancelled = info.kind === "cancel";
-  const guests = info.attendees.length;
+  const guests = otherGuests(info).length;
   const who = organizerName(info);
   const answeredNow = info.myStatus !== "needs-action" && !changing;
 
