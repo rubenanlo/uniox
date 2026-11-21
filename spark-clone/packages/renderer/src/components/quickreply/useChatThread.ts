@@ -97,7 +97,7 @@ export function useChatThread(
   const [signatures, setSignatures] = useState<Record<string, string>>({});
   // Accounts and signatures have arrived: a Notification Center reply waits for both.
   const [ready, setReady] = useState({ own: false, sigs: false });
-  const [ideas, setIdeas] = useState<ReplyIdeas | 'loading' | 'error' | null>(null);
+  const [ideas, setIdeas] = useState<ReplyIdeas | 'loading' | 'error' | 'skipped' | null>(null);
   const [times, setTimes] = useState<ChatTimes>(null);
   const [picks, setPicks] = useState<GroupSlot[]>([]);
   const [notes, setNotes] = useState<ChatNote[]>([]);
@@ -190,14 +190,27 @@ export function useChatThread(
   useEffect(() => {
     if (!latest || !latestBody || !configured || ideasFor.current === latest.id) return;
     ideasFor.current = latest.id;
+    const id = latest.id;
     setIdeas('loading');
-    cachedReplyIdeas(latest.id, context).then(
-      (read) => {
-        setIdeas(read);
-        // The assistant spotted a meeting ask the keyword check missed.
-        if (read.meetingMinutes && !timesStarted.current) void loadTimes(read.meetingMinutes, null);
+    const read = () =>
+      cachedReplyIdeas(id, context).then(
+        (r) => {
+          if (ideasFor.current !== id) return;
+          setIdeas(r);
+          // The assistant spotted a meeting ask the keyword check missed.
+          if (r.meetingMinutes && !timesStarted.current) void loadTimes(r.meetingMinutes, null);
+        },
+        () => ideasFor.current === id && setIdeas('error'),
+      );
+    // An invite the invite card can answer needs no AI read: the card already
+    // shows the details, clashes and answers, so skip it and save the tokens.
+    api.query('invite:get', { messageId: id }).then(
+      (invite) => {
+        if (ideasFor.current !== id) return;
+        if (invite && !invite.isOrganizer) setIdeas('skipped');
+        else void read();
       },
-      () => setIdeas('error'),
+      () => void read(),
     );
   }, [latest, latestBody, configured, context, loadTimes]);
 
@@ -313,13 +326,15 @@ export function useChatThread(
   const ideasReady = ideas && typeof ideas === 'object' ? ideas : null;
   const files = latestBody ? cardAttachments(latestBody.attachments, latestBody.html) : [];
   const toLabel = recipients.to.concat(recipients.cc).map((a) => firstName(a));
-  const aiPhase: 'off' | 'loading' | 'error' | 'ready' = !configured
+  const aiPhase: 'off' | 'skipped' | 'loading' | 'error' | 'ready' = !configured
     ? 'off'
-    : ideas === 'loading' || ideas === null
-      ? 'loading'
-      : ideas === 'error'
-        ? 'error'
-        : 'ready';
+    : ideas === 'skipped'
+      ? 'skipped'
+      : ideas === 'loading' || ideas === null
+        ? 'loading'
+        : ideas === 'error'
+          ? 'error'
+          : 'ready';
 
   return {
     threadId,
