@@ -1,4 +1,4 @@
-import type { MessageBodyPayload, MessageMeta } from '@app/shared';
+import type { Address, InviteInfo, MessageBodyPayload, MessageMeta } from '@app/shared';
 import { ArrowUp, CalendarCheck, Forward, Loader2, Sparkles, X } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { cardAttachments, htmlNeedsRender, looksLikeMarkup } from '../../lib/quickReply';
@@ -27,7 +27,9 @@ export function ChatAvatar({ who, small }: { who: string; small?: boolean }) {
         'flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
         small ? 'h-[22px] w-[22px] text-[10px]' : 'h-[30px] w-[30px] text-[12px]',
       )}
-      style={{ background: `linear-gradient(135deg, hsl(${h} 62% 58%), hsl(${(h + 40) % 360} 62% 48%))` }}
+      style={{
+        background: `linear-gradient(135deg, hsl(${h} 62% 58%), hsl(${(h + 40) % 360} 62% 48%))`,
+      }}
     >
       {initials(who)}
     </span>
@@ -133,6 +135,8 @@ export function Bubble({
 /** The assistant's read of the thread: a summary and reply ideas that write the reply. */
 export function AssistantRead({ chat }: { chat: ChatThread }) {
   const { configured, ideas, ideasReady, aiPhase, writing, writeFromIntent } = chat;
+  // Invites skip the AI read: the invite card below says it all.
+  if (aiPhase === 'skipped') return null;
   return (
     <AiRow key={`ai-${aiPhase}`} className="qr-msg-in">
       {!configured ? (
@@ -168,6 +172,23 @@ export function AssistantRead({ chat }: { chat: ChatThread }) {
   );
 }
 
+/**
+ * Invites often name the organizer only by email. Borrow a name from the
+ * guest list or from the email's sender (Google sends invites as
+ * "Name <calendar-notification@google.com>" or from the organizer).
+ */
+function withOrganizerName(info: InviteInfo, from: Address | null): InviteInfo {
+  const org = info.organizer;
+  if (!org || org.name?.trim()) return info;
+  const same = (e?: string) => !!e && e.toLowerCase() === org.email.toLowerCase();
+  const name =
+    info.attendees.find((p) => same(p.email) && p.name?.trim())?.name ||
+    (from?.name?.trim() && (same(from.email) || /calendar-notification@google\.com$/i.test(from.email))
+      ? from.name
+      : undefined);
+  return name ? { ...info, organizer: { ...org, name } } : info;
+}
+
 /** A meeting invite in the thread: answer it on the invite itself (Accept / Maybe / Decline / Propose). */
 export function InviteNote({ chat }: { chat: ChatThread }) {
   const { latest } = chat;
@@ -175,7 +196,7 @@ export function InviteNote({ chat }: { chat: ChatThread }) {
   if (!latest || !info || info.isOrganizer) return null;
   return (
     <AiRow className="qr-msg-in">
-      <InviteChatCard info={info} />
+      <InviteChatCard info={withOrganizerName(info, latest.from)} />
     </AiRow>
   );
 }
@@ -372,7 +393,10 @@ export function ReplyField({
               <CalendarCheck size={14} className="text-accent" />
               <span className="text-[12.5px] font-semibold">
                 {slotDay(s)} ·{' '}
-                {new Date(s.startMs).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                {new Date(s.startMs).toLocaleTimeString(undefined, {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
               </span>
               <button aria-label="Remove time" onClick={() => togglePick(s)} className="text-ink-faint hover:text-ink">
                 <X size={12} />
