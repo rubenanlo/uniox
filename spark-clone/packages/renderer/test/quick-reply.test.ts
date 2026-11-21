@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageMeta, QuickReplyItem } from '@app/shared';
 import {
+  inviteAnswerLine,
   accountForDigit,
   htmlNeedsRender,
   listRows,
@@ -290,5 +291,21 @@ describe('cleanPlainText', () => {
         'Read the report today, 2 * 3 = 6',
       ].join('\n'),
     );
+  });
+});
+
+describe('inviteAnswerLine', () => {
+  it('says who answered which event', () => {
+    expect(inviteAnswerLine('Accepted: Rendez-vous chez Dr Hadia DECHARRIERE', 'Patricia')).toBe(
+      'Patricia accepted “Rendez-vous chez Dr Hadia DECHARRIERE”.',
+    );
+    expect(inviteAnswerLine('Declined: Lunch @ Fri Mar 5, 2027 12pm - 1pm (GMT+1) (Ruben)', 'Ana')).toBe(
+      'Ana declined “Lunch”.',
+    );
+    expect(inviteAnswerLine('Tentatively accepted: Sync', 'Bo')).toBe('Bo said maybe to “Sync”.');
+  });
+  it('ignores other subjects', () => {
+    expect(inviteAnswerLine('Re: Accepted offer', 'Ana')).toBeNull();
+    expect(inviteAnswerLine('Invitation: Lunch', 'Ana')).toBeNull();
   });
 });

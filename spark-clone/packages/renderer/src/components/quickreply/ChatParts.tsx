@@ -1,7 +1,7 @@
 import type { Address, InviteInfo, MessageBodyPayload, MessageMeta } from '@app/shared';
 import { ArrowUp, CalendarCheck, Forward, Loader2, Sparkles, X } from 'lucide-react';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { cardAttachments, htmlNeedsRender, looksLikeMarkup } from '../../lib/quickReply';
+import { cardAttachments, htmlNeedsRender, inviteAnswerLine, looksLikeMarkup } from '../../lib/quickReply';
 import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
 import { Keycaps } from '../ui/Keycap';
@@ -64,6 +64,12 @@ function AiRow({ children, className }: { children: React.ReactNode; className?:
   );
 }
 
+/** "Patricia" from a name, or from an address like patricia.navarro@oecd.org. */
+const senderFirst = (a: Address | null) => {
+  const n = a?.name?.trim().split(/\s+/)[0] || (a?.email.split('@')[0] ?? '').split(/[._+-]/)[0] || '';
+  return n.charAt(0).toUpperCase() + n.slice(1);
+};
+
 /** One message as a chat bubble (yours on the right), shown in full, with its files as cards below. */
 export function Bubble({
   message,
@@ -117,7 +123,14 @@ export function Bubble({
                 : 'qr-bubble-in rounded-[6px_17px_17px_17px] text-[13.5px]',
             )}
           >
-            {text || <span className="text-ink-faint italic">Loading…</span>}
+            {text ||
+              (body ? (
+                inviteAnswerLine(message.subject, senderFirst(message.from)) || (
+                  <span className="text-ink-faint italic">No message text</span>
+                )
+              ) : (
+                <span className="text-ink-faint italic">Loading…</span>
+              ))}
           </div>
         )}
         {files.length > 0 && (

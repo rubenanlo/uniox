@@ -55,6 +55,20 @@ export function visibleText(text: string): string {
  * lines when long), and an image link becomes "* <url>*". Drop the link
  * targets and emphasis stars so the chat shows the words people see.
  */
+/**
+ * An invite answer ("Accepted: Lunch @ Fri 12pm") often carries no text at all,
+ * only its calendar part. Say what it is: "Patricia accepted “Lunch”."
+ * Null when the subject isn't an invite answer.
+ */
+export function inviteAnswerLine(subject: string, who: string): string | null {
+  const m = /^(accepted|declined|tentatively accepted|tentative|maybe)\s*:\s*(.+)$/i.exec(subject.trim());
+  if (!m) return null;
+  const verb = (m[1] ?? '').toLowerCase();
+  const said = verb === 'accepted' ? 'accepted' : verb === 'declined' ? 'declined' : 'said maybe to';
+  const title = (m[2] ?? '').replace(/\s+@\s+.*$/, '').trim();
+  return `${who || 'They'} ${said} “${title}”.`;
+}
+
 export function cleanPlainText(text: string): string {
   return (
     text
