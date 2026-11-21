@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { formatSlotForPeople, templateGroupReply, type GroupSlot, type Participant } from '../../lib/availability';
 import {
   cardAttachments,
+  inviteAnswerLine,
   prefixedSubject,
   quoteBlock,
   replyRecipients,
@@ -14,6 +15,7 @@ import {
 import {
   askAbout,
   draftFromIntent,
+  messageVisibleText,
   rewriteDraft,
   summarizeThread,
   threadContext,
@@ -185,10 +187,17 @@ export function useChatThread(
     });
   }, [latest, latestBody, loadTimes]);
 
+  // An invite answer with no text ("Accepted: …") says it all in its bubble: no AI read.
+  const answerOnly =
+    !!latest &&
+    !!latestBody &&
+    !!inviteAnswerLine(latest.subject, '') &&
+    !messageVisibleText(latestBody, latest.snippet).trim();
+
   // The assistant's first read: a summary, reply ideas and a forward if one is asked for.
   const ideasFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!latest || !latestBody || !configured || ideasFor.current === latest.id) return;
+    if (!latest || !latestBody || !configured || answerOnly || ideasFor.current === latest.id) return;
     ideasFor.current = latest.id;
     const id = latest.id;
     setIdeas('loading');
@@ -212,7 +221,7 @@ export function useChatThread(
       },
       () => void read(),
     );
-  }, [latest, latestBody, configured, context, loadTimes]);
+  }, [latest, latestBody, configured, context, loadTimes, answerOnly]);
 
   const people = times && typeof times === 'object' ? times.people : [];
   const timeLines = picks.map((s) => `• ${formatSlotForPeople(s, people)}`);
@@ -328,7 +337,7 @@ export function useChatThread(
   const toLabel = recipients.to.concat(recipients.cc).map((a) => firstName(a));
   const aiPhase: 'off' | 'skipped' | 'loading' | 'error' | 'ready' = !configured
     ? 'off'
-    : ideas === 'skipped'
+    : ideas === 'skipped' || answerOnly
       ? 'skipped'
       : ideas === 'loading' || ideas === null
         ? 'loading'
