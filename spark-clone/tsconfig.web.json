@@ -7,6 +7,7 @@
   },
   "include": [
     "packages/renderer/src",
+    "packages/mobile/src",
     "packages/email-render/src",
     "packages/shared/src",
     "packages/main/src/preload.ts",

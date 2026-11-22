@@ -1,0 +1,665 @@
+import DOMPurify from 'dompurify';
+import {
+  Archive,
+  ArrowUp,
+  CalendarClock,
+  ChevronLeft,
+  Clock,
+  Forward,
+  MoreHorizontal,
+  Paperclip,
+  Pin,
+  Reply,
+  ReplyAll,
+  Sparkles,
+  Trash2,
+  Zap,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { FirstRead, MobileMessage, MobileThread } from '../data/types';
+import { InviteCard } from '../components/InviteCard';
+import { tomorrowMorning } from '../components/ThreadRow';
+import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
+import { chatText, clock12, displayName, firstName, listTime, shortDate } from '../lib/format';
+import { cachedThread, cacheThread } from '../lib/offline';
+import { back, go } from '../lib/router';
+import { useStore } from '../lib/store';
+
+export function ThreadScreen({ id }: { id: string }) {
+  const { api, settings, saveSettings, act, send, showToast, accounts } = useStore();
+  const [data, setData] = useState<{ thread: MobileThread; messages: MobileMessage[] } | null>(() =>
+    cachedThread(id),
+  );
+  const [ai, setAi] = useState<FirstRead | null>(null);
+  const [more, setMore] = useState(false);
+  const layout = settings.threadLayout;
+
+  useEffect(() => {
+    let live = true;
+    void api
+      .thread(id)
+      .then((d) => {
+        if (!live) return;
+        setData(d);
+        cacheThread(id, d);
+        if (d.thread.unreadCount > 0) void act(d.thread, { kind: 'read', read: true });
+      })
+      .catch((e) => !cachedThread(id) && showToast({ text: (e as Error).message }));
+    return () => {
+      live = false;
+    };
+  }, [api, id, act, showToast]);
+
+  const hasInvite = data?.messages.some((m) => m.invite);
+  const aiLoading = !!settings.aiFirstRead && !!data && !hasInvite && !ai;
+  useEffect(() => {
+    if (!settings.aiFirstRead || !data || hasInvite) return;
+    let live = true;
+    void api
+      .firstRead(id)
+      .then((r) => live && setAi(r))
+      .catch(() => live && setAi({ summary: '', replyIdeas: [] }));
+    return () => {
+      live = false;
+    };
+  }, [api, id, settings.aiFirstRead, data, hasInvite]);
+
+  if (!data) {
+    return (
+      <div className="screen no-tabs" style={{ display: 'grid', placeItems: 'center' }}>
+        <Spinner />
+      </div>
+    );
+  }
+  const { thread, messages } = data;
+  const last = messages[messages.length - 1];
+  const others = [
+    ...new Set(messages.filter((m) => !m.fromMe && m.from).map((m) => firstName(m.from))),
+  ];
+  const account = accounts.find((a) => a.id === thread.accountId);
+
+  const archive = () => {
+    void act(thread, { kind: 'archive' }, 'Archived');
+    back('inbox');
+  };
+  const snooze = () => {
+    void act(thread, { kind: 'snooze', until: tomorrowMorning() }, 'Snoozed until tomorrow 8:00');
+    back('inbox');
+  };
+
+  const actionsSheet = more && (
+    <Sheet onClose={() => setMore(false)}>
+      <div style={{ padding: '10px 16px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {[
+          {
+            icon: Pin,
+            label: thread.pinned ? 'Unpin' : 'Pin',
+            run: () => void act(thread, { kind: 'pin', pinned: !thread.pinned }),
+          },
+          { icon: Clock, label: 'Snooze until tomorrow 8:00', run: snooze },
+          {
+            icon: Reply,
+            label: 'Mark as unread',
+            run: () => (void act(thread, { kind: 'read', read: false }), back('inbox')),
+          },
+          {
+            icon: Trash2,
+            label: 'Move to Trash',
+            run: () => (void act(thread, { kind: 'trash' }, 'Moved to Trash'), back('inbox')),
+            danger: true,
+          },
+        ].map(({ icon: Icon, label, run, danger }) => (
+          <button
+            key={label}
+            className="gi"
+            style={{ color: danger ? 'var(--danger)' : undefined, borderRadius: 12 }}
+            onClick={() => (setMore(false), run())}
+          >
+            <Icon size={20} /> {label}
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+
+  const aiBlock =
+    settings.aiFirstRead && !hasInvite ? (
+      <AiFirstRead
+        ai={ai}
+        loading={aiLoading}
+        onIdea={(idea) =>
+          go(`compose?reply=${encodeURIComponent(id)}&ask=${encodeURIComponent(idea)}`)
+        }
+        onSlot={(s) =>
+          go(
+            `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
+          )
+        }
+      />
+    ) : null;
+
+  if (layout === 'chat') {
+    return (
+      <>
+        <div className="chatwash" />
+        <div
+          className="screen no-tabs"
+          style={{ paddingBottom: 'calc(130px + var(--safe-bottom))' }}
+        >
+          <div className="navbar" style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+            <button className="navbtn g" aria-label="Back" onClick={() => back('inbox')}>
+              <ChevronLeft size={22} />
+            </button>
+            <div style={{ textAlign: 'center', minWidth: 0 }}>
+              <div className="ellipsis" style={{ fontWeight: 700, fontSize: 16 }}>
+                {thread.subject || '(no subject)'}
+              </div>
+              <div className="muted ellipsis" style={{ fontSize: 12 }}>
+                {others.join(', ') || account?.email}
+              </div>
+            </div>
+            <div className="row-flex" style={{ gap: 4 }}>
+              <button className="navbtn g" aria-label="Archive" onClick={archive}>
+                <Archive size={18} />
+              </button>
+              <button className="navbtn g" aria-label="More" onClick={() => setMore(true)}>
+                <MoreHorizontal size={20} />
+              </button>
+            </div>
+          </div>
+          <LayoutToggle layout={layout} onChange={(l) => void saveSettings({ threadLayout: l })} />
+          <div
+            style={{ padding: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}
+          >
+            {messages.map((m, i) => (
+              <ChatMessage
+                key={m.id}
+                m={m}
+                showName={!m.fromMe && messages[i - 1]?.from?.email !== m.from?.email}
+                threadId={id}
+              />
+            ))}
+            {aiBlock}
+          </div>
+        </div>
+        <QuickReply
+          thread={thread}
+          last={last}
+          onSend={async (body) => {
+            const r = await send({
+              accountId: thread.accountId,
+              to: replyTo(last),
+              cc: [],
+              subject: reSubject(thread.subject),
+              body,
+              threadId: thread.id,
+            });
+            showToast({
+              text:
+                r === 'queued' ? 'No connection. Reply will send when you are back online' : 'Sent',
+            });
+            if (r === 'sent') void api.thread(id).then(setData);
+          }}
+        />
+        {actionsSheet}
+      </>
+    );
+  }
+
+  // Cards layout
+  return (
+    <>
+      <div
+        className="screen no-tabs"
+        style={{ background: 'var(--paper)', paddingBottom: 'calc(100px + var(--safe-bottom))' }}
+      >
+        <div className="navbar">
+          <button className="navbtn accent" onClick={() => back('inbox')}>
+            <ChevronLeft size={24} />
+            <span style={{ fontSize: 17 }}>Inbox</span>
+          </button>
+          <div className="row-flex" style={{ gap: 2 }}>
+            <button className="navbtn" aria-label="Snooze" onClick={snooze}>
+              <Clock size={20} />
+            </button>
+            <button className="navbtn" aria-label="Archive" onClick={archive}>
+              <Archive size={20} />
+            </button>
+            <button className="navbtn" aria-label="More" onClick={() => setMore(true)}>
+              <MoreHorizontal size={20} />
+            </button>
+          </div>
+        </div>
+        <div className="pad" style={{ paddingTop: 6 }}>
+          <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: '-.01em', lineHeight: 1.2 }}>
+            {thread.subject || '(no subject)'}
+          </div>
+          <div className="row-flex" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+            {thread.priority && (
+              <span
+                className="chip"
+                style={{
+                  height: 26,
+                  fontSize: 12.5,
+                  color: 'var(--priority)',
+                  borderColor: 'color-mix(in oklch, var(--priority) 40%, transparent)',
+                }}
+              >
+                <Zap size={12} /> Priority
+              </span>
+            )}
+            {account && accounts.length > 1 && (
+              <span className="chip" style={{ height: 26, fontSize: 12.5 }}>
+                <span className="swatch" style={{ background: account.color }} />
+                {account.displayName.split(' ')[0]}
+              </span>
+            )}
+            <span className="chip" style={{ height: 26, fontSize: 12.5 }}>
+              {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+            </span>
+          </div>
+        </div>
+        <LayoutToggle layout={layout} onChange={(l) => void saveSettings({ threadLayout: l })} />
+        <div style={{ margin: '10px 14px 0' }}>{aiBlock}</div>
+        <CardsStack messages={messages} threadId={id} />
+      </div>
+      <div
+        className="replybar glass"
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+      >
+        <div style={{ display: 'flex', flex: 1, justifyContent: 'space-around' }}>
+          <button aria-label="Reply" onClick={() => go(`compose?reply=${encodeURIComponent(id)}`)}>
+            <Reply size={21} />
+          </button>
+          <button
+            aria-label="Reply all"
+            onClick={() => go(`compose?reply=${encodeURIComponent(id)}&all=1`)}
+          >
+            <ReplyAll size={21} />
+          </button>
+          <button
+            aria-label="Forward"
+            onClick={() => go(`compose?forward=${encodeURIComponent(id)}`)}
+          >
+            <Forward size={21} />
+          </button>
+          <button
+            aria-label="Reply with AI"
+            style={{ color: 'var(--accent)' }}
+            onClick={() => go(`compose?reply=${encodeURIComponent(id)}&ai=1`)}
+          >
+            <Sparkles size={21} />
+          </button>
+        </div>
+        <button
+          className="send"
+          style={{ width: 'auto', padding: '0 16px', fontWeight: 600, fontSize: 15 }}
+          onClick={() => go(`compose?reply=${encodeURIComponent(id)}`)}
+        >
+          Reply
+        </button>
+      </div>
+      {actionsSheet}
+    </>
+  );
+}
+
+export const reSubject = (s: string) => (/^re:/i.test(s) ? s : `Re: ${s}`);
+export function replyTo(m: MobileMessage | undefined) {
+  if (!m) return [];
+  return m.fromMe ? m.to : m.from ? [m.from] : [];
+}
+
+function LayoutToggle({
+  layout,
+  onChange,
+}: {
+  layout: 'cards' | 'chat';
+  onChange: (l: 'cards' | 'chat') => void;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
+      <div className="pill-seg glass-flat">
+        <button className={layout === 'cards' ? 'on' : ''} onClick={() => onChange('cards')}>
+          Cards
+        </button>
+        <button className={layout === 'chat' ? 'on' : ''} onClick={() => onChange('chat')}>
+          Chat
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function safeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['style', 'form', 'input', 'button'],
+    ADD_ATTR: ['target'],
+  });
+}
+
+function Body({ m }: { m: MobileMessage }) {
+  const html = useMemo(() => (m.html ? safeHtml(m.html) : null), [m.html]);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelectorAll('a').forEach((a) => {
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+    });
+  }, [html]);
+  if (html)
+    return <div ref={ref} className="mail-html" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="mail-text">{m.text ?? m.snippet}</div>;
+}
+
+function Attachments({ m }: { m: MobileMessage }) {
+  if (!m.attachments.length) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+      {m.attachments.map((a) => (
+        <div
+          key={a.id}
+          className="row-flex"
+          style={{ gap: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--sunken)' }}
+        >
+          <Paperclip size={18} color="var(--muted)" />
+          <div className="grow">
+            <div className="ellipsis" style={{ fontSize: 14, fontWeight: 600 }}>
+              {a.filename}
+            </div>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              {Math.max(1, Math.round(a.size / 1024))} KB
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadId: string }) {
+  const [open, setOpen] = useState<Set<string>>(
+    () =>
+      new Set(messages.filter((m, i) => m.unread || i === messages.length - 1).map((m) => m.id)),
+  );
+  return (
+    <div style={{ margin: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {messages.map((m) =>
+        open.has(m.id) ? (
+          <div key={m.id} className="card pop" style={{ padding: 16 }}>
+            <div className="row-flex" style={{ gap: 11 }}>
+              <Avatar who={m.from} />
+              <div className="grow">
+                <div style={{ fontWeight: 600, fontSize: 15.5 }}>
+                  {m.fromMe ? 'You' : displayName(m.from)}
+                </div>
+                <div className="muted ellipsis" style={{ fontSize: 13 }}>
+                  to {m.to.map((a) => (a.name ? a.name.split(' ')[0] : a.email)).join(', ')} ·{' '}
+                  {shortDate(m.date)}, {clock12(m.date)}
+                </div>
+              </div>
+              <button
+                className="muted"
+                aria-label="Reply"
+                onClick={() => go(`compose?reply=${encodeURIComponent(threadId)}`)}
+              >
+                <Reply size={20} />
+              </button>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              {m.invite ? (
+                <InviteCard invite={m.invite} accountId={m.accountId} threadId={threadId} />
+              ) : (
+                <Body m={m} />
+              )}
+            </div>
+            <Attachments m={m} />
+          </div>
+        ) : (
+          <button
+            key={m.id}
+            className="card row-flex"
+            style={{ padding: '12px 14px', gap: 10, textAlign: 'left' }}
+            onClick={() => setOpen(new Set([...open, m.id]))}
+          >
+            <Avatar who={m.from} size={30} />
+            <span style={{ fontWeight: 600, fontSize: 14.5 }}>
+              {m.fromMe ? 'You' : displayName(m.from)}
+            </span>
+            <span className="muted ellipsis grow" style={{ fontSize: 13.5 }}>
+              {m.snippet}
+            </span>
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              {listTime(m.date)}
+            </span>
+          </button>
+        ),
+      )}
+    </div>
+  );
+}
+
+function ChatMessage({
+  m,
+  showName,
+  threadId,
+}: {
+  m: MobileMessage;
+  showName: boolean;
+  threadId: string;
+}) {
+  const text = chatText(m.text ?? m.snippet);
+  if (m.invite) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="row-flex" style={{ alignItems: 'flex-start' }}>
+          <AiMark size={32} />
+          <div style={{ fontSize: 15, lineHeight: 1.45, paddingTop: 4 }}>
+            {firstName(m.invite.organizer ?? m.from)} invited you to {m.invite.title} on{' '}
+            {shortDate(m.invite.startMs)} at {clock12(m.invite.startMs)}.
+          </div>
+        </div>
+        <InviteCard invite={m.invite} accountId={m.accountId} threadId={threadId} />
+      </div>
+    );
+  }
+  if (m.fromMe) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="bubble-out mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
+          {text}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      {showName && (
+        <div className="muted" style={{ fontSize: 12.5, margin: '2px 0 5px 44px' }}>
+          {m.unread && <span style={{ color: 'var(--accent)' }}>● </span>}
+          {displayName(m.from)} · {listTime(m.date)}
+        </div>
+      )}
+      <div className="row-flex" style={{ alignItems: 'flex-end' }}>
+        <Avatar who={m.from} size={32} />
+        <div className="bubble-in mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
+          {text || m.snippet}
+          {m.attachments.length > 0 && (
+            <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
+              <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AiFirstRead({
+  ai,
+  loading,
+  onIdea,
+  onSlot,
+}: {
+  ai: FirstRead | null;
+  loading: boolean;
+  onIdea: (idea: string) => void;
+  onSlot: (s: { startMs: number; endMs: number }) => void;
+}) {
+  if ((!ai || !ai.summary) && !loading) return null;
+  return (
+    <div className="row-flex pop" style={{ alignItems: 'flex-start', gap: 8 }}>
+      <AiMark size={32} />
+      <div
+        className="glass"
+        style={{ borderRadius: 20, padding: '12px 14px', flex: 1, minWidth: 0 }}
+      >
+        {!ai ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="skeleton" style={{ height: 12, width: '90%' }} />
+            <div className="skeleton" style={{ height: 12, width: '70%' }} />
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 14.5, lineHeight: 1.45 }}>{ai.summary}</div>
+            {ai.freeSlots && ai.freeSlots.length > 0 && (
+              <>
+                <div className="muted row-flex" style={{ fontSize: 13, marginTop: 10 }}>
+                  <CalendarClock size={14} /> You're free at:
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, overflowX: 'auto' }}>
+                  {ai.freeSlots.map((s) => (
+                    <button
+                      key={s.startMs}
+                      onClick={() => onSlot(s)}
+                      style={{
+                        flex: 'none',
+                        width: 120,
+                        borderRadius: 14,
+                        padding: '9px 10px',
+                        textAlign: 'left',
+                        background: 'color-mix(in srgb, var(--surface) 75%, transparent)',
+                        border: '1px solid color-mix(in oklch, var(--ink) 9%, transparent)',
+                      }}
+                    >
+                      <div
+                        className="eyebrow"
+                        style={{ fontSize: 9.5, letterSpacing: '.1em', color: 'var(--muted)' }}
+                      >
+                        {new Date(s.startMs).toLocaleDateString([], {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 5 }}>
+                        {clock12(s.startMs)}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        30 min
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {ai.replyIdeas.length > 0 && (
+              <div style={{ display: 'flex', gap: 7, marginTop: 10, flexWrap: 'wrap' }}>
+                {ai.replyIdeas.map((r) => (
+                  <button key={r} className="chip sm" onClick={() => onIdea(r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuickReply({
+  thread,
+  last,
+  onSend,
+}: {
+  thread: MobileThread;
+  last: MobileMessage | undefined;
+  onSend: (body: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const to = replyTo(last);
+  const submit = async () => {
+    if (!body.trim()) return;
+    setBusy(true);
+    try {
+      await onSend(body.trim());
+      setBody('');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="replybar glass">
+      <div className="row-flex" style={{ alignItems: 'flex-end', gap: 10 }}>
+        <textarea
+          rows={Math.min(5, Math.max(1, body.split('\n').length))}
+          placeholder={`Reply to ${firstName(to[0]) || 'everyone'}…`}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          style={{ padding: '8px 0' }}
+        />
+        <button
+          className="send"
+          disabled={!body.trim() || busy}
+          aria-label="Send"
+          onClick={() => void submit()}
+        >
+          {busy ? <Spinner /> : <ArrowUp size={20} />}
+        </button>
+      </div>
+      <div className="row-flex muted" style={{ gap: 16, fontSize: 12.5 }}>
+        <button
+          className="row-flex"
+          style={{ gap: 4, color: 'var(--accent)' }}
+          onClick={() =>
+            go(
+              `compose?reply=${encodeURIComponent(thread.id)}&ai=1&body=${encodeURIComponent(body)}`,
+            )
+          }
+        >
+          <Sparkles size={14} /> Assistant
+        </button>
+        <button
+          className="row-flex"
+          style={{ gap: 4 }}
+          onClick={() =>
+            go(
+              `compose?reply=${encodeURIComponent(thread.id)}&times=1&body=${encodeURIComponent(body)}`,
+            )
+          }
+        >
+          <CalendarClock size={14} /> Times
+        </button>
+        <button
+          onClick={() =>
+            go(
+              `compose?reply=${encodeURIComponent(thread.id)}&all=1&body=${encodeURIComponent(body)}`,
+            )
+          }
+        >
+          Reply all
+        </button>
+        <button
+          onClick={() =>
+            go(`compose?reply=${encodeURIComponent(thread.id)}&body=${encodeURIComponent(body)}`)
+          }
+        >
+          Full composer
+        </button>
+      </div>
+    </div>
+  );
+}
