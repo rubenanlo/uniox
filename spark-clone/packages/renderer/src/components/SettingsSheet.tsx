@@ -14,6 +14,7 @@ import {
   normalizeAvailability,
   NOTIFY_SOUNDS,
   type AvailabilityPrefs,
+  type CloudSyncStatus,
   type IslandStyle,
   type NotifySound,
   type NotifyStyle,
@@ -1158,7 +1159,69 @@ function AccountsTab() {
         );
       })}
       {error && <p className="text-danger mt-2 text-[12px]">{error}</p>}
+      <PhoneSync />
     </div>
+  );
+}
+
+/**
+ * "Sync with phone": hands the Google accounts to Uniox cloud so the phone app
+ * shows them without signing in again, and keeps theme, color themes and the
+ * reading layout the same on both. Off by default.
+ */
+function PhoneSync() {
+  const [status, setStatus] = useState<CloudSyncStatus>({ enabled: false });
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api.query('cloud:status', undefined).then(setStatus);
+  }, []);
+  const set = (enabled: boolean) => {
+    if (busy || enabled === status.enabled) return;
+    setBusy(true);
+    void api
+      .command('cloud:set', { enabled })
+      .then((next) => {
+        setStatus(next);
+        if (next.error) toast(next.error);
+        else toast(enabled ? 'Syncing with your phone' : 'Phone sync is off');
+      })
+      .finally(() => setBusy(false));
+  };
+  const failed = (status.accounts ?? []).filter((a) => !a.ok);
+  return (
+    <section className="border-hairline mt-4 border-t pt-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-semibold">Sync with phone</p>
+          <p className="text-ink-muted mt-0.5 text-[12px] leading-snug">
+            Your Google accounts appear in the Uniox phone app without signing in again, and theme, color themes
+            and reading layout stay the same on both.
+          </p>
+        </div>
+        <Segmented
+          label="Sync with phone"
+          value={status.enabled ? 'on' : 'off'}
+          onChange={(v) => set(v === 'on')}
+          options={[
+            { id: 'off', label: 'Off', hint: 'Removes the accounts this Mac shared from Uniox cloud' },
+            { id: 'on', label: busy ? 'Working…' : 'On' },
+          ]}
+        />
+      </div>
+      <p className="text-ink-muted mt-2 text-[11.5px] leading-snug">
+        Turning this on sends each account's Google permission once, encrypted in transit, to your Uniox cloud,
+        where only the server can read it. Turning it off removes them again.
+      </p>
+      {status.enabled && status.email && (
+        <p className="text-ink-muted mt-1.5 text-[12px]">Linked as {status.email}</p>
+      )}
+      {failed.map((a, i) => (
+        <p key={i} className="text-danger mt-1.5 text-[12px]">
+          {a.email ?? 'One account'} could not be shared: {a.error ?? 'unknown error'}
+        </p>
+      ))}
+      {status.error && <p className="text-danger mt-1.5 text-[12px]">{status.error}</p>}
+    </section>
   );
 }
 

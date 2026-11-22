@@ -1,5 +1,6 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.119.2';
 import { env } from './db.ts';
+import { open, seal } from './secretbox.ts';
 
 /**
  * Google OAuth + Gmail/Calendar REST helpers. Same scopes as the desktop app
@@ -62,20 +63,21 @@ export function idTokenClaims(idToken: string): { email?: string; name?: string 
 export async function accessToken(db: SupabaseClient, accountId: string): Promise<string> {
   const { data, error } = await db
     .from('account_tokens')
-    .select('refresh_token, access_token, expires_at')
+    .select('refresh_token, access_token, expires_at, client_id, client_secret')
     .eq('account_id', accountId)
     .single();
   if (error || !data) throw new Error('No Google token for this account');
   if (data.access_token && data.expires_at && new Date(data.expires_at).getTime() > Date.now() + 60_000) {
-    return data.access_token;
+    return await open(data.access_token);
   }
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      refresh_token: data.refresh_token,
-      client_id: env('GOOGLE_CLIENT_ID'),
-      client_secret: env('GOOGLE_CLIENT_SECRET'),
+      refresh_token: await open(data.refresh_token),
+      // Desktop hand-overs carry their own client; phone sign-ins use ours.
+      client_id: data.client_id ?? env('GOOGLE_CLIENT_ID'),
+      client_secret: (await open(data.client_secret)) ?? env('GOOGLE_CLIENT_SECRET'),
       grant_type: 'refresh_token',
     }),
   });
@@ -83,7 +85,13 @@ export async function accessToken(db: SupabaseClient, accountId: string): Promis
   const t: TokenSet = await res.json();
   await db
     .from('account_tokens')
-    .update({ access_token: t.access_token, expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString() })
+    .update({
+      access_token: await seal(t.access_token),
+      expires_at: new Date(Date.now() + t.expires_in * 1000).toISOString(),
+      // Seals grants stored before TOKEN_KEY was set (no-op once sealed or without a key).
+      refresh_token: await seal(data.refresh_token),
+      client_secret: await seal(data.client_secret),
+    })
     .eq('account_id', accountId);
   return t.access_token;
 }
