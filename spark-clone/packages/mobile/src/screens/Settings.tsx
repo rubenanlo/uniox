@@ -97,7 +97,7 @@ function SettingsHome() {
               >
                 Google ·{' '}
                 {a.status === 'error'
-                  ? 'sync problem, tap Add account to sign in again'
+                  ? 'sync problem, retrying every minute'
                   : a.status === 'syncing'
                     ? 'syncing…'
                     : a.lastSyncAt

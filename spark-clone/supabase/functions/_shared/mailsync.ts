@@ -23,6 +23,8 @@ export interface AccountRow {
 }
 
 const INITIAL_THREADS = 150;
+const INITIAL_BATCH = 40;
+const PARALLEL = 5;
 const CAL_PAST_DAYS = 14;
 const CAL_FUTURE_DAYS = 90;
 const CAL_EVERY_MS = 5 * 60_000;
@@ -52,13 +54,20 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
   const profile = await gfetch<{ historyId: string }>(token, `${GMAIL}/profile`);
   let changed = new Set<string>();
   const arrived = new Set<string>();
+  let backfilling = false;
 
   if (!acct.history_id) {
     const list = await gfetch<{ threads?: { id: string }[] }>(
       token,
       `${GMAIL}/threads?maxResults=${INITIAL_THREADS}&q=${encodeURIComponent('in:inbox OR is:starred OR in:sent newer_than:60d')}`,
     );
-    changed = new Set((list.threads ?? []).map((t) => t.id));
+    // First sync runs in small batches across runs, so a new account stays
+    // inside Gmail's per-minute quota. Threads already stored are skipped.
+    const { data: have } = await db.from('threads').select('gmail_thread_id').eq('account_id', acct.id);
+    const done = new Set((have ?? []).map((t) => t.gmail_thread_id as string));
+    const missing = (list.threads ?? []).map((t) => t.id).filter((id) => !done.has(id));
+    changed = new Set(missing.slice(0, INITIAL_BATCH));
+    backfilling = missing.length > INITIAL_BATCH;
   } else {
     try {
       let pageToken: string | undefined;
@@ -100,16 +109,16 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
   const contacts = await knownContacts(db, acct.user_id);
   const pushes: { thread: ThreadUpsert; msg: ParsedMessage }[] = [];
   const ids = [...changed];
-  for (let i = 0; i < ids.length; i += 10) {
+  for (let i = 0; i < ids.length; i += PARALLEL) {
     await Promise.all(
-      ids.slice(i, i + 10).map(async (gid) => {
+      ids.slice(i, i + PARALLEL).map(async (gid) => {
         const res = await syncThread(db, token, acct, gid, contacts);
         if (!res) return;
         for (const m of res.messages) if (arrived.has(m.id)) pushes.push({ thread: res.thread, msg: m });
       }),
     );
   }
-  await db.from('accounts').update({ history_id: profile.historyId }).eq('id', acct.id);
+  if (!backfilling) await db.from('accounts').update({ history_id: profile.historyId }).eq('id', acct.id);
   if (pushes.length) await notify(db, acct, pushes);
   return pushes.length;
 }

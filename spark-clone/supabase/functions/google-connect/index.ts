@@ -1,7 +1,6 @@
 import { admin, callerId, conf } from '../_shared/db.ts';
 import { json, preflight } from '../_shared/cors.ts';
 import { authUrl, exchangeCode, idTokenClaims } from '../_shared/google.ts';
-import { syncAccount } from '../_shared/mailsync.ts';
 
 const COLORS = ['#2f63e7', '#2db682', '#8a5cd6', '#e0883a', '#d4386c', '#3a8f8f'];
 
@@ -89,8 +88,7 @@ Deno.serve(async (req) => {
     });
 
     // First sync in the background so the redirect is quick.
-    // @ts-ignore EdgeRuntime is provided by Supabase.
-    EdgeRuntime.waitUntil(syncAccount(db, acct));
+    // The first sync starts when the app opens (it calls `sync`) and from the every-minute cron.
 
     if (st.user_id) return Response.redirect(`${returnTo}/#/settings?connected=${encodeURIComponent(email)}`, 302);
     const { data: link, error: linkErr } = await db.auth.admin.generateLink({ type: 'magiclink', email });
