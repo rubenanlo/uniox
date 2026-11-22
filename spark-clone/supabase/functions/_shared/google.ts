@@ -54,8 +54,8 @@ export async function exchangeCode(code: string): Promise<TokenSet> {
 
 export function idTokenClaims(idToken: string): { email?: string; name?: string } {
   const part = idToken.split('.')[1] ?? '';
-  const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
-  return JSON.parse(json);
+  // UTF-8 aware, so names such as "Rubén" survive.
+  return JSON.parse(decodeB64Url(part));
 }
 
 /** A fresh access token for an account, refreshing and persisting as needed. */
