@@ -1146,6 +1146,20 @@ html[data-island='frosted'] .qr-bubble-in:has(> .qr-fold) {
     transform: translateY(8px) scale(0.985);
   }
 }
+/* A sent reply's copy folds away once the real message syncs into the thread. */
+.qr-out-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease,
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.qr-out-fold[data-landed] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+}
 /* Undo Send: the bar drains over the 5 s window (UNDO_SEND_MS). */
 .qr-countdown {
   transform-origin: left;
@@ -1166,6 +1180,9 @@ html[data-island='frosted'] .qr-bubble-in:has(> .qr-fold) {
   .qr-enter,
   .qr-msg-in {
     animation: none;
+  }
+  .qr-out-fold {
+    transition: none;
   }
   .qr-convo[data-settled] {
     transition: none;

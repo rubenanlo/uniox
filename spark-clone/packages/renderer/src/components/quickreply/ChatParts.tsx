@@ -321,30 +321,32 @@ export function OutgoingList({ chat }: { chat: ChatThread }) {
   return (
     <>
       {chat.outgoing.map((o) => (
-        <div key={o.id} className="qr-msg-in flex flex-col items-end gap-1">
-          {o.kind === 'reply' ? (
-            <div className="qr-bubble-out max-w-[75%] whitespace-pre-wrap rounded-[17px_17px_6px_17px] px-3.5 py-2.5 text-[13.5px] leading-[1.55]">
-              {o.text}
-            </div>
-          ) : (
-            <div className="qr-card flex items-center gap-2 px-3 py-2 text-[12.5px]">
-              <Forward size={14} className="text-accent" /> Forwarded to {o.label}
-            </div>
-          )}
-          <div className="text-ink-faint flex items-center gap-2 text-[11.5px]">
-            {o.status === 'pending' ? (
-              <>
-                <span className="bg-ink/10 relative h-[3px] w-14 overflow-hidden rounded-full">
-                  <span className="qr-countdown bg-accent absolute inset-y-0 left-0 w-full rounded-full" />
-                </span>
-                Sending…
-                <button onClick={() => chat.undo(o)} className="text-accent font-medium hover:underline">
-                  Undo
-                </button>
-              </>
+        <div key={o.id} className="qr-out-fold" data-landed={chat.landed.has(o.id) || undefined}>
+          <div className="qr-msg-in flex min-h-0 flex-col items-end gap-1 overflow-hidden">
+            {o.kind === 'reply' ? (
+              <div className="qr-bubble-out max-w-[75%] whitespace-pre-wrap rounded-[17px_17px_6px_17px] px-3.5 py-2.5 text-[13.5px] leading-[1.55]">
+                {o.text}
+              </div>
             ) : (
-              <>Sent{o.kind === 'reply' && o.label ? ` to ${o.label}` : ''}</>
+              <div className="qr-card flex items-center gap-2 px-3 py-2 text-[12.5px]">
+                <Forward size={14} className="text-accent" /> Forwarded to {o.label}
+              </div>
             )}
+            <div className="text-ink-faint flex items-center gap-2 text-[11.5px]">
+              {o.status === 'pending' ? (
+                <>
+                  <span className="bg-ink/10 relative h-[3px] w-14 overflow-hidden rounded-full">
+                    <span className="qr-countdown bg-accent absolute inset-y-0 left-0 w-full rounded-full" />
+                  </span>
+                  Sending…
+                  <button onClick={() => chat.undo(o)} className="text-accent font-medium hover:underline">
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>Sent{o.kind === 'reply' && o.label ? ` to ${o.label}` : ''}</>
+              )}
+            </div>
           </div>
         </div>
       ))}
@@ -475,7 +477,7 @@ export function ReplyField({
               chat.send();
             }
           }}
-          placeholder={writing ? 'Writing…' : `Reply to ${firstName(latest?.from) || 'them'}…`}
+          placeholder={writing ? 'Writing…' : `Reply to ${firstName(chat.recipients.to[0] ?? latest?.from) || 'them'}…`}
           className="placeholder:text-ink-faint max-h-[140px] min-w-0 flex-1 resize-none bg-transparent py-1.5 text-[14.5px] leading-[1.5] outline-none select-text"
         />
         <span className="text-ink-faint mb-2 flex shrink-0 items-center gap-1 text-[11.5px]">
