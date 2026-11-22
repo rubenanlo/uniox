@@ -12,7 +12,8 @@ import {
   Sparkles,
   Sun,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { AiKeyStatus } from '../data/api';
 import { Toggle } from '../components/ui';
 import { enablePush, isStandalone } from '../lib/push';
 import { back, go, useRoute } from '../lib/router';
@@ -23,11 +24,13 @@ export function Settings() {
   const sub = useRoute().path[1];
   if (sub === 'appearance') return <Appearance />;
   if (sub === 'signatures') return <Signatures />;
+  if (sub === 'ai-key') return <AiKey />;
   return <SettingsHome />;
 }
 
 function SettingsHome() {
   const { accounts, settings, saveSettings, api, showToast, me } = useStore();
+  const [aiKey] = useAiKey();
   const now = useNow();
   const [pushBusy, setPushBusy] = useState(false);
   const palettes = [settings.palette, settings.paletteDark].map(
@@ -206,13 +209,16 @@ function SettingsHome() {
             label="AI first read"
           />
         </div>
-        <div className="gi">
+        <button className="gi" onClick={() => go('settings/ai-key')}>
           <span className="sq" style={{ background: '#0a84ff' }}>
             <KeyRound size={17} />
           </span>
           Anthropic key
-          <span className="v">Kept on the server</span>
-        </div>
+          <span className="v">
+            {aiKey === null ? '' : aiKey.set ? `…${aiKey.hint}` : 'Add key'}
+            <ChevronRight size={17} />
+          </span>
+        </button>
       </div>
 
       <div className="group" style={{ marginTop: 24 }}>
@@ -231,6 +237,123 @@ function SettingsHome() {
         {api.kind === 'mock'
           ? 'Demo mode: sample data, nothing is sent'
           : 'Settings sync with your Uniox account'}
+      </div>
+    </div>
+  );
+}
+
+/** Loads whether a key is stored. Null while loading or offline. */
+function useAiKey(): [AiKeyStatus | null, (s: AiKeyStatus) => void] {
+  const api = useStore((s) => s.api);
+  const [status, setStatus] = useState<AiKeyStatus | null>(null);
+  useEffect(() => {
+    let live = true;
+    void api
+      .aiKey()
+      .then((s) => {
+        if (live) setStatus(s);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [api]);
+  return [status, setStatus];
+}
+
+/** Add, replace or remove the user's own Anthropic key. */
+function AiKey() {
+  const { api, showToast } = useStore();
+  const [status, setStatus] = useAiKey();
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      setStatus(await api.setAiKey(key.trim()));
+      setKey('');
+      showToast({ text: 'Key saved' });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await api.clearAiKey();
+      setStatus({ set: false });
+      showToast({ text: 'Key removed' });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="screen no-tabs">
+      <SubNav title="Anthropic key" />
+      <div className="glabel">{status?.set ? 'Replace key' : 'Your key'}</div>
+      <div className="group">
+        <div className="gi">
+          <input
+            className="grow"
+            type="password"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="sk-ant-…"
+            aria-label="Anthropic API key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            style={{ fontSize: 16, height: 52 }}
+          />
+        </div>
+      </div>
+      {error && (
+        <div style={{ color: 'var(--danger)', fontSize: 14, padding: '10px 20px 0' }} role="alert">
+          {error}
+        </div>
+      )}
+      <div style={{ padding: '16px 16px 0' }}>
+        <button
+          className="btn primary block"
+          disabled={busy || key.trim().length < 20}
+          onClick={() => void save()}
+        >
+          {busy ? 'Checking…' : status?.set ? 'Replace key' : 'Save key'}
+        </button>
+      </div>
+      {status?.set && (
+        <>
+          <div className="glabel">Current key</div>
+          <div className="group">
+            <div className="gi">
+              Ends in
+              <span className="v">…{status.hint}</span>
+            </div>
+            <button
+              className="gi"
+              style={{ color: 'var(--danger)' }}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Remove key
+            </button>
+          </div>
+        </>
+      )}
+      <div className="muted" style={{ fontSize: 13.5, lineHeight: 1.45, padding: '18px 20px' }}>
+        AI features use your own Anthropic account. The key is sent once over an encrypted
+        connection, stored encrypted on the server, and used only there to answer your requests. It
+        is never sent back to this phone or shown again. Create one at console.anthropic.com under
+        API keys.
       </div>
     </div>
   );

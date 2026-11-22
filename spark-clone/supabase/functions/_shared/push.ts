@@ -1,6 +1,6 @@
 import webpush from 'npm:web-push@3.6.7';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.119.2';
-import { env } from './db.ts';
+import { conf } from './db.ts';
 
 let configured = false;
 
@@ -10,10 +10,11 @@ export async function pushToUser(
   userId: string,
   payload: { title: string; body: string; url: string; tag?: string; threadId?: string },
 ): Promise<void> {
-  const publicKey = Deno.env.get('VAPID_PUBLIC_KEY');
-  if (!publicKey) return; // push not set up yet
+  const publicKey = await conf(db, 'VAPID_PUBLIC_KEY');
+  const privateKey = await conf(db, 'VAPID_PRIVATE_KEY');
+  if (!publicKey || !privateKey) return; // push not set up yet
   if (!configured) {
-    webpush.setVapidDetails(env('VAPID_SUBJECT', 'mailto:uniox@localhost'), publicKey, env('VAPID_PRIVATE_KEY'));
+    webpush.setVapidDetails((await conf(db, 'VAPID_SUBJECT')) ?? 'mailto:uniox@localhost', publicKey, privateKey);
     configured = true;
   }
   const { data: subs } = await db.from('push_subscriptions').select('id, endpoint, keys').eq('user_id', userId);

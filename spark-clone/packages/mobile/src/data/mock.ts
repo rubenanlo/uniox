@@ -1,4 +1,4 @@
-import type { ThreadAction, UnioxApi } from './api';
+import type { AiKeyStatus, ThreadAction, UnioxApi } from './api';
 import {
   type Address,
   DEFAULT_SETTINGS,
@@ -310,6 +310,7 @@ function eventsAround(): MobileEvent[] {
 }
 
 let settings: SharedSettings = { ...DEFAULT_SETTINGS };
+let aiKey: AiKeyStatus = { set: true, hint: 'demo' };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const delay = <T>(v: T, ms = 120) => new Promise<T>((r) => setTimeout(() => r(v), ms));
@@ -413,6 +414,14 @@ export const mockApi: UnioxApi = {
       'Three things are waiting on you: confirm the country list for Helen (due Tuesday), send Isabela two times for the DNS call, and give Jeffrey a final call on the retreat agenda before Monday 9:00.',
       600,
     ),
+  aiKey: () => delay(aiKey),
+  async setAiKey(key) {
+    aiKey = { set: true, hint: key.slice(-4) };
+    return delay(aiKey, 500);
+  },
+  async clearAiKey() {
+    aiKey = { set: false };
+  },
   settings: () => delay(settings),
   async saveSettings(patch) {
     settings = { ...settings, ...patch };

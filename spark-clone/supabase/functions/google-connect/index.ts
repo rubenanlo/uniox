@@ -1,4 +1,4 @@
-import { admin, callerId, env } from '../_shared/db.ts';
+import { admin, callerId, conf } from '../_shared/db.ts';
 import { json, preflight } from '../_shared/cors.ts';
 import { authUrl, exchangeCode, idTokenClaims } from '../_shared/google.ts';
 import { syncAccount } from '../_shared/mailsync.ts';
@@ -21,10 +21,17 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   const db = admin();
   const url = new URL(req.url);
+  const allowed = ((await conf(db, 'APP_URL')) ?? '')
+    .split(',')
+    .map((u) => u.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  const home = allowed[0] ?? 'https://example.com';
 
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
-    const returnTo = typeof body.returnTo === 'string' ? body.returnTo : env('APP_URL', '');
+    // Only ever send the browser (and its one-time sign-in token) back to our own app.
+    const returnTo = allowed.find((u) => u === String(body.returnTo ?? '').replace(/\/+$/, '')) ?? null;
+    if (!returnTo) return json({ error: 'This app address is not allowed to sign in.' }, 400);
     let userId: string | null = null;
     if (body.mode === 'link') {
       userId = await callerId(req);
@@ -39,13 +46,14 @@ Deno.serve(async (req) => {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const fail = (msg: string, to?: string) =>
-    Response.redirect(`${to || env('APP_URL', 'https://example.com')}/#/welcome?error=${encodeURIComponent(msg)}`, 302);
+    Response.redirect(`${to || home}/#/welcome?error=${encodeURIComponent(msg)}`, 302);
   if (!code || !state) return fail(url.searchParams.get('error') ?? 'Sign-in was cancelled');
 
   const { data: st } = await db.from('oauth_states').select('*').eq('state', state).maybeSingle();
   await db.from('oauth_states').delete().eq('state', state);
   if (!st || Date.now() - new Date(st.created_at).getTime() > 15 * 60_000) return fail('Sign-in expired, try again');
-  const returnTo: string = st.return_to || env('APP_URL', '');
+  const returnTo = allowed.find((u) => u === st.return_to);
+  if (!returnTo) return fail('Sign-in expired, try again');
 
   try {
     const tokens = await exchangeCode(code);

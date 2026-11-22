@@ -274,6 +274,11 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
     async assistant(history) {
       return (await fn<{ text: string }>('ai', { task: 'assistant', history })).text;
     },
+    aiKey: () => fn('ai', { task: 'keyStatus' }),
+    setAiKey: (key) => fn('ai', { task: 'setKey', key }),
+    async clearAiKey() {
+      await fn('ai', { task: 'clearKey' });
+    },
     async settings() {
       const { data } = await sb.from('settings').select('data').maybeSingle();
       return { ...DEFAULT_SETTINGS, ...((data?.data ?? {}) as Partial<SharedSettings>) };

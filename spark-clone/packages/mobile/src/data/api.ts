@@ -11,6 +11,11 @@ import type {
   SharedSettings,
 } from './types';
 
+export interface AiKeyStatus {
+  set: boolean;
+  hint?: string;
+}
+
 export type ThreadAction =
   | { kind: 'archive' }
   /** Back to the inbox (undo archive/snooze). */
@@ -57,6 +62,12 @@ export interface UnioxApi {
   firstRead(threadId: string): Promise<FirstRead>;
   rewrite(body: string, instruction: string): Promise<string>;
   assistant(history: AssistantTurn[]): Promise<string>;
+
+  /** Whether this user has stored an Anthropic key; `hint` is its last 4 characters. */
+  aiKey(): Promise<AiKeyStatus>;
+  /** Sends the key to the server once. It is stored encrypted and never comes back. */
+  setAiKey(key: string): Promise<AiKeyStatus>;
+  clearAiKey(): Promise<void>;
 
   settings(): Promise<SharedSettings>;
   saveSettings(patch: Partial<SharedSettings>): Promise<void>;

@@ -1,4 +1,4 @@
-import { admin, callerId, env } from '../_shared/db.ts';
+import { admin, callerId, conf } from '../_shared/db.ts';
 import { json, preflight } from '../_shared/cors.ts';
 import { type AccountRow, syncAccount } from '../_shared/mailsync.ts';
 
@@ -11,7 +11,8 @@ Deno.serve(async (req) => {
   const pre = preflight(req);
   if (pre) return pre;
   const db = admin();
-  const fromCron = req.headers.get('x-cron-secret') === env('CRON_SECRET', crypto.randomUUID());
+  const cronSecret = await conf(db, 'CRON_SECRET');
+  const fromCron = !!cronSecret && req.headers.get('x-cron-secret') === cronSecret;
   const userId = fromCron ? null : await callerId(req);
   if (!fromCron && !userId) return json({ error: 'unauthorized' }, 401);
 

@@ -20,3 +20,19 @@ export async function callerId(req: Request): Promise<string | null> {
   const { data } = await admin().auth.getUser(auth.slice(7));
   return data.user?.id ?? null;
 }
+
+const confCache = new Map<string, string | null>();
+
+/**
+ * Server configuration: the Edge Function secret NAME if set, otherwise the
+ * `app_config` row with the lower-case name. Null when neither exists.
+ */
+export async function conf(db: SupabaseClient, name: string): Promise<string | null> {
+  const fromEnv = Deno.env.get(name);
+  if (fromEnv) return fromEnv;
+  if (confCache.has(name)) return confCache.get(name)!;
+  const { data } = await db.from('app_config').select('value').eq('key', name.toLowerCase()).maybeSingle();
+  const v = (data?.value as string | undefined) ?? null;
+  if (v !== null) confCache.set(name, v);
+  return v;
+}

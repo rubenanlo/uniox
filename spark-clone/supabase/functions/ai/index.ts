@@ -1,9 +1,13 @@
-import { admin, callerId, env } from '../_shared/db.ts';
+import { admin, callerId } from '../_shared/db.ts';
 import { json, preflight } from '../_shared/cors.ts';
 
 /**
- * AI for the phone, on the server so the Anthropic key never reaches the
- * device. Same key and default model as the desktop app.
+ * AI for the phone. Each user adds their own Anthropic key in Settings; it is
+ * sent here once, stored encrypted in Supabase Vault, and only ever decrypted
+ * inside this function to call Anthropic. It is never returned to a client.
+ *   {task:'keyStatus'}                  -> {set, hint?}
+ *   {task:'setKey', key}                -> {set:true, hint}
+ *   {task:'clearKey'}                   -> {set:false}
  *   {task:'firstRead', threadId}        -> {summary, replyIdeas, freeSlots?}
  *   {task:'rewrite', body, instruction} -> {text}
  *   {task:'assistant', history}         -> {text}
@@ -11,16 +15,27 @@ import { json, preflight } from '../_shared/cors.ts';
  */
 const MODEL = () => Deno.env.get('AI_MODEL') ?? 'claude-opus-4-8';
 
-async function claude(system: string, messages: { role: 'user' | 'assistant'; content: string }[], maxTokens = 800): Promise<string> {
+/** Thrown when the user has not added a key yet; the phone shows it as is. */
+const NO_KEY = 'Add your Anthropic key in Settings to use AI.';
+
+async function userKey(db: ReturnType<typeof admin>, userId: string): Promise<string> {
+  const { data, error } = await db.rpc('get_ai_key', { p_user: userId });
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error(NO_KEY);
+  return data as string;
+}
+
+async function claude(key: string, system: string, messages: { role: 'user' | 'assistant'; content: string }[], maxTokens = 800): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': env('ANTHROPIC_API_KEY'),
+      'x-api-key': key,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
     body: JSON.stringify({ model: MODEL(), max_tokens: maxTokens, system, messages }),
   });
+  if (res.status === 401) throw new Error('Anthropic rejected your key. Update it in Settings.');
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const data = await res.json();
   return (data.content ?? []).filter((c: { type: string }) => c.type === 'text').map((c: { text: string }) => c.text).join('').trim();
@@ -46,6 +61,31 @@ Deno.serve(async (req) => {
   const b = await req.json();
 
   try {
+    if (b.task === 'keyStatus') {
+      const { data } = await db.from('user_ai_keys').select('hint').eq('user_id', userId).maybeSingle();
+      return json(data ? { set: true, hint: data.hint } : { set: false });
+    }
+
+    if (b.task === 'setKey') {
+      const key = String(b.key ?? '').trim();
+      if (!/^sk-ant-[A-Za-z0-9_-]{20,300}$/.test(key)) return json({ error: 'That does not look like an Anthropic key (it starts with sk-ant-).' }, 400);
+      // Check it works before storing it.
+      const probe = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      });
+      if (probe.status === 401 || probe.status === 403) return json({ error: 'Anthropic rejected this key. Check it and try again.' }, 400);
+      const { error } = await db.rpc('set_ai_key', { p_user: userId, p_key: key });
+      if (error) throw new Error(error.message);
+      return json({ set: true, hint: key.slice(-4) });
+    }
+
+    if (b.task === 'clearKey') {
+      const { error } = await db.rpc('clear_ai_key', { p_user: userId });
+      if (error) throw new Error(error.message);
+      await db.from('ai_cache').delete().eq('user_id', userId);
+      return json({ set: false });
+    }
+
     if (b.task === 'firstRead') {
       const { data: thread } = await db.from('threads').select('id, subject, account_id').eq('id', b.threadId).eq('user_id', userId).single();
       if (!thread) return json({ error: 'not found' }, 404);
@@ -64,6 +104,7 @@ Deno.serve(async (req) => {
         .map((m) => `${m.from_me ? 'Me' : (m.from_addr?.name ?? m.from_addr?.email)} (${fmtWhen(m.date)}):\n${(m.body_text ?? m.snippet ?? '').slice(0, 2500)}`)
         .join('\n\n---\n\n');
       const out = await claude(
+        await userKey(db, userId),
         'You read email threads for a busy person. Reply with JSON only: {"summary": one or two plain sentences on what the latest message says and what it needs from me, "replyIdeas": up to 3 short reply chip labels (2-4 words each), "wantsTimes": true if the sender asks me to propose meeting times}.',
         [{ role: 'user', content: `Subject: ${thread.subject}\n\n${convo}` }],
         400,
@@ -80,6 +121,7 @@ Deno.serve(async (req) => {
 
     if (b.task === 'rewrite') {
       const text = await claude(
+        await userKey(db, userId),
         'You edit email drafts. Apply the instruction and return only the new email body, no preamble, same language as the draft unless asked to translate.',
         [{ role: 'user', content: `Instruction: ${b.instruction}\n\nDraft:\n${b.body}` }],
         1200,
@@ -114,6 +156,7 @@ Deno.serve(async (req) => {
       ].join('\n');
       const history = (b.history ?? []).slice(-12).map((t: { role: 'user' | 'assistant'; text: string }) => ({ role: t.role, content: t.text }));
       const text = await claude(
+        await userKey(db, userId),
         `You are the assistant inside Uniox, the user's mail and calendar app, on their phone. Be brief and concrete; plain sentences, no markdown headings. Use this context:\n\n${ctx}`,
         history,
         900,
@@ -132,7 +175,10 @@ Deno.serve(async (req) => {
         .order('last_message_at', { ascending: false })
         .limit(8);
       if (!hits?.length) return json({ answer: null });
+      const key = await db.rpc('get_ai_key', { p_user: userId });
+      if (!key.data) return json({ answer: null });
       const out = await claude(
+        key.data as string,
         'Answer the search in one sentence using only these emails, or reply exactly NONE if they do not answer it.',
         [{ role: 'user', content: `Search: ${q}\n\n${hits.map((h) => `${fmtWhen(h.last_message_at)} ${h.last_from?.name}: ${h.subject} — ${h.snippet}`).join('\n')}` }],
         150,
@@ -142,8 +188,10 @@ Deno.serve(async (req) => {
 
     return json({ error: 'unknown task' }, 400);
   } catch (e) {
-    console.error(e);
-    return json({ error: (e as Error).message }, 500);
+    const msg = (e as Error).message;
+    if (msg === NO_KEY) return json({ error: msg, code: 'no_ai_key' }, 400);
+    console.error(msg);
+    return json({ error: msg }, 500);
   }
 });
 
