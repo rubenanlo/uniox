@@ -1,6 +1,6 @@
 import type { Address, InviteInfo, MessageBodyPayload, MessageMeta } from '@app/shared';
 import { ArrowUp, CalendarCheck, Forward, Loader2, Sparkles, X } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { cardAttachments, htmlNeedsRender, inviteAnswerLine, looksLikeMarkup } from '../../lib/quickReply';
 import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
@@ -10,6 +10,7 @@ import { useInvite } from '../invite/InviteCard';
 import { InviteChatCard } from './InviteChatCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
+import { AddressField } from '../composer/Composer';
 import { firstName, listNames, nameOf, type ChatThread } from './useChatThread';
 
 /**
@@ -320,30 +321,32 @@ export function OutgoingList({ chat }: { chat: ChatThread }) {
   return (
     <>
       {chat.outgoing.map((o) => (
-        <div key={o.id} className="qr-msg-in flex flex-col items-end gap-1">
-          {o.kind === 'reply' ? (
-            <div className="qr-bubble-out max-w-[75%] whitespace-pre-wrap rounded-[17px_17px_6px_17px] px-3.5 py-2.5 text-[13.5px] leading-[1.55]">
-              {o.text}
-            </div>
-          ) : (
-            <div className="qr-card flex items-center gap-2 px-3 py-2 text-[12.5px]">
-              <Forward size={14} className="text-accent" /> Forwarded to {o.label}
-            </div>
-          )}
-          <div className="text-ink-faint flex items-center gap-2 text-[11.5px]">
-            {o.status === 'pending' ? (
-              <>
-                <span className="bg-ink/10 relative h-[3px] w-14 overflow-hidden rounded-full">
-                  <span className="qr-countdown bg-accent absolute inset-y-0 left-0 w-full rounded-full" />
-                </span>
-                Sending…
-                <button onClick={() => chat.undo(o)} className="text-accent font-medium hover:underline">
-                  Undo
-                </button>
-              </>
+        <div key={o.id} className="qr-out-fold" data-landed={chat.landed.has(o.id) || undefined}>
+          <div className="qr-msg-in flex min-h-0 flex-col items-end gap-1 overflow-hidden">
+            {o.kind === 'reply' ? (
+              <div className="qr-bubble-out max-w-[75%] whitespace-pre-wrap rounded-[17px_17px_6px_17px] px-3.5 py-2.5 text-[13.5px] leading-[1.55]">
+                {o.text}
+              </div>
             ) : (
-              <>Sent{o.kind === 'reply' && o.label ? ` to ${o.label}` : ''}</>
+              <div className="qr-card flex items-center gap-2 px-3 py-2 text-[12.5px]">
+                <Forward size={14} className="text-accent" /> Forwarded to {o.label}
+              </div>
             )}
+            <div className="text-ink-faint flex items-center gap-2 text-[11.5px]">
+              {o.status === 'pending' ? (
+                <>
+                  <span className="bg-ink/10 relative h-[3px] w-14 overflow-hidden rounded-full">
+                    <span className="qr-countdown bg-accent absolute inset-y-0 left-0 w-full rounded-full" />
+                  </span>
+                  Sending…
+                  <button onClick={() => chat.undo(o)} className="text-accent font-medium hover:underline">
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>Sent{o.kind === 'reply' && o.label ? ` to ${o.label}` : ''}</>
+              )}
+            </div>
           </div>
         </div>
       ))}
@@ -369,6 +372,12 @@ export function ReplyField({
   const { draft, setDraft, writing, picks, togglePick, times, latest, others, all, setReplyAll, toLabel, fieldRef } =
     chat;
   const [dropping, setDropping] = useState(false);
+  const { ccOpen, setCcOpen, ccText, setCcText } = chat;
+  const ccRef = useRef<HTMLInputElement>(null);
+  // ⌘⇧C (or the Cc button) opens the Cc line, ready to type a name.
+  useEffect(() => {
+    if (ccOpen) ccRef.current?.focus();
+  }, [ccOpen]);
 
   // Grow the field with its text, up to ~6 lines.
   useEffect(() => {
@@ -418,6 +427,43 @@ export function ReplyField({
           ))}
         </div>
       )}
+      {ccOpen && (
+        <div className="border-hairline mb-1 flex items-center gap-2 border-b pb-1">
+          <span className="text-ink-faint shrink-0 text-[11.5px]">Cc</span>
+          <div
+            className="min-w-0 flex-1"
+            onKeyDown={(e) => {
+              // Esc on an empty Cc line closes it and goes back to the reply.
+              if (e.key === 'Escape' && !ccText.trim()) {
+                e.preventDefault();
+                e.stopPropagation();
+                setCcOpen(false);
+                fieldRef.current?.focus();
+              }
+            }}
+          >
+            <AddressField
+              inputRef={ccRef}
+              value={ccText}
+              onChange={setCcText}
+              ariaLabel="Cc"
+              placeholder="Add someone in Cc"
+              className="placeholder:text-ink-faint w-full bg-transparent py-1 text-[13px] outline-none"
+            />
+          </div>
+          <button
+            aria-label="Remove Cc"
+            onClick={() => {
+              setCcText('');
+              setCcOpen(false);
+              fieldRef.current?.focus();
+            }}
+            className="text-ink-faint hover:text-ink shrink-0"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
       <div className="flex items-end gap-2.5">
         <textarea
           ref={fieldRef}
@@ -431,7 +477,7 @@ export function ReplyField({
               chat.send();
             }
           }}
-          placeholder={writing ? 'Writing…' : `Reply to ${firstName(latest?.from) || 'them'}…`}
+          placeholder={writing ? 'Writing…' : `Reply to ${firstName(chat.recipients.to[0] ?? latest?.from) || 'them'}…`}
           className="placeholder:text-ink-faint max-h-[140px] min-w-0 flex-1 resize-none bg-transparent py-1.5 text-[14.5px] leading-[1.5] outline-none select-text"
         />
         <span className="text-ink-faint mb-2 flex shrink-0 items-center gap-1 text-[11.5px]">
@@ -455,6 +501,11 @@ export function ReplyField({
           </button>
         ) : (
           <span>To {toLabel.join(', ') || '…'}</span>
+        )}
+        {!ccOpen && (
+          <button onClick={() => setCcOpen(true)} title="Add someone in Cc  ⌘⇧C" className="hover:text-ink-muted">
+            + Cc
+          </button>
         )}
         <span>Undo Send on</span>
       </div>

@@ -2,6 +2,7 @@ import type { Address, MessageBodyPayload, MessageMeta, OutgoingDraft } from '@a
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { parseAddresses } from '../../lib/addresses';
 import { formatSlotForPeople, templateGroupReply, type GroupSlot, type Participant } from '../../lib/availability';
 import {
   cardAttachments,
@@ -47,7 +48,11 @@ export interface ChatOutgoing {
   label: string;
   status: 'pending' | 'sent';
   cancel: () => boolean;
+  sentAt: number;
 }
+
+/** Text squeezed down for matching a sent reply against the copy that syncs back. */
+const squeeze = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 export type ChatTimes = { slots: GroupSlot[]; people: Participant[] } | 'loading' | 'none' | null;
 
@@ -154,10 +159,20 @@ export function useChatThread(
   const context = useMemo(() => threadContext(mail, bodies, own), [mail, bodies, own]);
   const others = useMemo(() => (latest ? othersOn(latest, own) : []), [latest, own]);
   const all = replyAll ?? others.length > 1;
-  const recipients = useMemo(
-    () => (latest ? replyRecipients(latest, own, all) : { to: [], cc: [] }),
-    [latest, own, all],
-  );
+  // People added to the reply's Cc from the reply box (⌘⇧C), on top of the thread's own.
+  const [ccOpen, setCcOpen] = useState(false);
+  const [ccText, setCcText] = useState('');
+  const recipients = useMemo(() => {
+    const base = latest ? replyRecipients(latest, own, all) : { to: [], cc: [] };
+    const seen = new Set([...base.to, ...base.cc].map((a) => a.email.toLowerCase()));
+    const extra = parseAddresses(ccText).filter((a) => {
+      const key = a.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return extra.length ? { to: base.to, cc: [...base.cc, ...extra] } : base;
+  }, [latest, own, all, ccText]);
 
   /** Times were asked for already (by the keyword check, the assistant or the rail). */
   const timesStarted = useRef(false);
@@ -194,10 +209,13 @@ export function useChatThread(
     !!inviteAnswerLine(latest.subject, '') &&
     !messageVisibleText(latestBody, latest.snippet).trim();
 
+  // Your own reply is the newest message: nothing to read or answer.
+  const latestMine = !!latest?.from && own.has(latest.from.email.toLowerCase());
+
   // The assistant's first read: a summary, reply ideas and a forward if one is asked for.
   const ideasFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!latest || !latestBody || !configured || answerOnly || ideasFor.current === latest.id) return;
+    if (!latest || !latestBody || !configured || answerOnly || latestMine || ideasFor.current === latest.id) return;
     ideasFor.current = latest.id;
     const id = latest.id;
     setIdeas('loading');
@@ -221,7 +239,7 @@ export function useChatThread(
       },
       () => void read(),
     );
-  }, [latest, latestBody, configured, context, loadTimes, answerOnly]);
+  }, [latest, latestBody, configured, context, loadTimes, answerOnly, latestMine]);
 
   const people = times && typeof times === 'object' ? times.people : [];
   const timeLines = picks.map((s) => `• ${formatSlotForPeople(s, people)}`);
@@ -245,10 +263,34 @@ export function useChatThread(
   const queue = (kind: ChatOutgoing['kind'], out: OutgoingDraft, text: string, label: string) => {
     const id = crypto.randomUUID();
     const { cancel } = deferSend(out, () =>
-      setOutgoing((o) => o.map((x) => (x.id === id ? { ...x, status: 'sent' } : x))),
+      setOutgoing((o) => o.map((x) => (x.id === id ? { ...x, status: 'sent', sentAt: Date.now() } : x))),
     );
-    setOutgoing((o) => [...o, { id, kind, text, label, status: 'pending', cancel }]);
+    setOutgoing((o) => [...o, { id, kind, text, label, status: 'pending', cancel, sentAt: Date.now() }]);
   };
+
+  // Once a sent reply syncs back into the thread it shows there as your own
+  // message, so the "Sent to …" copy below folds away instead of doubling it.
+  const landed = useMemo(() => {
+    const ids = new Set<string>();
+    const mine = mail.filter((m) => !!m.from && own.has(m.from.email.toLowerCase()));
+    for (const o of outgoing) {
+      if (o.kind !== 'reply' || o.status !== 'sent') continue;
+      const key = squeeze(o.text).slice(0, 24);
+      const back = mine.some((m) => {
+        if (m.date < o.sentAt - 120_000) return false;
+        const body = bodies[m.id];
+        return !key || squeeze(`${m.snippet} ${body ? messageVisibleText(body, m.snippet) : ''}`).includes(key);
+      });
+      if (back) ids.add(o.id);
+    }
+    return ids;
+  }, [outgoing, mail, own, bodies]);
+  // Leave room for the fold animation (OutgoingList), then drop them.
+  useEffect(() => {
+    if (!landed.size) return;
+    const timer = window.setTimeout(() => setOutgoing((list) => list.filter((x) => !landed.has(x.id))), 450);
+    return () => window.clearTimeout(timer);
+  }, [landed]);
 
   const send = (typedText?: string) => {
     if (!latest) return;
@@ -271,6 +313,8 @@ export function useChatThread(
     if (typedText === undefined) {
       setDraft('');
       setPicks([]);
+      setCcText('');
+      setCcOpen(false);
     }
   };
 
@@ -337,7 +381,7 @@ export function useChatThread(
   const toLabel = recipients.to.concat(recipients.cc).map((a) => firstName(a));
   const aiPhase: 'off' | 'skipped' | 'loading' | 'error' | 'ready' = !configured
     ? 'off'
-    : ideas === 'skipped' || answerOnly
+    : ideas === 'skipped' || answerOnly || latestMine
       ? 'skipped'
       : ideas === 'loading' || ideas === null
         ? 'loading'
@@ -363,6 +407,7 @@ export function useChatThread(
     togglePick,
     notes,
     outgoing,
+    landed,
     forwarding,
     setForwarding,
     draft,
@@ -375,6 +420,10 @@ export function useChatThread(
     accountId,
     others,
     recipients,
+    ccOpen,
+    setCcOpen,
+    ccText,
+    setCcText,
     files,
     toLabel,
     fieldRef,

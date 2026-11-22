@@ -55,30 +55,14 @@ import { AssistantChip, assistantChipOwnsEscape } from './AssistantChip';
 import { AvailabilityChecking } from './AvailabilityChecking';
 import { SignaturePreview } from './SignaturePreview';
 import { TimesHoverBar } from './TimesHoverBar';
-
-function parseAddresses(raw: string): Address[] {
-  return raw
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const m = part.match(/^(.*?)\s*<([^>]+)>$/);
-      if (m) return { name: m[1]?.replace(/^"|"$/g, '') || undefined, email: m[2]! };
-      return { email: part };
-    })
-    .filter((a) => a.email.includes('@'));
-}
-
-function formatAddresses(list: Address[] | undefined): string {
-  return (list ?? []).map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(', ');
-}
+import { formatAddresses, parseAddresses } from '../../lib/addresses';
 
 /**
  * A recipients input with address autocomplete: the term being typed (after
  * the last comma) queries mail history; ↑/↓ move, Enter inserts, click works,
  * and picking appends `Name <email>, ` ready for the next recipient.
  */
-function AddressField({
+export function AddressField({
   inputRef,
   value,
   onChange,
@@ -105,7 +89,7 @@ function AddressField({
         return;
       }
       void api.query('contacts:suggest', { query: term, limit: 8 }).then((r) => {
-        setSugs(r);
+        setSugs(r ?? []);
         setActive(0);
       });
     }, 120);
@@ -188,6 +172,8 @@ function replySubject(mode: ComposerState['mode'], subject: string): string {
  * rather than floating over the inbox; finishing the email closes the window.
  */
 export function Composer({ state, windowed = false }: { state: ComposerState; windowed?: boolean }) {
+  // In the chat reading layout the composer takes the reply box's place.
+  const docked = !windowed && !!state.docked;
   const closeInline = useUi((s) => s.closeComposer);
   // Set right before a deliberate close, so the window's unload guard lets it go.
   const closingRef = useRef(false);
@@ -527,6 +513,66 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [windowed, hasContent]);
 
+  // The body as last typed, for carrying a docked draft over after its editor is gone.
+  const lastHtmlRef = useRef(restore?.bodyHtml ?? '');
+  useEffect(() => {
+    if (!editor || !docked) return;
+    const save = () => {
+      lastHtmlRef.current = editor.getHTML();
+    };
+    save();
+    editor.on('update', save);
+    return () => {
+      editor.off('update', save);
+    };
+  }, [editor, docked]);
+
+  /** Docked: lift this draft, as typed, out of the chat into the full floating composer. */
+  const float = () => {
+    let bodyHtml = lastHtmlRef.current;
+    try {
+      if (editor && !editor.isDestroyed) bodyHtml = editor.getHTML();
+    } catch {
+      // the editor can already be torn down when the chat unmounts
+    }
+    useUi.getState().openComposer({
+      ...state,
+      docked: false,
+      accountId: account?.id ?? state.accountId,
+      initialBody: undefined,
+      restore: {
+        to,
+        cc,
+        bcc,
+        showCcBcc,
+        subject,
+        bodyHtml,
+        quotedHtml,
+        signatureRemoved,
+        attachments,
+      },
+    });
+  };
+
+  // A docked draft whose chat goes away (another thread, the cards layout,
+  // Home) carries on as the floating composer instead of vanishing.
+  const floatRef = useRef(float);
+  useEffect(() => {
+    floatRef.current = float;
+  });
+  const aliveRef = useRef(false);
+  useEffect(() => {
+    if (!docked) return;
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      // Next tick, so a StrictMode remount (dev) doesn't count as leaving.
+      window.setTimeout(() => {
+        if (!aliveRef.current && useUi.getState().composer === state) floatRef.current();
+      });
+    };
+  }, [docked, state]);
+
   /** Move this draft, as typed, into its own window; this composer then closes. */
   const popOut = useCallback(() => {
     if (windowed || !editor) return;
@@ -535,6 +581,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
       .command('composer:pop-out', {
         state: {
           ...state,
+          docked: undefined,
           accountId: account?.id ?? state.accountId,
           initialBody: undefined,
           restore: {
@@ -694,8 +741,10 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
   return (
     <div
       className={cn(
-        'pointer-events-none absolute inset-0 z-40 flex items-end justify-end',
-        !windowed && 'p-4',
+        docked
+          ? 'relative flex w-full'
+          : 'pointer-events-none absolute inset-0 z-40 flex items-end justify-end',
+        !windowed && !docked && 'p-4',
       )}
     >
       <div
@@ -707,8 +756,10 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
           'bg-surface pointer-events-auto relative flex max-w-full flex-col',
           windowed
             ? 'h-full w-full'
-            : 'border-hairline rounded-2xl border shadow-2xl',
-          !windowed && (expanded ? 'h-full w-[1100px]' : 'max-h-[85%] w-[620px]'),
+            : docked
+              ? 'chat-reply border-hairline max-h-[min(62vh,620px)] w-full rounded-2xl border'
+              : 'border-hairline rounded-2xl border shadow-2xl',
+          !windowed && !docked && (expanded ? 'h-full w-[1100px]' : 'max-h-[85%] w-[620px]'),
         )}
         onDragEnterCapture={(e) => {
           if (!hasFiles(e)) return;
@@ -773,14 +824,25 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
               >
                 <SquareArrowOutUpRight size={14} />
               </button>
-              <button
-                onClick={() => setExpanded(!expanded)}
-                title={expanded ? 'Shrink' : 'Expand'}
-                aria-label={expanded ? 'Shrink composer' : 'Expand composer'}
-                className="text-ink-muted hover:text-ink ml-1"
-              >
-                {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              </button>
+              {docked ? (
+                <button
+                  onClick={float}
+                  title="Open as the full composer"
+                  aria-label="Open as the full composer"
+                  className="text-ink-muted hover:text-ink ml-1"
+                >
+                  <Maximize2 size={14} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setExpanded(!expanded)}
+                  title={expanded ? 'Shrink' : 'Expand'}
+                  aria-label={expanded ? 'Shrink composer' : 'Expand composer'}
+                  className="text-ink-muted hover:text-ink ml-1"
+                >
+                  {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                </button>
+              )}
             </>
           )}
           <button onClick={requestClose} aria-label="Close composer" className="text-ink-muted hover:text-ink ml-1">

@@ -1,6 +1,7 @@
 import type { AttachmentMeta } from '@app/shared';
 import { buildSrcdoc, IFRAME_SANDBOX, sanitizeEmailHtml } from '@app/email-render';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { watchEmailFrame } from '../../lib/emailFrame';
 import { useIsDark } from '../../lib/useIsDark';
 
 /**
@@ -25,46 +26,19 @@ export function RenderedEmail({ html, attachments }: { html: string; attachments
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    let ro: ResizeObserver | null = null;
-    const measure = () => {
-      const doc = frame.contentDocument;
-      const room = boxRef.current?.clientWidth ?? 0;
-      if (!doc?.body || !room) return;
-      // Laid out at its own width (once widened, the frame stays that wide, so this settles).
-      const wide = doc.documentElement.scrollWidth;
-      const scale = wide > room + 4 ? room / wide : 1;
-      setFit((f) => (f.scale === scale ? f : { scale, width: scale < 1 ? wide : null }));
-      setHeight(Math.min(20_000, Math.max(40, doc.body.scrollHeight + 2)));
-    };
-    const onLoad = () => {
-      const doc = frame.contentDocument;
-      // The frame swallows keys once clicked: hand them back so Esc, ⌘↩ and the rail keys still work.
-      doc?.addEventListener('keydown', (e) => {
-        const clone = new KeyboardEvent('keydown', {
-          key: e.key,
-          code: e.code,
-          metaKey: e.metaKey,
-          ctrlKey: e.ctrlKey,
-          altKey: e.altKey,
-          shiftKey: e.shiftKey,
-          bubbles: true,
-          cancelable: true,
-        });
-        if (!window.dispatchEvent(clone)) e.preventDefault();
-      });
-      measure();
-      ro?.disconnect();
-      if (doc?.body) {
-        ro = new ResizeObserver(measure);
-        ro.observe(doc.body);
-      }
-    };
-    frame.addEventListener('load', onLoad);
-    if (frame.contentDocument?.readyState === 'complete') onLoad();
-    return () => {
-      frame.removeEventListener('load', onLoad);
-      ro?.disconnect();
-    };
+    // Follows the email's layout and hands its keys back (Esc, ⌘↩, the rail
+    // keys, r / ⇧R / f in the reading pane) without waiting for every image.
+    return watchEmailFrame(frame, {
+      onMeasure: (doc) => {
+        const room = boxRef.current?.clientWidth ?? 0;
+        if (!room) return;
+        // Laid out at its own width (once widened, the frame stays that wide, so this settles).
+        const wide = doc.documentElement.scrollWidth;
+        const scale = wide > room + 4 ? room / wide : 1;
+        setFit((f) => (f.scale === scale ? f : { scale, width: scale < 1 ? wide : null }));
+        setHeight(Math.min(20_000, Math.max(40, doc.body.scrollHeight + 2)));
+      },
+    });
   }, [srcdoc]);
 
   // Shown in full: the conversation scrolls instead of folding the email.
