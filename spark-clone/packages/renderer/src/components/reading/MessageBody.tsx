@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildSrcdoc, IFRAME_SANDBOX, sanitizeEmailHtml, textToHtml } from '@app/email-render';
 import { ImageOff } from 'lucide-react';
+import { watchEmailFrame } from '../../lib/emailFrame';
 import { useIsDark } from '../../lib/useIsDark';
 import { useMessageBody } from '../../state/queries';
 import { Attachments } from './Attachments';
@@ -38,59 +39,15 @@ export function MessageBody({ messageId }: { messageId: string }) {
     return body.attachments.filter((a) => !a.cid || !inline.has(a.cid.replace(/^<|>$/g, '')));
   }, [body, rendered]);
 
-  // The sandboxed iframe swallows keyboard events once clicked into. Re-dispatch
-  // them on the iframe element so app shortcuts (sidebar toggle, list nav, Esc)
-  // keep working while reading an email, and mirror preventDefault back.
+  // Follow the email's height and hand its keys back to the app (Esc, ←, r /
+  // ⇧R / f…): the sandboxed frame swallows them once clicked into.
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe || !rendered) return;
-    const forward = (e: KeyboardEvent) => {
-      const clone = new KeyboardEvent('keydown', {
-        key: e.key,
-        code: e.code,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        altKey: e.altKey,
-        shiftKey: e.shiftKey,
-        bubbles: true,
-        cancelable: true,
-      });
-      if (!iframe.dispatchEvent(clone)) e.preventDefault();
-    };
-    const attach = () => iframe.contentDocument?.addEventListener('keydown', forward);
-    iframe.addEventListener('load', attach);
-    attach();
-    return () => {
-      iframe.removeEventListener('load', attach);
-      iframe.contentDocument?.removeEventListener('keydown', forward);
-    };
-  }, [rendered]);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || !rendered) return;
-    let ro: ResizeObserver | null = null;
-    const measure = () => {
-      const doc = iframe.contentDocument;
+    return watchEmailFrame(iframe, {
       // body carries its own padding; +2 only covers subpixel rounding
-      if (doc?.body) setHeight(Math.min(20_000, Math.max(40, doc.body.scrollHeight + 2)));
-    };
-    const onLoad = () => {
-      measure();
-      // srcdoc has no scripts; images/layout settling fire resize, not timers
-      ro?.disconnect();
-      const body = iframe.contentDocument?.body;
-      if (body) {
-        ro = new ResizeObserver(measure);
-        ro.observe(body);
-      }
-    };
-    iframe.addEventListener('load', onLoad);
-    onLoad();
-    return () => {
-      iframe.removeEventListener('load', onLoad);
-      ro?.disconnect();
-    };
+      onMeasure: (doc) => setHeight(Math.min(20_000, Math.max(40, doc.body.scrollHeight + 2))),
+    });
   }, [rendered]);
 
   if (!body) {

@@ -1,3 +1,4 @@
+import { replyInChat } from '../lib/chatReply';
 import { toast } from 'sonner';
 import type { ThreadSummary } from '@app/shared';
 import { api } from '../lib/api';
@@ -130,6 +131,8 @@ function replyAction(mode: 'reply' | 'reply-all' | 'forward') {
   return (targetThreadId: string | null) => {
     const thread = threadById(targetThreadId) ?? target();
     if (!thread) return;
+    // The chat reading layout answers in its own reply box (the full composer, docked).
+    if (replyInChat(thread.id, mode)) return;
     void api.query('thread:messages', { threadId: thread.id }).then((messages) => {
       const last = messages[messages.length - 1];
       if (!last) return;

@@ -18,6 +18,11 @@ export interface ComposerState {
   initialBody?: string;
   /** A half-written draft carried over from another composer (pop-out). */
   restore?: ComposerRestore;
+  /**
+   * Shown in place of the chat reading layout's reply box, at the bottom of
+   * the conversation, instead of floating over the inbox.
+   */
+  docked?: boolean;
 }
 
 /** The composer's fields exactly as typed, so a popped-out draft picks up where it was. */

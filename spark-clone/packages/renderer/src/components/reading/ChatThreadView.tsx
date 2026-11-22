@@ -2,6 +2,8 @@ import type { MessageMeta, ThreadSummary } from '@app/shared';
 import { CalendarClock, Forward, Sparkles, SquareArrowOutUpRight } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUi } from '../../state/store';
+import { registerChatReply } from '../../lib/chatReply';
+import { Composer } from '../composer/Composer';
 import { cn } from '../../lib/utils';
 import { AiMenu, type AiMenuPick } from '../quickreply/AiMenu';
 import {
@@ -21,6 +23,7 @@ import {
   ThreadHeader,
   focusPaneOnBackground,
   paneEscape,
+  paneScrollKeys,
   useOpenMarksRead,
 } from './ThreadView';
 
@@ -111,24 +114,38 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
     void chat.runAiPick(pick);
   };
 
-  const openInComposer = () => {
+  // The reply box grows into the full composer (formatting, attachments,
+  // Cc/Bcc, templates, send later, signature) right here, carrying what was
+  // typed. r / ⇧R / f land here too while this chat is open.
+  const composer = useUi((s) => s.composer);
+  const docked = composer?.docked && composer.replyTo?.threadId === thread.id ? composer : null;
+  const openInComposer = (
+    mode: 'reply' | 'reply-all' | 'forward' = chat.all ? 'reply-all' : 'reply',
+  ) => {
     if (!latest) return;
-    const text = chat.replyText();
+    const text = mode === 'forward' ? '' : chat.replyText();
     openComposer({
-      mode: chat.all ? 'reply-all' : 'reply',
+      mode,
       accountId: chat.accountId,
       replyTo: latest,
       subject: latest.subject,
+      docked: true,
       ...(text ? { initialBody: text } : {}),
     });
-    chat.setDraft('');
+    if (text) chat.setDraft('');
   };
+  const openRef = useRef(openInComposer);
+  useEffect(() => {
+    openRef.current = openInComposer;
+  });
+  useEffect(() => registerChatReply(thread.id, (mode) => openRef.current(mode)), [thread.id]);
 
   // Inside the pane, ⌘. opens the chat's one AI menu: the reply rewrites (as on
   // the island) plus ⌘.'s email actions (summary, write a reply, translate).
   // ⌘⇧A checks availability, ⌘⇧F forwards.
-  const onKeyDown = (e: React.KeyboardEvent) => {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (paneEscape(e)) return;
+    if (paneScrollKeys(e)) return;
     const meta = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
     if (meta && !e.shiftKey && !e.altKey && k === '.') {
@@ -165,7 +182,9 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
         <div className="chat-wash flex min-h-0 flex-1 flex-col">
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto"
+            data-reading-scroll
+            tabIndex={-1}
+            className="min-h-0 flex-1 overflow-y-auto focus:outline-none"
             onScroll={(e) => {
               const el = e.currentTarget;
               atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -225,49 +244,59 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
           </div>
 
           <div className="relative mx-auto w-full max-w-[860px] shrink-0 px-6 pb-4 pt-1">
-            {menu && (
-              <AiMenu
-                hasDraft={!!chat.draft.trim()}
-                onPick={onMenuPick}
-                onClose={() => setMenu(false)}
-                translate
-                className="ai-glass chat-menu bottom-[calc(100%+6px)] left-6"
-              />
+            {docked ? (
+              <Composer key={`${docked.mode}-${docked.replyTo?.id ?? 'new'}`} state={docked} />
+            ) : (
+              <>
+                {menu && (
+                  <AiMenu
+                    hasDraft={!!chat.draft.trim()}
+                    onPick={onMenuPick}
+                    onClose={() => setMenu(false)}
+                    translate
+                    className="ai-glass chat-menu bottom-[calc(100%+6px)] left-6"
+                  />
+                )}
+                <ReplyField
+                  chat={chat}
+                  className="chat-reply"
+                  tools={
+                    <>
+                      <button
+                        data-ai-toggle
+                        onClick={() => setMenu((m) => !m)}
+                        title="Assistant  ⌘."
+                        className={cn(tool, 'text-accent font-medium')}
+                      >
+                        <Sparkles size={13} /> Assistant
+                      </button>
+                      <button
+                        onClick={chat.showTimes}
+                        title="Check my availability  ⌘⇧A"
+                        className={tool}
+                      >
+                        <CalendarClock size={13} /> Times
+                      </button>
+                      <button
+                        onClick={() => chat.setForwarding(true)}
+                        title="Forward  ⌘⇧F"
+                        className={tool}
+                      >
+                        <Forward size={13} /> Forward
+                      </button>
+                      <button
+                        onClick={() => openInComposer()}
+                        title="Open the full composer here  R"
+                        className={tool}
+                      >
+                        <SquareArrowOutUpRight size={12} /> Composer
+                      </button>
+                      <span className="bg-hairline h-3 w-px" />
+                    </>
+                  }
+                />
+              </>
             )}
-            <ReplyField
-              chat={chat}
-              className="chat-reply"
-              tools={
-                <>
-                  <button
-                    data-ai-toggle
-                    onClick={() => setMenu((m) => !m)}
-                    title="Assistant  ⌘."
-                    className={cn(tool, 'text-accent font-medium')}
-                  >
-                    <Sparkles size={13} /> Assistant
-                  </button>
-                  <button
-                    onClick={chat.showTimes}
-                    title="Check my availability  ⌘⇧A"
-                    className={tool}
-                  >
-                    <CalendarClock size={13} /> Times
-                  </button>
-                  <button
-                    onClick={() => chat.setForwarding(true)}
-                    title="Forward  ⌘⇧F"
-                    className={tool}
-                  >
-                    <Forward size={13} /> Forward
-                  </button>
-                  <button onClick={openInComposer} title="Open in the composer" className={tool}>
-                    <SquareArrowOutUpRight size={12} /> Composer
-                  </button>
-                  <span className="bg-hairline h-3 w-px" />
-                </>
-              }
-            />
           </div>
         </div>
       </div>

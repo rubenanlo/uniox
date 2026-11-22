@@ -276,6 +276,38 @@ export function paneEscape(e: React.KeyboardEvent): boolean {
   return true;
 }
 
+/**
+ * Keys that read the open email once focus is in the reading pane (arrived
+ * with → from the list, or a click into the email): ↑/↓ scroll a line, Space
+ * / ⇧Space and PgUp/PgDn a page, Home/End to the ends. Without this, ↑/↓
+ * fell through to the list and switched emails instead. Message headers and
+ * form controls keep their own keys.
+ */
+export function paneScrollKeys(e: React.KeyboardEvent<HTMLElement>): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return false;
+  const el = e.target as HTMLElement;
+  if (el.closest('article > button, button, a, input, textarea, select, [contenteditable="true"]')) return false;
+  const scroller = e.currentTarget.querySelector<HTMLElement>('[data-reading-scroll]');
+  if (!scroller) return false;
+  const page = Math.max(80, scroller.clientHeight - 60);
+  const by: Record<string, number> = {
+    ArrowDown: 64,
+    ArrowUp: -64,
+    PageDown: page,
+    PageUp: -page,
+    ' ': e.shiftKey ? -page : page,
+  };
+  if (e.shiftKey && e.key !== ' ') return false;
+  if (e.key === 'Home' || e.key === 'End') {
+    scroller.scrollTo({ top: e.key === 'Home' ? 0 : scroller.scrollHeight });
+  } else if (e.key in by) {
+    scroller.scrollBy({ top: by[e.key]! });
+  } else return false;
+  e.preventDefault();
+  e.stopPropagation();
+  return true;
+}
+
 /** Plain clicks on the pane background make it the keyboard section; controls keep their own focus. */
 export function focusPaneOnBackground(e: React.MouseEvent<HTMLElement>) {
   const el = e.target as HTMLElement;
@@ -382,18 +414,30 @@ function CardsThreadView({ thread }: { thread: ThreadSummary }) {
   // ← is handled by the global panel navigation; Esc mirrors it here, and
   // ↑/↓ on a message header walk the thread's messages instead of moving
   // the mail-list selection out from under the reader.
-  const onPaneKeyDown = (e: React.KeyboardEvent) => {
+  const onPaneKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
     if (paneEscape(e)) return;
-    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+      paneScrollKeys(e);
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       const headers = [...e.currentTarget.querySelectorAll<HTMLElement>('article > button')];
       const idx = headers.indexOf(e.target as HTMLElement);
       if (idx >= 0) {
         e.preventDefault();
         e.stopPropagation();
-        headers[idx + (e.key === 'ArrowDown' ? 1 : -1)]?.focus();
+        const next = headers[idx + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) next.focus();
+        else if (e.key === 'ArrowDown') {
+          // Past the newest header: step into the email itself and read on.
+          const scroller = e.currentTarget.querySelector<HTMLElement>('[data-reading-scroll]');
+          scroller?.focus({ preventScroll: true });
+          scroller?.scrollBy({ top: 64 });
+        }
+        return;
       }
     }
+    paneScrollKeys(e);
   };
 
   return (
@@ -404,7 +448,7 @@ function CardsThreadView({ thread }: { thread: ThreadSummary }) {
       onMouseDown={focusPaneOnBackground}
     >
       <ThreadHeader thread={thread} />
-      <div className="flex-1 overflow-y-auto p-3">
+      <div data-reading-scroll tabIndex={-1} className="flex-1 overflow-y-auto p-3 focus:outline-none">
         {messages.map((m) =>
           m.draft ? (
             <DraftItem key={m.id} message={m} />

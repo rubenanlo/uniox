@@ -403,7 +403,8 @@ export default function App() {
         <OrbCorner />
         <AssistantModal />
 
-        {composer && (
+        {/* A docked composer lives in the chat reading pane (ChatThreadView). */}
+        {composer && !composer.docked && (
           <Composer
             key={`${composer.mode}-${composer.replyTo?.id ?? composer.draftMessage?.id ?? 'new'}`}
             state={composer}

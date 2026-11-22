@@ -86,7 +86,12 @@ export function focusReading(): void {
     }
     if (attempt < 6 && pane.contains(document.activeElement)) {
       setTimeout(() => tryHeader(attempt + 1), 80);
+      return;
     }
+    // No message headers (the chat layout): land in the conversation itself,
+    // so ↑/↓ and Space scroll it.
+    if (pane.contains(document.activeElement))
+      pane.querySelector<HTMLElement>('[data-reading-scroll]')?.focus({ preventScroll: true });
   };
   pane.focus();
   tryHeader(0);
