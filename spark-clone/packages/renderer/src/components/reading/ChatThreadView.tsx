@@ -116,7 +116,7 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
 
   // The reply box grows into the full composer (formatting, attachments,
   // Cc/Bcc, templates, send later, signature) right here, carrying what was
-  // typed. r / ⇧R / f land here too while this chat is open.
+  // typed.
   const composer = useUi((s) => s.composer);
   const docked = composer?.docked && composer.replyTo?.threadId === thread.id ? composer : null;
   const openInComposer = (
@@ -134,11 +134,17 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
     });
     if (text) chat.setDraft('');
   };
-  const openRef = useRef(openInComposer);
+  // r / ⇧R / f while this chat is open answer from its own reply box: r puts
+  // the cursor there replying to everyone, ⇧R to the sender, f forwards.
+  const answerRef = useRef<(mode: 'reply' | 'reply-all' | 'forward') => void>(() => {});
   useEffect(() => {
-    openRef.current = openInComposer;
+    answerRef.current = (mode) => {
+      if (mode === 'forward') return chat.setForwarding(true);
+      if (chat.others.length > 1) chat.setReplyAll(mode === 'reply-all');
+      chat.fieldRef.current?.focus();
+    };
   });
-  useEffect(() => registerChatReply(thread.id, (mode) => openRef.current(mode)), [thread.id]);
+  useEffect(() => registerChatReply(thread.id, (mode) => answerRef.current(mode)), [thread.id]);
 
   // Inside the pane, ⌘. opens the chat's one AI menu: the reply rewrites (as on
   // the island) plus ⌘.'s email actions (summary, write a reply, translate).
@@ -156,6 +162,10 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
       e.preventDefault();
       e.stopPropagation();
       chat.showTimes();
+    } else if (meta && e.shiftKey && k === 'c') {
+      e.preventDefault();
+      e.stopPropagation();
+      chat.setCcOpen(true);
     } else if (meta && e.shiftKey && k === 'f') {
       e.preventDefault();
       e.stopPropagation();
@@ -286,7 +296,7 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
                       </button>
                       <button
                         onClick={() => openInComposer()}
-                        title="Open the full composer here  R"
+                        title="Open the full composer here"
                         className={tool}
                       >
                         <SquareArrowOutUpRight size={12} /> Composer

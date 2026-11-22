@@ -55,30 +55,14 @@ import { AssistantChip, assistantChipOwnsEscape } from './AssistantChip';
 import { AvailabilityChecking } from './AvailabilityChecking';
 import { SignaturePreview } from './SignaturePreview';
 import { TimesHoverBar } from './TimesHoverBar';
-
-function parseAddresses(raw: string): Address[] {
-  return raw
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const m = part.match(/^(.*?)\s*<([^>]+)>$/);
-      if (m) return { name: m[1]?.replace(/^"|"$/g, '') || undefined, email: m[2]! };
-      return { email: part };
-    })
-    .filter((a) => a.email.includes('@'));
-}
-
-function formatAddresses(list: Address[] | undefined): string {
-  return (list ?? []).map((a) => (a.name ? `${a.name} <${a.email}>` : a.email)).join(', ');
-}
+import { formatAddresses, parseAddresses } from '../../lib/addresses';
 
 /**
  * A recipients input with address autocomplete: the term being typed (after
  * the last comma) queries mail history; ↑/↓ move, Enter inserts, click works,
  * and picking appends `Name <email>, ` ready for the next recipient.
  */
-function AddressField({
+export function AddressField({
   inputRef,
   value,
   onChange,
@@ -105,7 +89,7 @@ function AddressField({
         return;
       }
       void api.query('contacts:suggest', { query: term, limit: 8 }).then((r) => {
-        setSugs(r);
+        setSugs(r ?? []);
         setActive(0);
       });
     }, 120);

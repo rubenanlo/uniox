@@ -1,6 +1,6 @@
 import type { Address, InviteInfo, MessageBodyPayload, MessageMeta } from '@app/shared';
 import { ArrowUp, CalendarCheck, Forward, Loader2, Sparkles, X } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { cardAttachments, htmlNeedsRender, inviteAnswerLine, looksLikeMarkup } from '../../lib/quickReply';
 import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
@@ -10,6 +10,7 @@ import { useInvite } from '../invite/InviteCard';
 import { InviteChatCard } from './InviteChatCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
+import { AddressField } from '../composer/Composer';
 import { firstName, listNames, nameOf, type ChatThread } from './useChatThread';
 
 /**
@@ -369,6 +370,12 @@ export function ReplyField({
   const { draft, setDraft, writing, picks, togglePick, times, latest, others, all, setReplyAll, toLabel, fieldRef } =
     chat;
   const [dropping, setDropping] = useState(false);
+  const { ccOpen, setCcOpen, ccText, setCcText } = chat;
+  const ccRef = useRef<HTMLInputElement>(null);
+  // ⌘⇧C (or the Cc button) opens the Cc line, ready to type a name.
+  useEffect(() => {
+    if (ccOpen) ccRef.current?.focus();
+  }, [ccOpen]);
 
   // Grow the field with its text, up to ~6 lines.
   useEffect(() => {
@@ -418,6 +425,43 @@ export function ReplyField({
           ))}
         </div>
       )}
+      {ccOpen && (
+        <div className="border-hairline mb-1 flex items-center gap-2 border-b pb-1">
+          <span className="text-ink-faint shrink-0 text-[11.5px]">Cc</span>
+          <div
+            className="min-w-0 flex-1"
+            onKeyDown={(e) => {
+              // Esc on an empty Cc line closes it and goes back to the reply.
+              if (e.key === 'Escape' && !ccText.trim()) {
+                e.preventDefault();
+                e.stopPropagation();
+                setCcOpen(false);
+                fieldRef.current?.focus();
+              }
+            }}
+          >
+            <AddressField
+              inputRef={ccRef}
+              value={ccText}
+              onChange={setCcText}
+              ariaLabel="Cc"
+              placeholder="Add someone in Cc"
+              className="placeholder:text-ink-faint w-full bg-transparent py-1 text-[13px] outline-none"
+            />
+          </div>
+          <button
+            aria-label="Remove Cc"
+            onClick={() => {
+              setCcText('');
+              setCcOpen(false);
+              fieldRef.current?.focus();
+            }}
+            className="text-ink-faint hover:text-ink shrink-0"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
       <div className="flex items-end gap-2.5">
         <textarea
           ref={fieldRef}
@@ -455,6 +499,11 @@ export function ReplyField({
           </button>
         ) : (
           <span>To {toLabel.join(', ') || '…'}</span>
+        )}
+        {!ccOpen && (
+          <button onClick={() => setCcOpen(true)} title="Add someone in Cc  ⌘⇧C" className="hover:text-ink-muted">
+            + Cc
+          </button>
         )}
         <span>Undo Send on</span>
       </div>

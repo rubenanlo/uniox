@@ -63,6 +63,16 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
     ],
   },
   {
+    section: 'Chat reading layout',
+    rows: [
+      { label: 'Reply all / reply in the box at the bottom', keys: [['R'], ['⇧', 'R']] },
+      { label: 'Add someone in Cc', keys: [['⇧', '⌘', 'C']] },
+      { label: 'Scroll the conversation', keys: [['↑'], ['↓'], ['Space']] },
+      { label: 'Assistant menu', keys: [['⌘', '.']] },
+      { label: 'Send', keys: [['⌘', '↩']] },
+    ],
+  },
+  {
     section: 'Composer',
     rows: [
       { label: 'Send', keys: [['⌘', '↩']] },

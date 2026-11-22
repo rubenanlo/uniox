@@ -2,6 +2,7 @@ import type { Address, MessageBodyPayload, MessageMeta, OutgoingDraft } from '@a
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
+import { parseAddresses } from '../../lib/addresses';
 import { formatSlotForPeople, templateGroupReply, type GroupSlot, type Participant } from '../../lib/availability';
 import {
   cardAttachments,
@@ -154,10 +155,20 @@ export function useChatThread(
   const context = useMemo(() => threadContext(mail, bodies, own), [mail, bodies, own]);
   const others = useMemo(() => (latest ? othersOn(latest, own) : []), [latest, own]);
   const all = replyAll ?? others.length > 1;
-  const recipients = useMemo(
-    () => (latest ? replyRecipients(latest, own, all) : { to: [], cc: [] }),
-    [latest, own, all],
-  );
+  // People added to the reply's Cc from the reply box (⌘⇧C), on top of the thread's own.
+  const [ccOpen, setCcOpen] = useState(false);
+  const [ccText, setCcText] = useState('');
+  const recipients = useMemo(() => {
+    const base = latest ? replyRecipients(latest, own, all) : { to: [], cc: [] };
+    const seen = new Set([...base.to, ...base.cc].map((a) => a.email.toLowerCase()));
+    const extra = parseAddresses(ccText).filter((a) => {
+      const key = a.email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return extra.length ? { to: base.to, cc: [...base.cc, ...extra] } : base;
+  }, [latest, own, all, ccText]);
 
   /** Times were asked for already (by the keyword check, the assistant or the rail). */
   const timesStarted = useRef(false);
@@ -271,6 +282,8 @@ export function useChatThread(
     if (typedText === undefined) {
       setDraft('');
       setPicks([]);
+      setCcText('');
+      setCcOpen(false);
     }
   };
 
@@ -375,6 +388,10 @@ export function useChatThread(
     accountId,
     others,
     recipients,
+    ccOpen,
+    setCcOpen,
+    ccText,
+    setCcText,
     files,
     toLabel,
     fieldRef,

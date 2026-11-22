@@ -200,6 +200,9 @@ export function ReplyWidget({
       } else if (metaKey(e) && e.shiftKey && k === 'a') {
         e.preventDefault();
         showTimes();
+      } else if (metaKey(e) && e.shiftKey && k === 'c') {
+        e.preventDefault();
+        chat.setCcOpen(true);
       } else if (metaKey(e) && e.shiftKey && k === 'f') {
         e.preventDefault();
         setForwarding(true);
