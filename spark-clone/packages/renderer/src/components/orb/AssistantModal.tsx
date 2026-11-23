@@ -10,7 +10,9 @@ import {
 } from 'react';
 import { useEscapeClose } from '../../hooks/useEscapeClose';
 import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
-import { runAssistantAction, type AssistantAction } from '../../lib/assistantContext';
+import { runAssistantAction, sendTyped, type AssistantAction } from '../../lib/assistantContext';
+import { Markdown } from '../../lib/markdown';
+import { EventTimeline } from './EventTimeline';
 import { cn } from '../../lib/utils';
 import { useAssistant } from '../../state/assistant';
 import { useUi } from '../../state/store';
@@ -67,21 +69,6 @@ function useSmoothedText(target: string, streaming: boolean, reduced: boolean): 
   return reduced ? target : shown;
 }
 
-/** Render text word-by-word so freshly-revealed words ease in (see app.css). */
-function StreamingWords({ text, reduced }: { text: string; reduced: boolean }) {
-  if (reduced) return <>{text}</>;
-  const words = text.match(/\S+\s*/g) ?? [];
-  return (
-    <>
-      {words.map((word, i) => (
-        <span key={i} className="assistant-word">
-          {word}
-        </span>
-      ))}
-    </>
-  );
-}
-
 function StreamingMessage({
   text,
   streaming,
@@ -92,7 +79,7 @@ function StreamingMessage({
   reduced: boolean;
 }) {
   const shown = useSmoothedText(text, streaming, reduced);
-  return <StreamingWords text={shown} reduced={reduced} />;
+  return <Markdown text={shown} animate={!reduced} />;
 }
 
 /**
@@ -255,7 +242,6 @@ export function AssistantModal() {
   const messages = useAssistant((s) => s.messages);
   const streamingId = useAssistant((s) => s.streamingId);
   const setOpen = useAssistant((s) => s.setOpen);
-  const send = useAssistant((s) => s.send);
   const stop = useAssistant((s) => s.stop);
   const reset = useAssistant((s) => s.reset);
 
@@ -296,7 +282,7 @@ export function AssistantModal() {
     if (!text || streamingId) return;
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
-    send(text);
+    void sendTyped(text);
   };
 
   const chips = contextChips(view, reading, composerOpen);
@@ -372,23 +358,23 @@ export function AssistantModal() {
                     );
                   const live = m.id === streamingId;
                   return (
-                    <p
-                      key={m.id}
-                      className={cn(
-                        'max-w-prose text-[12.5px] leading-relaxed whitespace-pre-wrap',
-                        m.error ? 'text-danger' : 'text-ink',
-                      )}
-                    >
-                      {live ? (
-                        m.content ? (
+                    <div key={m.id} className="flex flex-col gap-3">
+                      <div
+                        className={cn(
+                          'max-w-prose text-[12.5px] leading-relaxed',
+                          m.error ? 'text-danger' : 'text-ink',
+                        )}
+                      >
+                        {live && !m.content ? (
+                          <span className="text-ink-faint">…</span>
+                        ) : live ? (
                           <StreamingMessage text={m.content} streaming reduced={reduced} />
                         ) : (
-                          <span className="text-ink-faint">…</span>
-                        )
-                      ) : (
-                        m.content
-                      )}
-                    </p>
+                          <Markdown text={m.content} />
+                        )}
+                      </div>
+                      {m.day && !m.error && <EventTimeline day={m.day} />}
+                    </div>
                   );
                 })}
               </div>

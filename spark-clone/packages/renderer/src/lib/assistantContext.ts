@@ -6,6 +6,8 @@ import { useAiCards } from '../state/aiCards';
 import { useUi } from '../state/store';
 import { api } from './api';
 import { getComposerAccountId, getDraftText, replaceDraftBody } from './composerBridge';
+import { loadTodayEvents, todayEventsContext } from './todayEvents';
+import { asksAboutToday } from './todayQuestion';
 import { ensureStyleProfile, styleSystem } from './writingStyle';
 
 /** Actions the orb can run; the presentational menu lives in OrbCorner. */
@@ -27,28 +29,29 @@ export type AssistantAction =
   | 'translate-composer';
 
 /** Composer rewrites: one prompt each, all returning just the new body. */
-export const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: string }>> = {
-  'rewrite-composer': {
-    busy: 'Rewriting…',
-    prompt:
-      'Rewrite this email so it flows well and reads naturally. Keep the meaning and all ' +
-      'specifics. Return only the rewritten body.',
-  },
-  'formal-composer': {
-    busy: 'Making it formal…',
-    prompt:
-      'Rewrite this email in a formal, professional register: courteous greeting and sign-off, ' +
-      'no slang or contractions, complete sentences. Keep the meaning, every specific, and the ' +
-      "draft's language. Return only the rewritten body.",
-  },
-  'informal-composer': {
-    busy: 'Making it informal…',
-    prompt:
-      'Rewrite this email in a relaxed, friendly, informal register, the way you would write to a ' +
-      "colleague you know well. Keep the meaning, every specific, and the draft's language. " +
-      'Return only the rewritten body.',
-  },
-};
+export const COMPOSER_PROMPTS: Partial<Record<AssistantAction, { busy: string; prompt: string }>> =
+  {
+    'rewrite-composer': {
+      busy: 'Rewriting…',
+      prompt:
+        'Rewrite this email so it flows well and reads naturally. Keep the meaning and all ' +
+        'specifics. Return only the rewritten body.',
+    },
+    'formal-composer': {
+      busy: 'Making it formal…',
+      prompt:
+        'Rewrite this email in a formal, professional register: courteous greeting and sign-off, ' +
+        'no slang or contractions, complete sentences. Keep the meaning, every specific, and the ' +
+        "draft's language. Return only the rewritten body.",
+    },
+    'informal-composer': {
+      busy: 'Making it informal…',
+      prompt:
+        'Rewrite this email in a relaxed, friendly, informal register, the way you would write to a ' +
+        "colleague you know well. Keep the meaning, every specific, and the draft's language. " +
+        'Return only the rewritten body.',
+    },
+  };
 
 export function stripHtml(html: string): string {
   const el = document.createElement('div');
@@ -81,31 +84,22 @@ function kanbanContext(): string {
   return `The Sprint board tasks:\n${lines.join('\n') || '(no tasks)'}`;
 }
 
-async function todayContext(): Promise<string> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const startMs = start.getTime();
-  const events = await api.query('calendar:events', { startMs, endMs: startMs + 86_400_000 });
-  const t = (ms: number) =>
-    new Date(ms).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  const seen = new Set<string>();
-  const rows = events
-    .filter((e) => {
-      const key = `${e.title}|${e.startMs}`; // the same invite on two calendars
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((e) =>
-      e.allDay
-        ? `- All day: ${e.title}`
-        : `- ${t(e.startMs)}–${t(e.endMs)}: ${e.title}${e.location ? ` (${e.location})` : ''}` +
-          (e.attendees?.length ? ` · with ${e.attendees.map((p) => p.name || p.email).join(', ')}` : ''),
-    );
-  return (
-    `Now: ${new Date().toLocaleString()}.\nThe user's calendar for today, from Uniox's synced ` +
-    `calendars:\n${rows.join('\n') || '(no events today)'}`
-  );
+/** Send today's calendar: the model writes a short overview, the card lists it. */
+async function sendToday(question: string): Promise<void> {
+  const a = useAssistant.getState();
+  const day = await loadTodayEvents();
+  a.send(question, todayEventsContext(day), { day });
+}
+
+/** A question typed into the Assistant; calendar-today questions get the card. */
+export async function sendTyped(text: string): Promise<void> {
+  const a = useAssistant.getState();
+  if (!asksAboutToday(text)) return a.send(text);
+  try {
+    await sendToday(text);
+  } catch {
+    a.send(text);
+  }
 }
 
 async function threadContext(messages?: MessageMeta[]): Promise<string> {
@@ -139,7 +133,10 @@ export async function runAssistantAction(
   switch (action) {
     case 'summarize-emails': {
       a.setOpen(true);
-      a.send('Summarize my new and unread emails, and flag which ones need a reply.', await inboxContext());
+      a.send(
+        'Summarize my new and unread emails, and flag which ones need a reply.',
+        await inboxContext(),
+      );
       return;
     }
     case 'summarize-tasks': {
@@ -149,7 +146,7 @@ export async function runAssistantAction(
     }
     case 'today-events': {
       a.setOpen(true);
-      a.send('What events do I have today?', await todayContext());
+      await sendToday('What events do I have today?');
       return;
     }
     case 'card-reply':
@@ -165,12 +162,18 @@ export async function runAssistantAction(
     }
     case 'summarize-thread': {
       a.setOpen(true);
-      a.send('Summarize this email thread and list any action items for me.', await threadContext());
+      a.send(
+        'Summarize this email thread and list any action items for me.',
+        await threadContext(),
+      );
       return;
     }
     case 'translate-thread': {
       a.setOpen(true);
-      a.send('Translate this email into English. Preserve formatting and tone.', await threadContext());
+      a.send(
+        'Translate this email into English. Preserve formatting and tone.',
+        await threadContext(),
+      );
       return;
     }
     case 'reply-thread': {
@@ -211,7 +214,7 @@ export async function runAssistantAction(
       await rewriteDraft('Rewriting in your style…', async () => {
         const profile = await ensureStyleProfile(accountId, a.complete);
         return a.complete(
-          "Rewrite this email draft so it reads as if the user wrote it themselves, following their " +
+          'Rewrite this email draft so it reads as if the user wrote it themselves, following their ' +
             'writing style below (greeting, sign-off, tone, length, phrasing). Keep the meaning, ' +
             "every specific, and the draft's language. Return only the rewritten body.\n\n" +
             `Current draft:\n\n${getDraftText()}`,
@@ -243,6 +246,8 @@ async function rewriteDraft(busy: string, run: () => Promise<string>): Promise<v
     if (out) replaceDraftBody(out);
     toast.dismiss(id);
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'The assistant could not rewrite the draft.', { id });
+    toast.error(e instanceof Error ? e.message : 'The assistant could not rewrite the draft.', {
+      id,
+    });
   }
 }

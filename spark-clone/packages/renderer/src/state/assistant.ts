@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AiMessage } from '@app/shared';
 import { api } from '../lib/api';
+import type { TodayEvents } from '../lib/todayEvents';
 
 export interface ChatMessage {
   id: string;
@@ -8,6 +9,8 @@ export interface ChatMessage {
   content: string;
   /** Set on an assistant message whose turn failed, so the UI can style it. */
   error?: boolean;
+  /** Today's calendar, drawn as a timeline card under the answer. */
+  day?: TodayEvents;
 }
 
 const BASE_SYSTEM =
@@ -31,7 +34,7 @@ interface AssistantState {
   setOrbMenuOpen(open: boolean): void;
   refreshStatus(): void;
   /** Stream a user turn into the visible conversation. */
-  send(text: string, system?: string): void;
+  send(text: string, system?: string, attach?: Pick<ChatMessage, 'day'>): void;
   /** One-shot completion that does not touch the visible chat (for the composer). */
   complete(prompt: string, system?: string): Promise<string>;
   stop(): void;
@@ -41,7 +44,10 @@ interface AssistantState {
 }
 
 /** Pending one-shot `complete()` calls, keyed by request id. */
-const pending = new Map<string, { text: string; resolve: (s: string) => void; reject: (e: Error) => void }>();
+const pending = new Map<
+  string,
+  { text: string; resolve: (s: string) => void; reject: (e: Error) => void }
+>();
 
 function newId(): string {
   return crypto.randomUUID();
@@ -78,14 +84,18 @@ export const useAssistant = create<AssistantState>((set, get) => ({
       .catch(() => {});
   },
 
-  send: (text, system) => {
+  send: (text, system, attach) => {
     const trimmed = text.trim();
     if (!trimmed || get().streamingId) return;
     const history = get().messages.map((m): AiMessage => ({ role: m.role, content: m.content }));
     const userMsg: ChatMessage = { id: newId(), role: 'user', content: trimmed };
     const assistantId = newId();
     set((s) => ({
-      messages: [...s.messages, userMsg, { id: assistantId, role: 'assistant', content: '' }],
+      messages: [
+        ...s.messages,
+        userMsg,
+        { id: assistantId, role: 'assistant', content: '', ...attach },
+      ],
       streamingId: assistantId,
     }));
     void api
