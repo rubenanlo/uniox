@@ -20,7 +20,7 @@ import { useNow } from '../../lib/workday';
 import { useUi } from '../../state/store';
 import { useAiCards, useTodayCards } from '../../state/aiCards';
 import type { MeetingPrep, NewsCard, ResourceKind } from '../../lib/aiCards/types';
-import { ago, clock } from '../../lib/aiCards/util';
+import { ago, clock, newsLabel } from '../../lib/aiCards/util';
 import { AiBadge } from './AiCards';
 
 function openExternal(url: string) {
@@ -306,7 +306,7 @@ function NewsPanel({ news, madeAt }: { news: NewsCard; madeAt: number }) {
 
   return (
     <Panel
-      kicker={`Today’s news · ${new Date(madeAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`}
+      kicker={`${newsLabel(news.day)} · ${new Date(news.day ?? madeAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`}
       title={`${news.stories.length} stories from ${news.editions.length} ${news.editions.length === 1 ? 'edition' : 'editions'}`}
       sub={
         <p className="text-ink-muted mt-1.5 text-[12.5px]">

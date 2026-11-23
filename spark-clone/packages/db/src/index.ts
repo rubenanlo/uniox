@@ -1777,6 +1777,34 @@ export class MailDb {
   }
 
   /**
+   * Threads with a message from a sender whose name or address contains any
+   * of `terms` (case-insensitive substring, so "tldr" matches
+   * dan@tldrnewsletter.com, hi@tldr.tech and "TLDR AI" alike), newest sender
+   * message first. Unlike FTS search this orders by date, not rank, so the
+   * latest editions are never pushed out by older, better-ranked ones.
+   */
+  threadsFromSenders(q: { terms: string[]; sinceMs: number; limit: number }): ThreadSummary[] {
+    const terms = q.terms.map((t) => t.trim().toLowerCase()).filter(Boolean);
+    if (!terms.length) return [];
+    const sender = `lower(coalesce(json_extract(m.from_json, '$.name'), '') || ' ' ||
+                 coalesce(json_extract(m.from_json, '$.email'), ''))`;
+    const match = terms.map(() => `instr(${sender}, ?) > 0`).join(' OR ');
+    const rows = this.stmt(
+        `SELECT t.*, max(m.date) AS sender_date
+           FROM messages m
+           JOIN threads t ON t.id = m.thread_id
+           LEFT JOIN folders f ON f.id = m.folder_id
+          WHERE m.date >= ? AND (${match})
+            AND coalesce(f.role, '') NOT IN ('trash', 'spam')
+          GROUP BY t.id
+          ORDER BY sender_date DESC
+          LIMIT ?`,
+      )
+      .all(q.sinceMs, ...terms, q.limit) as Row[];
+    return rows.map(rowToThreadSummary);
+  }
+
+  /**
    * Address autocomplete: every address seen in mail (senders + recipients),
    * matched on email or name, ranked by how often and how recently it appears.
    */

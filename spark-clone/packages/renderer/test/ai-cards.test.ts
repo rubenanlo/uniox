@@ -4,6 +4,9 @@ import {
   bucketOf,
   dayKey,
   keywords,
+  latestEditions,
+  newsLabel,
+  newsSenderTerms,
   parseJson,
   resourceKind,
   urlsIn,
@@ -67,5 +70,39 @@ describe('helpers', () => {
     expect(ago(now - 2 * 3_600_000, now)).toBe('2h');
     expect(ago(now - 26 * 3_600_000, now)).toBe('1d');
     expect(dayKey(now)).toBe('2026-11-18');
+  });
+});
+
+describe('news digest helpers', () => {
+  it('defaults to tldr and upgrades the old tldrnewsletter default', () => {
+    expect(newsSenderTerms(undefined)).toEqual(['tldr']);
+    expect(newsSenderTerms([])).toEqual(['tldr']);
+    expect(newsSenderTerms(['tldrnewsletter'])).toEqual(['tldr']);
+    expect(newsSenderTerms(['TLDRnewsletter', 'tldr', ' morningbrew '])).toEqual([
+      'tldr',
+      'morningbrew',
+    ]);
+  });
+
+  const at = (d: number, h: number) => new Date(2026, 10, d, h).getTime();
+  const t = (id: string, ms: number) => ({ id, lastMessageDate: ms }) as never;
+
+  it("keeps only the newest day's editions", () => {
+    // Monday morning before the new edition: Friday's two editions, not Thursday's.
+    const out = latestEditions([
+      t('thu', at(19, 12)),
+      t('fri-ai', at(20, 13)),
+      t('fri', at(20, 12)),
+    ]);
+    expect(out.map((x: { id: string }) => x.id)).toEqual(['fri-ai', 'fri']);
+    expect(latestEditions([])).toEqual([]);
+  });
+
+  it('labels the card by the day the editions came from', () => {
+    const now = at(23, 9);
+    expect(newsLabel(undefined, now)).toBe('Today’s news');
+    expect(newsLabel(new Date(2026, 10, 23).getTime(), now)).toBe('Today’s news');
+    expect(newsLabel(new Date(2026, 10, 22).getTime(), now)).toBe('Yesterday’s news');
+    expect(newsLabel(new Date(2026, 10, 20).getTime(), now)).toMatch(/’s news$/);
   });
 });

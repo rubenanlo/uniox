@@ -63,6 +63,14 @@ export interface Queries {
     args: { query: string; limit?: number; accountId?: string };
     result: ThreadSummary[];
   };
+  /**
+   * Threads with mail from senders whose name or address contains any term
+   * (case-insensitive), newest first. Used by the AI news digest.
+   */
+  'threads:fromSenders': {
+    args: { terms: string[]; sinceMs: number; limit: number };
+    result: ThreadSummary[];
+  };
   /** Address autocomplete from mail history, ranked by use and recency. */
   'contacts:suggest': { args: { query: string; limit?: number }; result: Address[] };
   'settings:get': { args: { key: string }; result: unknown };

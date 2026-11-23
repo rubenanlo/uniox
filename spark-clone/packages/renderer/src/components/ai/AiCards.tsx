@@ -17,7 +17,7 @@ import {
   glideCard,
   type CardBox,
 } from './cardMotion';
-import { ago, clock, firstName } from '../../lib/aiCards/util';
+import { ago, clock, firstName, newsLabel } from '../../lib/aiCards/util';
 
 /** The gradient sparkle badge every AI surface carries. */
 export function AiBadge({ size = 16 }: { size?: number }) {
@@ -395,7 +395,7 @@ export function AiCardsRow({
         key={kind}
         kind={kind}
         icon={Newspaper}
-        label="Today’s news"
+        label={newsLabel(data.day, now)}
         headline={`${data.stories.length} stories · ${data.editions.length} ${data.editions.length === 1 ? 'edition' : 'editions'}`}
         madeAt={madeAt}
         active={panel?.kind === 'news'}
