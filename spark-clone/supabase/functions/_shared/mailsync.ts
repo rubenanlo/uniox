@@ -167,7 +167,11 @@ export async function syncThread(
     }
     throw e;
   }
-  const msgs = (raw.messages ?? []).map(parseMessage).filter((m) => !m.labelIds.includes('DRAFT'));
+  // Drafts never show as mail. Trashed or spam messages (a deleted draft lands
+  // in Trash and reads as sent) are left out while the thread has live mail.
+  const all = (raw.messages ?? []).map(parseMessage).filter((m) => !m.labelIds.includes('DRAFT'));
+  const binned = (m: ParsedMessage) => m.labelIds.includes('TRASH') || m.labelIds.includes('SPAM');
+  const msgs = all.some((m) => !binned(m)) ? all.filter((m) => !binned(m)) : all;
   if (!msgs.length) {
     await db.from('threads').delete().eq('id', key);
     return null;
