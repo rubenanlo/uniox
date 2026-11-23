@@ -3,6 +3,7 @@ import {
   Archive,
   ArrowUp,
   CalendarClock,
+  ChevronDown,
   ChevronLeft,
   Clock,
   Forward,
@@ -187,8 +188,8 @@ export function ThreadScreen({ id }: { id: string }) {
               `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
             )
           }
+          reply={<QuickReply thread={thread} last={last} onSend={sendQuick} />}
         />
-        <QuickReply thread={thread} last={last} onSend={sendQuick} />
         {actionsSheet}
       </>
     );
@@ -453,14 +454,26 @@ function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadI
   );
 }
 
+/** Text of a bubble when it is folded to one line. */
+function preview(m: MobileMessage): string {
+  return (splitQuoted(m.text ?? m.snippet).main || m.snippet || '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * One message in the chat layout, styled like the desktop chat view: a
+ * "Name · time" line over a bubble. Tapping the bubble folds it to one line
+ * or opens it again; links, buttons and selected text keep their meaning.
+ */
 function ChatMessage({
   m,
-  showName,
   threadId,
+  open,
+  onToggle,
 }: {
   m: MobileMessage;
-  showName: boolean;
   threadId: string;
+  open: boolean;
+  onToggle: () => void;
 }) {
   const { main, quoted } = splitQuoted(m.text ?? m.snippet);
   // A bare forward has nothing above the history, so show the history itself.
@@ -468,20 +481,6 @@ function ChatMessage({
   const fold = main ? quoted : '';
   const isFwd = /forwarded|transféré/i.test(fold.split('\n', 1)[0] ?? '');
   const [showQuoted, setShowQuoted] = useState(false);
-  const quotedPart = fold ? (
-    showQuoted ? (
-      <>
-        <div className="te-quoted">{fold}</div>
-        <button className="te-qbtn" onClick={() => setShowQuoted(false)}>
-          Hide {isFwd ? 'forwarded message' : 'quoted text'}
-        </button>
-      </>
-    ) : (
-      <button className="te-qbtn" onClick={() => setShowQuoted(true)}>
-        <MoreHorizontal size={14} /> Show {isFwd ? 'forwarded message' : 'quoted text'}
-      </button>
-    )
-  ) : null;
   if (m.invite) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -496,33 +495,69 @@ function ChatMessage({
       </div>
     );
   }
-  if (m.fromMe) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <div className="bubble-out mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
-          {text}
-          {quotedPart}
-        </div>
-      </div>
-    );
-  }
+  const tap = (e: React.MouseEvent) => {
+    if (!open) return onToggle();
+    if ((e.target as Element).closest('a, button, input, textarea')) return;
+    if (window.getSelection()?.toString()) return;
+    onToggle();
+  };
+  const out = m.fromMe;
   return (
-    <div>
-      {showName && (
-        <div className="muted" style={{ fontSize: 12.5, margin: '2px 0 5px 44px' }}>
-          {m.unread && <span style={{ color: 'var(--accent)' }}>● </span>}
-          {displayName(m.from)} · {listTime(m.date)}
+    <div className={`te-msg${out ? ' out' : ''}`}>
+      {!out && <Avatar who={m.from} size={28} />}
+      <div className="te-col">
+        <div className="te-meta">
+          {m.unread && <span className="dot" aria-label="Unread" />}
+          <b>{out ? 'You' : firstName(m.from) || displayName(m.from)}</b>
+          <span>·</span>
+          <span>{listTime(m.date)}</span>
+          {open && (
+            <button className="te-foldbtn" onClick={onToggle}>
+              Fold
+            </button>
+          )}
         </div>
-      )}
-      <div className="row-flex" style={{ alignItems: 'flex-end' }}>
-        <Avatar who={m.from} size={32} />
-        <div className="bubble-in mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
-          {text || m.snippet}
-          {quotedPart}
-          {m.attachments.length > 0 && (
-            <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
-              <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
-            </div>
+        <div
+          className={`te-bubble${open ? ' mail-text' : ' shut'}`}
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={tap}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
+        >
+          {open ? (
+            <>
+              {text || m.snippet}
+              {fold &&
+                (showQuoted ? (
+                  <>
+                    <div className="te-quoted">{fold}</div>
+                    <button className="te-qbtn" onClick={() => setShowQuoted(false)}>
+                      Hide {isFwd ? 'forwarded message' : 'quoted text'}
+                    </button>
+                  </>
+                ) : (
+                  <button className="te-qbtn" onClick={() => setShowQuoted(true)}>
+                    <MoreHorizontal size={14} /> Show {isFwd ? 'forwarded message' : 'quoted text'}
+                  </button>
+                ))}
+              {m.attachments.length > 0 && (
+                <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
+                  <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
+                </div>
+              )}
+            </>
+          ) : (
+            <span className="te-pv">
+              <span>{preview(m)}</span>
+              {m.attachments.length > 0 && <Paperclip size={13} />}
+              <ChevronDown size={15} />
+            </span>
           )}
         </div>
       </div>
@@ -637,8 +672,8 @@ function QuickReply({
     }
   };
   return (
-    <div className="replybar glass">
-      <div className="row-flex" style={{ alignItems: 'flex-end', gap: 10 }}>
+    <div className="te-reply">
+      <div className="row-flex" style={{ alignItems: 'flex-end', gap: 8 }}>
         <textarea
           rows={Math.min(5, Math.max(1, body.split('\n').length))}
           placeholder={`Reply to ${firstName(to[0]) || 'everyone'}…`}
@@ -679,20 +714,18 @@ function QuickReply({
           <CalendarClock size={14} /> Times
         </button>
         <button
-          onClick={() =>
-            go(
-              `compose?reply=${encodeURIComponent(thread.id)}&all=1&body=${encodeURIComponent(body)}`,
-            )
-          }
+          className="row-flex"
+          style={{ gap: 4 }}
+          onClick={() => go(`compose?forward=${encodeURIComponent(thread.id)}`)}
         >
-          Reply all
+          <Forward size={14} /> Forward
         </button>
         <button
           onClick={() =>
             go(`compose?reply=${encodeURIComponent(thread.id)}&body=${encodeURIComponent(body)}`)
           }
         >
-          Full composer
+          Composer
         </button>
       </div>
     </div>
@@ -724,6 +757,7 @@ function ConversationE({
   onRefresh,
   onIdea,
   onSlot,
+  reply,
 }: {
   thread: MobileThread;
   messages: MobileMessage[];
@@ -736,6 +770,7 @@ function ConversationE({
   onRefresh: () => Promise<unknown>;
   onIdea: (idea: string) => void;
   onSlot: (s: { startMs: number; endMs: number }) => void;
+  reply: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = useEdgeBackAndPull(ref, () => back('inbox'), onRefresh);
@@ -747,10 +782,13 @@ function ConversationE({
   const h = thread.priority ? waitingHours(messages) : null;
   const C = 2 * Math.PI * 29;
   const frac = h == null ? 0 : Math.min(1, Math.max(0.05, h / 10));
-  // Open on the newest message: older ones are one-line rows (tap to open one),
-  // and past six of them the oldest hide behind one button.
-  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  // The newest message (and any unread one) starts open, older ones folded to
+  // one line; tapping any bubble flips it. Past seven messages the oldest
+  // hide behind one button.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const lastId = messages[messages.length - 1]?.id;
+  const isOpen = (m: MobileMessage) => toggled[m.id] ?? (m.id === lastId || m.unread);
+  const flip = (m: MobileMessage) => setToggled((t) => ({ ...t, [m.id]: !isOpen(m) }));
   const foldN = !unfold && messages.length > 7 ? messages.length - 7 : 0;
   const shown = messages.slice(foldN);
   const latestRef = useRef<HTMLDivElement>(null);
@@ -872,33 +910,19 @@ function ConversationE({
             const newDay =
               !prev || new Date(prev.date).toDateString() !== new Date(m.date).toDateString();
             return (
-              <div key={m.id} style={{ display: 'contents' }}>
-                {newDay && <div className="te-day">{dayWord(m.date)}</div>}
-                {m.id !== lastId && !opened.has(m.id) && !m.invite ? (
-                  <button
-                    className="te-line"
-                    onClick={() => setOpened((s) => new Set(s).add(m.id))}
-                  >
-                    <Avatar who={m.from} size={26} />
-                    <b>{m.fromMe ? 'You' : firstName(m.from) || displayName(m.from)}</b>
-                    <span>{splitQuoted(m.text ?? m.snippet).main || m.snippet}</span>
-                    <time>{listTime(m.date)}</time>
-                  </button>
-                ) : (
-                  <div
-                    ref={m.id === lastId ? latestRef : undefined}
-                    style={{ display: 'contents' }}
-                  >
-                    <ChatMessage
-                      m={m}
-                      showName={
-                        !m.fromMe &&
-                        (newDay || m.id === lastId || prev?.from?.email !== m.from?.email)
-                      }
-                      threadId={thread.id}
-                    />
+              <div
+                key={m.id}
+                ref={m.id === lastId ? latestRef : undefined}
+                style={{ display: 'contents' }}
+              >
+                {newDay && (
+                  <div className="te-day">
+                    <i />
+                    {dayWord(m.date)}
+                    <i />
                   </div>
                 )}
+                <ChatMessage m={m} threadId={thread.id} open={isOpen(m)} onToggle={() => flip(m)} />
               </div>
             );
           })}
@@ -913,6 +937,7 @@ function ConversationE({
             ))}
           </div>
         )}
+        {reply}
       </div>
       {ask && <AskSheet thread={thread} onClose={() => setAsk(false)} />}
     </div>
