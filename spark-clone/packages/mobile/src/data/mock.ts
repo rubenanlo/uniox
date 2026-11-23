@@ -372,6 +372,22 @@ export const mockApi: UnioxApi = {
   events: (from, to) =>
     delay(dedupeMirroredEvents(eventsAround().filter((e) => e.endMs > from && e.startMs < to))),
   rsvp: () => delay(undefined),
+  proposeTime: () => delay(undefined, 400),
+  freeBusy(_acct, emails, from, to) {
+    const mine = eventsAround()
+      .filter((e) => !e.allDay && !e.free && e.endMs > from && e.startMs < to)
+      .map((e) => ({ startMs: e.startMs, endMs: e.endMs }));
+    const busy: Record<string, { startMs: number; endMs: number }[] | null> = { 'me@example.com': mine };
+    emails.forEach((e, i) => {
+      const blocks: { startMs: number; endMs: number }[] = [];
+      for (let d = new Date(from); d.getTime() < to; d.setDate(d.getDate() + 1)) {
+        const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), (h % 1) * 60).getTime();
+        blocks.push({ startMs: at(10 + i), endMs: at(11.5 + i) }, { startMs: at(15), endMs: at(16) });
+      }
+      busy[e.toLowerCase()] = i > 1 ? null : blocks;
+    });
+    return delay({ me: 'me@example.com', busy });
+  },
   async createEvent(input) {
     created.push(
       ev(

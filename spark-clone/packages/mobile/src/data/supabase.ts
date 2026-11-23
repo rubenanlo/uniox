@@ -236,6 +236,15 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
       // Hide "Busy" mirrors and the same invite shown by a second account.
       return dedupeMirroredEvents((data as EventRow[]).map(toEvent));
     },
+    async freeBusy(accountId, emails, fromMs, toMs) {
+      return (await fn('mail', { action: 'freebusy', accountId, emails, fromMs, toMs })) as {
+        me: string;
+        busy: Record<string, { startMs: number; endMs: number }[] | null>;
+      };
+    },
+    async proposeTime(eventId, startMs, endMs, label) {
+      await fn('mail', { action: 'propose', eventId, startMs, endMs, label });
+    },
     async rsvp(eventId, _accountId, ans) {
       await fn('mail', { action: 'rsvp', eventId, answer: ans });
     },

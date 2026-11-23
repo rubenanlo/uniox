@@ -1,0 +1,44 @@
+/* Propose-a-new-time picker (ProposeTime) */
+.pc { padding: 12px 18px 0; overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
+.pc h3 { margin: 6px 0 0; font-size: 19px; letter-spacing: -.01em; }
+.pc-wk { display: flex; align-items: center; gap: 4px; margin: 12px -4px 6px; }
+.pc-wk .nav { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; }
+.pc-wk .nav:disabled { opacity: .3; }
+.pc-days { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.pc-d { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 0 6px; border-radius: 12px; font-size: 10px; font-weight: 700;
+  letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.pc-d b { font-size: 16px; letter-spacing: 0; color: var(--ink); width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; }
+.pc-d.off { opacity: .32; background: repeating-linear-gradient(135deg, transparent 0 5px, var(--hair) 5px 6px); }
+.pc-d.today b { color: var(--accent); }
+.pc-d.sel b { background: var(--accent); color: var(--on-accent); }
+.pc-title { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 0 8px; font-size: 15px; font-weight: 650; }
+.pc-title span { font-size: 12px; font-weight: 500; color: var(--muted); }
+.pc-grid { position: relative; display: grid; grid-template-columns: 50px 1fr; padding-top: 10px; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.pc-grid.slide-l { animation: pc-l .32s cubic-bezier(.34,1.3,.5,1); }
+.pc-grid.slide-r { animation: pc-r .32s cubic-bezier(.34,1.3,.5,1); }
+@keyframes pc-l { from { opacity: 0; transform: translateX(40px); } }
+@keyframes pc-r { from { opacity: 0; transform: translateX(-40px); } }
+.pc-hr { height: 44px; font-size: 11px; color: var(--faint); text-align: right; padding-right: 8px; transform: translateY(-7px); white-space: nowrap; }
+.pc-col { position: relative; grid-column: 2; border-left: 1px solid var(--hair); border-top: 1px solid var(--hair);
+  background: repeating-linear-gradient(180deg, transparent 0 43px, var(--hair) 43px 44px); }
+.pc-load { position: absolute; inset: 0; display: grid; place-items: center; }
+.pc-free { position: absolute; left: 5px; right: 5px; border-radius: 10px; background: color-mix(in oklch, var(--accent) 20%, transparent); pointer-events: none; }
+.pc-busy { position: absolute; left: 5px; right: 5px; border-radius: 10px; border: 1px solid var(--hair); background: var(--surface); padding: 2px 9px;
+  line-height: 1.3; font-size: 12px; font-weight: 600; pointer-events: none; overflow: hidden; box-shadow: 0 1px 2px rgb(0 0 0 / .05); }
+.pc-busy span { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+.pc-past { position: absolute; left: 0; right: 0; top: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, var(--hair) 6px 7px); pointer-events: none; }
+.pc-now { position: absolute; left: -5px; right: 0; height: 2px; background: var(--danger, #e5484d); z-index: 3; pointer-events: none; }
+.pc-now::before { content: ''; position: absolute; left: 0; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: inherit; }
+.pc-pick { position: absolute; left: 5px; right: 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-size: 11.5px; font-weight: 700;
+  display: flex; align-items: flex-start; padding: 6px 9px; z-index: 2; touch-action: none; animation: pop .3s cubic-bezier(.2,.8,.2,1) both; }
+.pc-pick::after { content: ''; position: absolute; left: 50%; bottom: 5px; width: 22px; height: 3px; border-radius: 2px; background: currentColor; opacity: .5; translate: -50% 0; }
+.pc-pick.drag { box-shadow: 0 14px 28px -12px var(--accent); transform: scale(1.03); animation: none; }
+.pc-pick.bad { background: var(--danger, #e5484d); }
+.pc-foot { position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 calc(12px + var(--safe-bottom)); margin-top: 8px; border-top: 1px solid var(--hair); }
+.pc-leg { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; }
+.pc-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.pc-leg i.f { background: color-mix(in oklch, var(--accent) 20%, transparent); }
+.pc-leg i.p { background: var(--accent); }
+.pc-hidden { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.pc-send { display: block; width: 100%; margin-top: 10px; height: 46px; border-radius: 23px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 14.5px; }
+.pc-send:disabled { opacity: .45; }

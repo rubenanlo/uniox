@@ -4,6 +4,7 @@ import type { InviteInfo, MobileEvent, RsvpAnswer } from '../data/types';
 import { displayName, firstName, shortDate, timeRange } from '../lib/format';
 import { go } from '../lib/router';
 import { useStore } from '../lib/store';
+import { ProposeTime } from './ProposeTime';
 import { AvatarStack } from './ui';
 
 /* The four tilted answer tiles from the desktop invite card (PR #92). */
@@ -68,6 +69,7 @@ export function InviteCard({
   const toast = useStore((s) => s.showToast);
   const [answer, setAnswer] = useState<RsvpAnswer | null>(invite.myAnswer);
   const [busy, setBusy] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const [clash, setClash] = useState<MobileEvent | null>(null);
 
   useEffect(() => {
@@ -87,7 +89,10 @@ export function InviteCard({
 
   const respond = async (key: RsvpAnswer | 'propose') => {
     if (key === 'propose') {
-      go(`compose?reply=${encodeURIComponent(threadId)}&propose=1`);
+      // With the event on the calendar, pick a time and send a real proposal;
+      // otherwise fall back to suggesting times in a reply.
+      if (invite.eventId) setProposing(true);
+      else go(`compose?reply=${encodeURIComponent(threadId)}&propose=1`);
       return;
     }
     if (!invite.eventId) {
@@ -189,6 +194,9 @@ export function InviteCard({
           Add a note
         </button>
       </div>
+      {proposing && (
+        <ProposeTime invite={invite} accountId={accountId} onClose={() => setProposing(false)} />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { firstName, timeRange } from '../lib/format';
 import { go } from '../lib/router';
 import { useStore } from '../lib/store';
 import { TILES } from './InviteCard';
+import { ProposeTime } from './ProposeTime';
 
 const DONE: Record<RsvpAnswer, string> = {
   accepted: 'Accepted',
@@ -20,6 +21,7 @@ export function InviteRow({ thread }: { thread: MobileThread }) {
   const { api, act, showToast } = useStore();
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [answer, setAnswer] = useState<RsvpAnswer | null>(null);
+  const [proposing, setProposing] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -37,7 +39,10 @@ export function InviteRow({ thread }: { thread: MobileThread }) {
 
   const respond = async (key: RsvpAnswer | 'propose') => {
     if (key === 'propose') {
-      go(`compose?reply=${encodeURIComponent(thread.id)}&propose=1`);
+      // With the event on the calendar, pick a time and send a real proposal;
+      // otherwise fall back to suggesting times in a reply.
+      if (invite?.eventId) setProposing(true);
+      else go(`compose?reply=${encodeURIComponent(thread.id)}&propose=1`);
       return;
     }
     if (!invite?.eventId) {
@@ -87,6 +92,13 @@ export function InviteRow({ thread }: { thread: MobileThread }) {
         ))}
       </div>
       {answer && <div className="ib-sent-ok">Sent. {who} sees it in Google Calendar.</div>}
+      {proposing && invite && (
+        <ProposeTime
+          invite={invite}
+          accountId={thread.accountId}
+          onClose={() => setProposing(false)}
+        />
+      )}
     </div>
   );
 }

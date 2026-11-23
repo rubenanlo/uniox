@@ -9,14 +9,17 @@ import {
   MoreHorizontal,
   Paperclip,
   Pin,
+  Rows3,
   Reply,
   ReplyAll,
   Sparkles,
   Trash2,
   Zap,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useEdgeBackAndPull } from '../lib/gestures';
 import type { FirstRead, MobileMessage, MobileThread } from '../data/types';
+import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
 import { tomorrowMorning } from '../components/ThreadRow';
 import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
@@ -24,6 +27,7 @@ import { chatText, clock12, displayName, firstName, listTime, shortDate } from '
 import { cachedThread, cacheThread } from '../lib/offline';
 import { back, go } from '../lib/router';
 import { useStore } from '../lib/store';
+import './thread.css';
 
 export function ThreadScreen({ id }: { id: string }) {
   const { api, settings, saveSettings, act, send, showToast, accounts } = useStore();
@@ -51,9 +55,11 @@ export function ThreadScreen({ id }: { id: string }) {
   }, [api, id, act, showToast]);
 
   const hasInvite = data?.messages.some((m) => m.invite);
-  const aiLoading = !!settings.aiFirstRead && !!data && !hasInvite && !ai;
+  // AI first read only for priority mail (Ruben's rule).
+  const wantAi = !!settings.aiFirstRead && !!data?.thread.priority && !hasInvite;
+  const aiLoading = wantAi && !!data && !ai;
   useEffect(() => {
-    if (!settings.aiFirstRead || !data || hasInvite) return;
+    if (!wantAi || !data) return;
     let live = true;
     void api
       .firstRead(id)
@@ -62,7 +68,7 @@ export function ThreadScreen({ id }: { id: string }) {
     return () => {
       live = false;
     };
-  }, [api, id, settings.aiFirstRead, data, hasInvite]);
+  }, [api, id, wantAi, data]);
 
   if (!data) {
     return (
@@ -98,6 +104,11 @@ export function ThreadScreen({ id }: { id: string }) {
           },
           { icon: Clock, label: 'Snooze until tomorrow 8:00', run: snooze },
           {
+            icon: Rows3,
+            label: layout === 'chat' ? 'Show as cards' : 'Show as conversation',
+            run: () => void saveSettings({ threadLayout: layout === 'chat' ? 'cards' : 'chat' }),
+          },
+          {
             icon: Reply,
             label: 'Mark as unread',
             run: () => (void act(thread, { kind: 'read', read: false }), back('inbox')),
@@ -122,85 +133,60 @@ export function ThreadScreen({ id }: { id: string }) {
     </Sheet>
   );
 
-  const aiBlock =
-    settings.aiFirstRead && !hasInvite ? (
-      <AiFirstRead
-        ai={ai}
-        loading={aiLoading}
-        onIdea={(idea) =>
-          go(`compose?reply=${encodeURIComponent(id)}&ask=${encodeURIComponent(idea)}`)
-        }
-        onSlot={(s) =>
-          go(
-            `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
-          )
-        }
-      />
-    ) : null;
+  const aiBlock = wantAi ? (
+    <AiFirstRead
+      ai={ai}
+      loading={aiLoading}
+      onIdea={(idea) =>
+        go(`compose?reply=${encodeURIComponent(id)}&ask=${encodeURIComponent(idea)}`)
+      }
+      onSlot={(s) =>
+        go(
+          `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
+        )
+      }
+    />
+  ) : null;
 
   if (layout === 'chat') {
+    const sendQuick = async (body: string) => {
+      const r = await send({
+        accountId: thread.accountId,
+        to: replyTo(last),
+        cc: [],
+        subject: reSubject(thread.subject),
+        body,
+        threadId: thread.id,
+      });
+      showToast({
+        text: r === 'queued' ? 'No connection. Reply will send when you are back online' : 'Sent',
+      });
+      if (r === 'sent') void api.thread(id).then(setData);
+    };
     return (
       <>
-        <div className="chatwash" />
-        <div
-          className="screen no-tabs"
-          style={{ paddingBottom: 'calc(130px + var(--safe-bottom))' }}
-        >
-          <div className="navbar" style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-            <button className="navbtn g" aria-label="Back" onClick={() => back('inbox')}>
-              <ChevronLeft size={22} />
-            </button>
-            <div style={{ textAlign: 'center', minWidth: 0 }}>
-              <div className="ellipsis" style={{ fontWeight: 700, fontSize: 16 }}>
-                {thread.subject || '(no subject)'}
-              </div>
-              <div className="muted ellipsis" style={{ fontSize: 12 }}>
-                {others.join(', ') || account?.email}
-              </div>
-            </div>
-            <div className="row-flex" style={{ gap: 4 }}>
-              <button className="navbtn g" aria-label="Archive" onClick={archive}>
-                <Archive size={18} />
-              </button>
-              <button className="navbtn g" aria-label="More" onClick={() => setMore(true)}>
-                <MoreHorizontal size={20} />
-              </button>
-            </div>
-          </div>
-          <LayoutToggle layout={layout} onChange={(l) => void saveSettings({ threadLayout: l })} />
-          <div
-            style={{ padding: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}
-          >
-            {messages.map((m, i) => (
-              <ChatMessage
-                key={m.id}
-                m={m}
-                showName={!m.fromMe && messages[i - 1]?.from?.email !== m.from?.email}
-                threadId={id}
-              />
-            ))}
-            {aiBlock}
-          </div>
-        </div>
-        <QuickReply
+        <ConversationE
           thread={thread}
-          last={last}
-          onSend={async (body) => {
-            const r = await send({
-              accountId: thread.accountId,
-              to: replyTo(last),
-              cc: [],
-              subject: reSubject(thread.subject),
-              body,
-              threadId: thread.id,
-            });
-            showToast({
-              text:
-                r === 'queued' ? 'No connection. Reply will send when you are back online' : 'Sent',
-            });
-            if (r === 'sent') void api.thread(id).then(setData);
-          }}
+          messages={messages}
+          accountName={
+            account && accounts.length > 1 ? (account.displayName.split(' ')[0] ?? '') : ''
+          }
+          ai={wantAi ? ai : undefined}
+          aiLoading={aiLoading}
+          onArchive={archive}
+          onSnooze={snooze}
+          onMore={() => setMore(true)}
+          onRefresh={() => api.thread(id).then(setData)}
+          onIdea={(idea) =>
+            go(`compose?reply=${encodeURIComponent(id)}&ask=${encodeURIComponent(idea)}`)
+          }
+          onSlot={(s) =>
+            go(
+              `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
+            )
+          }
         />
+        <QuickReply thread={thread} last={last} onSend={sendQuick} />
         {actionsSheet}
       </>
     );
@@ -688,4 +674,199 @@ function QuickReply({
       </div>
     </div>
   );
+}
+
+/** Hours since the newest message from someone else, when it waits on you. */
+function waitingHours(messages: MobileMessage[]): number | null {
+  const last = messages[messages.length - 1];
+  if (!last || last.fromMe) return null;
+  return Math.max(0, (Date.now() - last.date) / 3_600_000);
+}
+
+/**
+ * Design E conversation page: eyebrow + actions, the sender with a waiting
+ * ring, a frosted "what they want" card for priority mail, earlier messages
+ * folded, AI quick replies above the reply box. Swipe from the left edge goes
+ * back; pull down refreshes.
+ */
+function ConversationE({
+  thread,
+  messages,
+  accountName,
+  ai,
+  aiLoading,
+  onArchive,
+  onSnooze,
+  onMore,
+  onRefresh,
+  onIdea,
+  onSlot,
+}: {
+  thread: MobileThread;
+  messages: MobileMessage[];
+  accountName: string;
+  ai: FirstRead | null | undefined;
+  aiLoading: boolean;
+  onArchive: () => void;
+  onSnooze: () => void;
+  onMore: () => void;
+  onRefresh: () => Promise<unknown>;
+  onIdea: (idea: string) => void;
+  onSlot: (s: { startMs: number; endMs: number }) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { pull, refreshing } = useEdgeBackAndPull(ref, () => back('inbox'), onRefresh);
+  const [unfold, setUnfold] = useState(false);
+  const [ask, setAsk] = useState(false);
+  const lastOther = [...messages].reverse().find((m) => !m.fromMe && m.from);
+  const who = lastOther?.from ?? thread.lastFrom;
+  const first = firstName(who);
+  const h = thread.priority ? waitingHours(messages) : null;
+  const C = 2 * Math.PI * 29;
+  const frac = h == null ? 0 : Math.min(1, Math.max(0.05, h / 10));
+  // Keep the newest two in view; fold the rest behind one button.
+  const foldN = !unfold && messages.length > 3 ? messages.length - 2 : 0;
+  const shown = messages.slice(foldN);
+  let gist: ReactNode = ai?.summary ?? null;
+  if (ai?.summary && first && ai.summary.startsWith(first))
+    gist = (
+      <>
+        <b>{first}</b>
+        {ai.summary.slice(first.length)}
+      </>
+    );
+  return (
+    <div className="ib-page te-page">
+      <div className="screen no-tabs te" ref={ref}>
+        <div className="ib-ptr" style={{ height: pull }} aria-hidden={!pull}>
+          {pull > 0 &&
+            (refreshing ? <Spinner /> : <ArrowUp size={18} style={{ rotate: '180deg' }} />)}
+        </div>
+        <div className="te-top">
+          <span className="eyebrow">
+            {accountName ? `${accountName} · ` : ''}
+            {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+          </span>
+          <button className="te-ic" aria-label="Snooze" onClick={onSnooze}>
+            <Clock size={18} />
+          </button>
+          <button className="te-ic" aria-label="Archive" onClick={onArchive}>
+            <Archive size={18} />
+          </button>
+          <button className="te-ic" aria-label="More" onClick={onMore}>
+            <MoreHorizontal size={19} />
+          </button>
+          <button className="ib-orb glass" aria-label="Assistant" onClick={() => setAsk(true)}>
+            <Sparkles size={17} />
+          </button>
+        </div>
+        <div className="te-head">
+          <span className="ring">
+            {h != null && (
+              <svg viewBox="0 0 62 62" aria-hidden>
+                <defs>
+                  <linearGradient id="te-g">
+                    <stop offset="0" stopColor="var(--aqua)" />
+                    <stop offset=".6" stopColor="var(--azure)" />
+                    <stop offset="1" stopColor="var(--violet)" />
+                  </linearGradient>
+                </defs>
+                <circle cx="31" cy="31" r="29" fill="none" stroke="var(--hair)" strokeWidth="3" />
+                <circle
+                  cx="31"
+                  cy="31"
+                  r="29"
+                  fill="none"
+                  stroke="url(#te-g)"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={`${C * frac} ${C}`}
+                />
+              </svg>
+            )}
+            <Avatar who={who} size={50} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <h2>{thread.subject || '(no subject)'}</h2>
+            <p>
+              {displayName(who)}
+              {h != null &&
+                ` · waiting ${h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : `${Math.round(h)} h`}`}
+            </p>
+          </div>
+        </div>
+        {ai !== undefined && (aiLoading || ai?.summary) && (
+          <div className="te-gist glass pop">
+            <div className="lb">
+              <AiMark size={20} />
+              What {first || 'they'} want{first ? 's' : ''}
+            </div>
+            {!ai ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                <div className="skeleton" style={{ height: 14, width: '92%' }} />
+                <div className="skeleton" style={{ height: 14, width: '64%' }} />
+              </div>
+            ) : (
+              <>
+                <div className="tx">{gist}</div>
+                {ai.freeSlots && ai.freeSlots.length > 0 && (
+                  <div className="te-slots">
+                    <span>
+                      <CalendarClock size={13} /> You're free at
+                    </span>
+                    {ai.freeSlots.map((s) => (
+                      <button key={s.startMs} onClick={() => onSlot(s)}>
+                        {new Date(s.startMs).toLocaleDateString([], { weekday: 'short' })}{' '}
+                        {clock12(s.startMs)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        <div className="te-msgs">
+          {foldN > 0 && (
+            <button className="te-fold" onClick={() => setUnfold(true)}>
+              {foldN} earlier message{foldN > 1 ? 's' : ''}
+            </button>
+          )}
+          {shown.map((m, i) => {
+            const prev = shown[i - 1];
+            const newDay =
+              !prev || new Date(prev.date).toDateString() !== new Date(m.date).toDateString();
+            return (
+              <div key={m.id} style={{ display: 'contents' }}>
+                {newDay && <div className="te-day">{dayWord(m.date)}</div>}
+                <ChatMessage
+                  m={m}
+                  showName={!m.fromMe && (newDay || prev?.from?.email !== m.from?.email)}
+                  threadId={thread.id}
+                />
+              </div>
+            );
+          })}
+        </div>
+        {ai?.replyIdeas && ai.replyIdeas.length > 0 && (
+          <div className="te-quick">
+            {ai.replyIdeas.map((r) => (
+              <button key={r} onClick={() => onIdea(r)}>
+                <AiMark size={16} />
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {ask && <AskSheet thread={thread} onClose={() => setAsk(false)} />}
+    </div>
+  );
+}
+
+function dayWord(ms: number): string {
+  const d = new Date(ms).toDateString();
+  if (d === new Date().toDateString()) return 'Today';
+  if (d === new Date(Date.now() - 86_400_000).toDateString()) return 'Yesterday';
+  return shortDate(ms);
 }

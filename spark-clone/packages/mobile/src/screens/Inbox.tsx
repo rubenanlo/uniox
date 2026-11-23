@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Address, Category, MobileAccount, MobileThread } from '../data/types';
 import { InviteRow } from '../components/InviteRow';
 import { ThreadRow } from '../components/ThreadRow';
+import { AskSheet } from '../components/AskSheet';
 import { Avatar, Empty, Spinner, TabBar } from '../components/ui';
 import { displayName, firstName } from '../lib/format';
 import { useEdgeBackAndPull } from '../lib/gestures';
@@ -189,6 +190,7 @@ export function Inbox() {
     });
   };
 
+  const [ask, setAsk] = useState(false);
   const screenRef = useRef<HTMLDivElement>(null);
   const { pull, refreshing } = useEdgeBackAndPull(screenRef, () => go('home'), pullRefresh);
 
@@ -289,7 +291,7 @@ export function Inbox() {
                 month: 'long',
               })}
             </div>
-            <button className="ib-orb glass" aria-label="Assistant" onClick={() => go('assistant')}>
+            <button className="ib-orb glass" aria-label="Assistant" onClick={() => setAsk(true)}>
               <Sparkles size={18} />
             </button>
           </div>
@@ -489,6 +491,7 @@ export function Inbox() {
         {!visible.length && !loading && <Empty title="Inbox zero" sub="Nothing waiting on you." />}
         <div style={{ height: 90 }} />
       </div>
+      {ask && <AskSheet onClose={() => setAsk(false)} />}
       <TabBar on="inbox" />
     </>
   );

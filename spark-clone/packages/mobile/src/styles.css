@@ -195,6 +195,14 @@ a { color: var(--accent); text-decoration: none; }
 .dock button.on { color: var(--ink); }
 .dock button.on .lb { background-size: 100% 1.5px; }
 .dock .act { flex: none; width: 62px; height: 62px; border-radius: 31px; display: grid; place-items: center; padding: 0; color: var(--accent); }
+.dock .dk-sent { flex: 1; border-radius: 30px; padding: 16px 20px; box-shadow: 0 30px 60px -30px rgb(0 0 0 / .45);
+  transform: translateY(12px); opacity: 0; transition: transform .5s cubic-bezier(.34,1.4,.5,1) .06s, opacity .25s .06s; }
+.dock.open .dk-sent { transform: none; opacity: 1; }
+.dock .dk-sent p { margin: 0; font-size: 22px; line-height: 1.45; letter-spacing: -.015em; color: var(--muted); }
+.dock .dk-sent .w { display: inline; padding: 0 0 1px; font: inherit; font-weight: 600; color: var(--ink); transform: none; opacity: 1;
+  background-image: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet)); background-size: 100% 1.5px;
+  background-repeat: no-repeat; background-position: 0 100%; transition: background-size .3s; }
+.dock .dk-sent .w:active { background-size: 100% 4px; }
 .dock .dot { position: absolute; top: 6px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
 .btn:active, .chip:active, .tile:active { transform: scale(.96); }
 
@@ -298,8 +306,8 @@ a { color: var(--accent); text-decoration: none; }
 .mail-html table { max-width: 100%; }
 .mail-text { white-space: pre-wrap; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
 mark { background: color-mix(in srgb, var(--priority) 28%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(92px + var(--safe-bottom)); z-index: 80; padding: 10px 16px; border-radius: 20px;
-  background: var(--ink); color: var(--app); font-size: 14px; font-weight: 500; display: flex; gap: 12px; align-items: center; animation: pop .3s both; white-space: nowrap; }
+.toast { position: fixed; left: 50%; translate: -50% 0; bottom: calc(92px + var(--safe-bottom)); z-index: 80; padding: 10px 16px; border-radius: 20px;
+  background: var(--ink); color: var(--app); font-size: 14px; font-weight: 500; display: flex; gap: 12px; align-items: center; animation: pop .3s both; width: max-content; max-width: calc(100vw - 32px); }
 .toast button { color: var(--accent); font-weight: 700; }
 .dark .toast button { color: #2f63e7; }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--ink) 20%, transparent); border-top-color: var(--accent); animation: spin .8s linear infinite; }

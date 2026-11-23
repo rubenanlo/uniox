@@ -1,0 +1,43 @@
+/* Assistant sheet (AskSheet) and full Assistant page (fa-*) */
+.ask-wrap { z-index: 62; }
+.sheet.ask-sheet { background: var(--glass); }
+.ask-sheet { padding: 0 20px calc(16px + var(--safe-bottom)); border-radius: 30px 30px 0 0; border-bottom: 0; }
+.ask-mini { display: flex; align-items: center; gap: 8px; margin: 14px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.ask-sent { margin: 8px 0 14px; font-size: 23px; line-height: 1.42; letter-spacing: -.016em; color: var(--muted); }
+.ask-sent .w, .fa-sent .w { font: inherit; font-weight: 600; color: var(--ink); padding: 0 0 1px; background-image: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet));
+  background-size: 100% 1.5px; background-repeat: no-repeat; background-position: 0 100%; }
+.ask-sent .w:active { background-size: 100% 4px; }
+.ask-ans { margin: 8px 0 12px; animation: pop .35s cubic-bezier(.2,.8,.2,1) both; max-height: 50vh; overflow-y: auto; }
+.ask-q { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.ask-text { font-size: 16px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ask-acts button, .fa-acts button { font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 99px; color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent); }
+.ask-think { display: flex; gap: 5px; padding: 8px 0; }
+.ask-think i { width: 7px; height: 7px; border-radius: 50%; background: var(--azure); opacity: .35; animation: ask-dot 1s ease-in-out infinite; }
+.ask-think i:nth-child(2) { animation-delay: .15s; } .ask-think i:nth-child(3) { animation-delay: .3s; }
+@keyframes ask-dot { 50% { opacity: 1; transform: translateY(-3px); } }
+.ask-foot { display: flex; align-items: center; gap: 8px; height: 46px; border-radius: 23px; padding: 0 5px 0 16px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid color-mix(in oklch, var(--ink) 10%, transparent); }
+.ask-foot input { flex: 1; min-width: 0; font-size: 16px; }
+.ask-foot .send { width: 36px; height: 36px; }
+.ask-full { display: flex; align-items: center; justify-content: center; gap: 2px; width: 100%; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+
+.screen.fa { padding-bottom: calc(110px + var(--safe-bottom)); }
+.fa-top { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+.fa-sent { margin: 14px 2px 4px; font-size: 24px; line-height: 1.4; letter-spacing: -.018em; color: var(--muted); }
+.fa-sent b { color: var(--ink); font-weight: 600; }
+.fa-chips { display: flex; gap: 8px; overflow-x: auto; margin: 12px -18px 0; padding: 0 18px 4px; scrollbar-width: none; }
+.fa-chips button { flex: none; display: flex; align-items: center; gap: 7px; padding: 8px 14px 8px 9px; border-radius: 99px; font-size: 13.5px; font-weight: 600; }
+.fa-day { margin: 18px 0 0; text-align: center; font: 600 10.5px/1 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
+.fa-conv { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }
+.fa-q { align-self: flex-end; max-width: 80%; padding: 10px 14px; border-radius: 20px 20px 7px 20px; background: var(--accent); color: var(--on-accent);
+  font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; animation: pop .3s cubic-bezier(.2,.8,.2,1) both; }
+.fa-a { border-radius: 24px; padding: 14px 16px; animation: pop .4s cubic-bezier(.2,.8,.2,1) both; }
+.fa-a .lb { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.fa-bar { position: fixed; left: 12px; right: 12px; bottom: calc(14px + var(--safe-bottom)); z-index: 40; display: flex; align-items: center; gap: 6px;
+  padding: 6px 6px 6px 16px; border-radius: 26px; }
+.fa-bar input { flex: 1; min-width: 0; font-size: 16px; }
+.fa-bar .mic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.fa-bar .mic.on { color: var(--accent); animation: ask-dot 1s ease-in-out infinite; }
+.fa-bar .send { width: 38px; height: 38px; }
