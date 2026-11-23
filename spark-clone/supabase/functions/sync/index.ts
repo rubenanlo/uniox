@@ -9,7 +9,7 @@ import { pushToUser } from '../_shared/push.ts';
  *  - pg_cron every minute, with `x-cron-secret`: syncs every account.
  *  - the phone ("pull to refresh"), with the user's JWT: syncs that user's accounts.
  * `{testPush: true}` sends one test notification instead of syncing.
- * `{reparseInvites: true}` re-reads threads whose .ics attachment was never parsed.
+ * `{reparseInvites: true}` re-reads threads that carry an .ics attachment.
  */
 Deno.serve(async (req) => {
   const pre = preflight(req);
@@ -43,8 +43,7 @@ Deno.serve(async (req) => {
       const { data: rows } = await db
         .from('messages')
         .select('thread_id, attachments')
-        .eq('account_id', acct.id)
-        .is('invite', null);
+        .eq('account_id', acct.id);
       const ids = [
         ...new Set(
           (rows ?? [])
@@ -55,7 +54,7 @@ Deno.serve(async (req) => {
             )
             .map((r) => r.thread_id as string),
         ),
-      ].slice(0, 80);
+      ].slice(0, 150);
       if (!ids.length) continue;
       const { data: threads } = await db.from('threads').select('gmail_thread_id').in('id', ids);
       const token = await accessToken(db, acct.id);
