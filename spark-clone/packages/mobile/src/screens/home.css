@@ -2,7 +2,7 @@
    tab bar, and the AI cards fanned out of "Brief me" on demand. Ambient motion
    only runs while the app is visible (.hz-idle pauses it). */
 .hz { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden;
-  padding-top: var(--safe-top); padding-bottom: calc(92px + var(--safe-bottom)); }
+  padding-top: var(--safe-top); padding-bottom: calc(18px + var(--safe-bottom)); touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
 .hz-sky { position: absolute; inset: 0; pointer-events: none; opacity: .5; }
 .dark .hz-sky { opacity: .3; }
@@ -24,6 +24,24 @@
 .hz-head .greet b { color: var(--ink); font-weight: 600; text-transform: capitalize; }
 .hz-head .sub { margin-top: 6px; color: var(--muted); font-size: 15px; }
 .hz-head .sub b { color: var(--ink); }
+/* The living sentence: its words are the way to Inbox, Calendar, Compose and Search (no tab bar on Home). */
+.hz-sent { margin: 12px auto 0; max-width: 330px; font-size: 17px; line-height: 1.6; color: var(--muted); text-wrap: balance; }
+.hz-w { color: var(--ink); font-weight: 600; padding-bottom: 1px; background-image: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet));
+  background-size: 100% 1.5px; background-repeat: no-repeat; background-position: 0 100%; transition: color .2s, background-size .3s cubic-bezier(.22,1,.36,1); }
+.hz-nb { white-space: nowrap; }
+.hz-w:active { color: var(--accent); background-size: 100% 5px; }
+
+/* Pull down to search: the page follows the finger (--pull) and a glass bubble grows under the navbar. */
+.hz-head, .hz-mid, .hz-brief, .hz-line, .hz-hint { translate: 0 var(--pull, 0px); }
+/* Spring back on release; each list keeps the element's own transitions. */
+.hz:not(.pulling) .hz-head { transition: margin-top .6s cubic-bezier(.34,1.4,.5,1), translate .45s cubic-bezier(.34,1.4,.5,1); }
+.hz:not(.pulling) .hz-mid, .hz:not(.pulling) .hz-line, .hz:not(.pulling) .hz-hint { transition: translate .45s cubic-bezier(.34,1.4,.5,1); }
+.hz:not(.pulling) .hz-brief { transition: width .46s cubic-bezier(.2,.9,.3,1), transform .5s cubic-bezier(.34,1.4,.5,1), opacity .25s, translate .45s cubic-bezier(.34,1.4,.5,1); }
+.hz-pull { position: absolute; left: 50%; top: calc(var(--safe-top) + 58px); z-index: 6; width: 44px; height: 44px; margin-left: -22px; border-radius: 22px;
+  display: grid; place-items: center; color: var(--accent); opacity: 0; transform: translateY(-24px) scale(.6); pointer-events: none;
+  transition: opacity .25s, transform .45s cubic-bezier(.34,1.4,.5,1), background .2s, color .2s; }
+.hz.pulling ~ .hz-pull { transition: background .2s, color .2s; }
+.hz-pull.ready { background: var(--accent); color: var(--on-accent, #fff); border-color: transparent; }
 
 .hz-mid { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; z-index: 2; }
 .hz-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 26px 10px; scrollbar-width: none; }
@@ -57,7 +75,7 @@
 .hz-lb.down { opacity: 0; transform: translateY(12px); filter: blur(4px); }
 .hz-lb.notrans { transition: none; }
 
-.hz-peek { position: absolute; left: 16px; right: 16px; bottom: calc(92px + var(--safe-bottom) + 132px); z-index: 5;
+.hz-peek { position: absolute; left: 16px; right: 16px; bottom: calc(18px + var(--safe-bottom) + 132px); z-index: 5;
   display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 18px; text-align: left;
   background: var(--surface); border: 1px solid var(--hair); box-shadow: 0 18px 40px -18px rgb(0 0 0 / .35);
   opacity: 0; transform: translateY(12px) scale(.97); pointer-events: none; transition: opacity .2s, transform .4s cubic-bezier(.34,1.4,.5,1); }

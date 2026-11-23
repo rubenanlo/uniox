@@ -1,4 +1,4 @@
-import { Bell, ChevronRight, X } from "lucide-react";
+import { Bell, ChevronRight, Search, X } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MobileEvent, MobileThread } from "../data/types";
-import { AiMark, Avatar, TabBar } from "../components/ui";
+import { AiMark, Avatar } from "../components/ui";
 import {
   clock,
   dayLabel,
@@ -67,6 +67,101 @@ function useActive(): boolean {
   return on;
 }
 
+/** How far the screen must be pulled down before letting go opens Search. */
+const PULL_GO = 90;
+
+/**
+ * Pull the Home down to search. Vertical drags anywhere outside the two
+ * sideways scrollers move the page with some resistance and grow a glass
+ * search bubble under the navbar; letting go past PULL_GO opens Search.
+ * Styles are written straight to the nodes so a drag never re-renders Home.
+ */
+function usePullToSearch(enabled: boolean) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    const bubble = bubbleRef.current;
+    if (!root || !bubble || !enabled) return;
+    let g: { id: number; x: number; y: number; axis: "x" | "y" | null } | null =
+      null;
+    let pulled = 0;
+    const paint = (d: number) => {
+      pulled = d;
+      const shift = d * 0.35;
+      root.style.setProperty("--pull", `${shift}px`);
+      bubble.style.opacity = String(Math.min(1, d / 60));
+      bubble.style.transform = `translateY(${Math.min(d * 0.45, 56) - 24}px) scale(${0.6 + Math.min(d / PULL_GO, 1) * 0.4})`;
+      bubble.classList.toggle("ready", d >= PULL_GO);
+    };
+    const reset = () => {
+      root.classList.remove("pulling");
+      root.style.removeProperty("--pull");
+      bubble.style.opacity = "";
+      bubble.style.transform = "";
+      bubble.classList.remove("ready");
+      pulled = 0;
+    };
+    const down = (e: PointerEvent) => {
+      if (e.button !== 0 || g) return;
+      const t = e.target as Element;
+      if (t.closest(".hz-line, .hz-cards, .hz-peek")) return;
+      g = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null };
+    };
+    const move = (e: PointerEvent) => {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x;
+      const dy = e.clientY - g.y;
+      if (!g.axis) {
+        if (Math.hypot(dx, dy) < 8) return;
+        g.axis = dy > 0 && dy > Math.abs(dx) ? "y" : "x";
+        if (g.axis === "y") {
+          root.classList.add("pulling");
+          root.setPointerCapture(e.pointerId);
+        }
+      }
+      if (g.axis !== "y") return;
+      // Rubber band: easy at first, stiffer the further it goes.
+      const d = Math.max(0, dy);
+      paint(d < PULL_GO ? d : PULL_GO + (d - PULL_GO) * 0.4);
+    };
+    const up = (e: PointerEvent) => {
+      if (!g || e.pointerId !== g.id) return;
+      const go_ = g.axis === "y" && pulled >= PULL_GO;
+      g = null;
+      reset();
+      if (go_) go("search");
+    };
+    // A pull that ends on a button must not also tap it.
+    const click = (e: MouseEvent) => {
+      if (root.dataset.pulled) {
+        e.stopPropagation();
+        e.preventDefault();
+        delete root.dataset.pulled;
+      }
+    };
+    const mark = () => {
+      if (g?.axis === "y") root.dataset.pulled = "1";
+    };
+    root.addEventListener("pointerdown", down);
+    root.addEventListener("pointermove", move);
+    root.addEventListener("pointerup", mark, true);
+    root.addEventListener("pointerup", up);
+    root.addEventListener("pointercancel", up);
+    root.addEventListener("click", click, true);
+    return () => {
+      root.removeEventListener("pointerdown", down);
+      root.removeEventListener("pointermove", move);
+      root.removeEventListener("pointerup", mark, true);
+      root.removeEventListener("pointerup", up);
+      root.removeEventListener("pointercancel", up);
+      root.removeEventListener("click", click, true);
+      reset();
+    };
+  }, [enabled]);
+  return { rootRef, bubbleRef };
+}
+
 export function Home() {
   const { threads, me, api, accounts } = useStore();
   const nowMs = useNow();
@@ -75,6 +170,7 @@ export function Home() {
   const [fanned, setFanned] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const active = useActive();
+  const { rootRef, bubbleRef } = usePullToSearch(!fanned);
 
   useEffect(() => {
     const from = startOfDay(nowMs);
@@ -396,6 +492,7 @@ export function Home() {
   return (
     <>
       <div
+        ref={rootRef}
         className={`hz ${fanned ? "fanned" : ""} ${selThread ? "peeking" : ""} ${active ? "" : "hz-idle"}`}
       >
         <div className="hz-sky" style={skyPos}>
@@ -444,16 +541,30 @@ export function Home() {
             {greeting(now)}, <b>{name}</b>
           </div>
           <div className="sub">{workdayLine(now)}</div>
-          <div className="sub" style={{ marginTop: 2 }}>
-            <button onClick={() => go("inbox")}>
-              <b>{unread}</b> unread priority
-            </button>
-            {" · "}
-            <button onClick={() => go("calendar")}>
-              <b>{meetingsLeft}</b>{" "}
-              {meetingsLeft === 1 ? "meeting" : "meetings"} left
-            </button>
-          </div>
+          <p className="hz-sent">
+            You have{" "}
+            <button className="hz-w" onClick={() => go("inbox")}>
+              {count(unread, "priority email", "priority emails")}
+            </button>{" "}
+            and{" "}
+            <button className="hz-w" onClick={() => go("calendar")}>
+              {count(meetingsLeft, "meeting", "meetings")}
+            </button>{" "}
+            left today.{" "}
+            <span className="hz-nb">
+              <button className="hz-w" onClick={() => go("compose")}>
+                Write something
+              </button>
+              ,
+            </span>{" "}
+            or pull down to{" "}
+            <span className="hz-nb">
+              <button className="hz-w" onClick={() => go("search")}>
+                search
+              </button>
+              .
+            </span>
+          </p>
         </div>
 
         <div className="hz-mid">
@@ -618,9 +729,16 @@ export function Home() {
           </>
         )}
       </button>
-      <TabBar on="home" />
+      <div className="hz-pull glass" ref={bubbleRef} aria-hidden>
+        <Search size={20} />
+      </div>
     </>
   );
+}
+
+function count(n: number, one: string, many: string): string {
+  if (n === 0) return `no ${many}`;
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 function workdayLine(now: Date): string {
