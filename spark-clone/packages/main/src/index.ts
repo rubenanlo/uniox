@@ -58,6 +58,7 @@ import { AiService } from './ai';
 import { CredentialStore } from './credentials';
 import { DeltaCoalescer } from './delta-coalescer';
 import { authorizeGoogle, defaultGoogleClient, revokeGoogleToken } from './google-auth';
+import { CloudSync } from './cloud-sync';
 
 // Ships with the build when .env provides MAIN_VITE_GOOGLE_CLIENT_ID/_SECRET;
 // null keeps the paste-your-own-client onboarding.
@@ -132,6 +133,7 @@ app.on('open-url', (event, url) => {
 let pendingMailto: MailtoDraft | null = null;
 /** True once the loaded renderer has asked for pendingMailto (it now hears deltas). */
 let rendererListening = false;
+let cloudSync: CloudSync | null = null;
 
 /** Open a composer for a mailto: link, launching/focusing the window as needed. */
 function openMailto(url: string): void {
@@ -787,6 +789,9 @@ function registerIpc(): void {
     if (channel === 'composer:window-state') {
       return composerWindows.get(event.sender.id) ?? null;
     }
+    if (channel === 'cloud:status') {
+      return cloudSync?.getStatus() ?? { enabled: false };
+    }
     if (channel === 'mailto:is-default') {
       return app.isDefaultProtocolClient('mailto', ...protocolClientArgs());
     }
@@ -798,10 +803,15 @@ function registerIpc(): void {
     const settingKey = channel === 'settings:set' ? (args as { key?: string } | null)?.key : undefined;
     if (settingKey === 'notificationSound') notifySoundCache = null;
     if (settingKey === 'notificationStyle') notifyStyleCache = null;
+    if (settingKey === 'ui-prefs') cloudSync?.prefsChanged();
     if (settingKey === ISLAND_STYLE_KEY) setIslandStyle((args as { value?: unknown }).value);
     if (settingKey === ISLAND_DISPLAY_KEY) setIslandDisplay((args as { value?: unknown }).value);
     if (settingKey === ISLAND_GLASS_CLEAR_KEY) setIslandClear((args as { value?: unknown }).value);
     switch (channel) {
+      case 'cloud:set': {
+        if (!cloudSync) return { enabled: false, error: 'Not ready yet, try again in a moment.' };
+        return (args as { enabled: boolean }).enabled ? cloudSync.enable() : cloudSync.disable();
+      }
       case 'mailto:make-default': {
         // macOS: needs the CFBundleURLTypes entry electron-builder writes
         // (`protocols` in electron-builder.yml); Launch Services may then ask
@@ -962,6 +972,7 @@ function registerIpc(): void {
           ok: boolean;
           error?: string;
         };
+        cloudSync?.accountsChanged();
         return result;
       }
       case 'account:add-google': {
@@ -1000,6 +1011,7 @@ function registerIpc(): void {
           // future build's updated client.
           if (pasted) credentials!.setGoogleClient(client.clientId, client.clientSecret);
           bridge!.primeToken(result.accountId, tokens.accessToken, tokens.expiresAt);
+          cloudSync?.accountsChanged();
           return { ok: true, accountId: result.accountId, email: tokens.email };
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -1194,6 +1206,25 @@ void app.whenReady().then(() => {
     onDelta: broadcastDelta,
   });
   bridge.start();
+  // "Sync with phone": off unless switched on in Settings → Accounts.
+  cloudSync = new CloudSync({
+    env: {
+      MAIN_VITE_UNIOX_CLOUD_URL: import.meta.env.MAIN_VITE_UNIOX_CLOUD_URL,
+      MAIN_VITE_UNIOX_CLOUD_KEY: import.meta.env.MAIN_VITE_UNIOX_CLOUD_KEY,
+    },
+    accounts: async () => (await bridge!.query('accounts:list', undefined)) as Account[],
+    credential: (accountId) => credentials!.getRecord(accountId),
+    getSetting: (key) => bridge!.query('settings:get', { key }),
+    setSetting: async (key, value) => {
+      await bridge!.query('settings:set', { key, value });
+    },
+    applyPrefs: (prefs) => {
+      if (!mainWindow || mainWindow.isDestroyed() || !rendererListening) return false;
+      mainWindow.webContents.send('delta', { kind: 'cloud-prefs', prefs });
+      return true;
+    },
+  });
+  void cloudSync.start().catch(() => {});
   // Emails kept in the ⌥⌘N list come back after a restart.
   void bridge
     .query('settings:get', { key: QUICK_REPLY_KEPT_KEY })

@@ -1,0 +1,58 @@
+# Builds the phone web app and publishes it to the Cloudflare Pages project
+# behind uniox.rawdev.link whenever main changes.
+#
+# Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   a token with "Cloudflare Pages: Edit"
+#   CLOUDFLARE_ACCOUNT_ID  the account id shown on the Workers & Pages overview
+name: Deploy phone app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'spark-clone/packages/mobile/**'
+      - 'spark-clone/packages/shared/**'
+      - 'spark-clone/pnpm-lock.yaml'
+      - '.github/workflows/deploy-mobile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mobile
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Public values: they ship inside the built app.
+      VITE_SUPABASE_URL: https://ffijcbzozucfyvtakacd.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_pIMYF-U41806L0a6I3xcPg_LtRUBf3q
+      VITE_VAPID_PUBLIC_KEY: BECATAn1Qp-nAoT3PqAc3gTnHzohsW1tELMr6vKzuguqP8n-n7yO-iO1Hr4NzvZjsB0VhcvezJ6YLSoW7a5R3Uo
+      # The Pages project that serves uniox.rawdev.link.
+      PAGES_PROJECT: uniox-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: spark-clone/pnpm-lock.yaml
+      # The phone app needs no native modules, so skip the desktop's build scripts.
+      - name: Install
+        working-directory: spark-clone
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter @app/mobile...
+      - name: Build
+        working-directory: spark-clone
+        run: pnpm --filter @app/mobile build
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy spark-clone/packages/mobile/dist --project-name=${{ env.PAGES_PROJECT }} --branch=main

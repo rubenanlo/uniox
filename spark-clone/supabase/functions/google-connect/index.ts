@@ -1,8 +1,8 @@
 import { admin, callerId, conf } from '../_shared/db.ts';
 import { json, preflight } from '../_shared/cors.ts';
 import { authUrl, exchangeCode, idTokenClaims } from '../_shared/google.ts';
-
-const COLORS = ['#2f63e7', '#2db682', '#8a5cd6', '#e0883a', '#d4386c', '#3a8f8f'];
+import { seal } from '../_shared/secretbox.ts';
+import { ACCOUNT_COLORS as COLORS, signInUser } from '../_shared/users.ts';
 
 /**
  * Google sign-in and account linking for the phone app.
@@ -82,12 +82,13 @@ Deno.serve(async (req) => {
     if (!refresh) return fail('Google did not return offline access; remove Uniox in your Google account permissions and retry', returnTo);
     await db.from('account_tokens').upsert({
       account_id: acct.id,
-      refresh_token: refresh,
-      access_token: tokens.access_token,
+      refresh_token: await seal(refresh),
+      access_token: await seal(tokens.access_token),
       expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      // A sign-in here uses the server's own client, replacing any desktop hand-over.
+      ...(tokens.refresh_token ? { client_id: null, client_secret: null, source: 'phone' } : {}),
     });
 
-    // First sync in the background so the redirect is quick.
     // The first sync starts when the app opens (it calls `sync`) and from the every-minute cron.
 
     if (st.user_id) return Response.redirect(`${returnTo}/#/settings?connected=${encodeURIComponent(email)}`, 302);
@@ -99,22 +100,3 @@ Deno.serve(async (req) => {
     return fail((e as Error).message.slice(0, 200), returnTo);
   }
 });
-
-/** Finds or creates the Supabase user for a Google sign-in, enforcing the allow list. */
-async function signInUser(db: ReturnType<typeof admin>, email: string): Promise<string | null> {
-  const allowed = (Deno.env.get('ALLOWED_EMAILS') ?? '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  // An account email already linked to a user signs that user in.
-  const { data: linked } = await db.from('accounts').select('user_id').eq('email', email).limit(1).maybeSingle();
-  if (linked) return linked.user_id;
-
-  const { data: users } = await db.auth.admin.listUsers({ perPage: 50 });
-  const found = users?.users.find((u) => u.email?.toLowerCase() === email);
-  if (found) return found.id;
-  if (allowed.length ? !allowed.includes(email) : (users?.users.length ?? 0) > 0) return null;
-  const { data, error } = await db.auth.admin.createUser({ email, email_confirm: true });
-  if (error) throw new Error(error.message);
-  return data.user.id;
-}

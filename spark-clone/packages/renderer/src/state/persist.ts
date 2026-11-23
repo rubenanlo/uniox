@@ -69,7 +69,13 @@ export function usePersistedUiPrefs() {
         void api.command('settings:set', { key: KEY, value: pick(useUi.getState()) });
       }, 300);
     });
+    // Sync with phone: preferences changed on the phone land here and are
+    // then saved like any local change.
+    const offCloud = api.onDelta((e) => {
+      if (e.kind === 'cloud-prefs' && loaded) useUi.setState(e.prefs as Partial<UiPrefs>);
+    });
     return () => {
+      offCloud();
       unsub();
       clearTimeout(timer);
     };

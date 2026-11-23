@@ -1,3 +1,4 @@
+import type { CloudSyncStatus, DesktopSharedPrefs } from './cloudPrefs';
 import type {
   Account,
   AccountConfig,
@@ -74,6 +75,8 @@ export interface Queries {
   /** Address autocomplete from mail history, ranked by use and recency. */
   'contacts:suggest': { args: { query: string; limit?: number }; result: Address[] };
   'settings:get': { args: { key: string }; result: unknown };
+  /** Settings → Accounts: state of "Sync with phone". */
+  'cloud:status': { args: undefined; result: CloudSyncStatus };
   'outbox:list': { args: undefined; result: ScheduledSend[] };
   'gatekeeper:pending': { args: undefined; result: GatekeeperPending[] };
   'templates:list': { args: undefined; result: Template[] };
@@ -172,6 +175,8 @@ export interface Commands {
     result: { ok: boolean; error?: string };
   };
   'settings:set': { args: { key: string; value: unknown }; result: { ok: boolean } };
+  /** Switch "Sync with phone" on (hands the Google accounts to Uniox cloud) or off (takes them back). */
+  'cloud:set': { args: { enabled: boolean }; result: CloudSyncStatus };
   /** ⌘R: sync every account's folders and Google calendars now, off-cadence. */
   'sync:now': { args: undefined; result: { ok: boolean } };
   /** Play a system sound in the main process so the settings picker can audition it. */
@@ -415,6 +420,8 @@ export type DeltaEvent =
    *  and threadIds lets the reading pane ignore ones it isn't showing. */
   | { kind: 'message-body'; messageIds: string[]; threadIds: string[] }
   | { kind: 'accounts-changed' }
+  /** View preferences changed on the phone (Sync with phone): apply them here. */
+  | { kind: 'cloud-prefs'; prefs: Partial<DesktopSharedPrefs> }
   | { kind: 'sync-status'; status: SyncStatus }
   /** category 'event' = meeting alert: shown even while the window is focused. */
   | ({ kind: 'notify' } & NotifyPayload)

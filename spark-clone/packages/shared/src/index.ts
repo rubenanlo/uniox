@@ -9,3 +9,4 @@ export * from './mailto';
 export * from './compose';
 export * from './eventDedupe';
 export * from './ical';
+export * from './cloudPrefs';
