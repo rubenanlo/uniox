@@ -625,6 +625,10 @@ export class SyncService {
           return [];
         }
       }
+      case 'threads:fromSenders':
+        return this.db.threadsFromSenders(
+          args as { terms: string[]; sinceMs: number; limit: number },
+        );
       case 'contacts:suggest': {
         const { query, limit } = args as { query: string; limit?: number };
         const q = query.trim().toLowerCase();

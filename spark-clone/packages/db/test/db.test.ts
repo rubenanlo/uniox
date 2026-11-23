@@ -237,6 +237,54 @@ describe('views', () => {
   });
 });
 
+describe('threadsFromSenders', () => {
+  function seed(db: MailDb) {
+    setup(db);
+    db.upsertFolder({ id: 'f-trash', accountId: 'acc1', path: 'Trash', role: 'trash', delimiter: '/' });
+    const rows: [string, string, string, number, string?][] = [
+      ['t1', 'TLDR', 'dan@tldrnewsletter.com', 5000],
+      ['t2', 'TLDR AI', 'hi@tldr.tech', 6000],
+      ['t3', 'Morning Brew', 'crew@morningbrew.com', 7000],
+      ['t4', 'TLDR Dev', 'dan@tldrnewsletter.com', 500],
+      ['t5', 'TLDR InfoSec', 'news@tldr.tech', 8000, 'f-trash'],
+      ['t6', 'Newsletters', 'daily@newslettertldr.io', 4000],
+    ];
+    rows.forEach(([id, name, email, date, folderId], i) => {
+      db.createThread(id, 'acc1', `${name} edition`);
+      db.insertMessage(
+        msg({
+          id: `m${i}`,
+          threadId: id,
+          uid: i + 1,
+          messageIdHdr: `<m${i}@x>`,
+          date,
+          folderId: folderId ?? 'f-inbox',
+          from: { name, email },
+        }),
+      );
+      db.refreshThreadAggregates(id);
+    });
+  }
+
+  it('matches "tldr" anywhere in the sender name or address, newest first', () => {
+    const db = makeDb();
+    seed(db);
+    const ids = db.threadsFromSenders({ terms: ['TLDR'], sinceMs: 1000, limit: 10 }).map((t) => t.id);
+    // t4 is older than sinceMs, t5 is in the trash, t3 is another sender.
+    expect(ids).toEqual(['t2', 't1', 't6']);
+  });
+
+  it('takes several terms and returns nothing for blank ones', () => {
+    const db = makeDb();
+    seed(db);
+    const ids = db
+      .threadsFromSenders({ terms: ['morningbrew', 'tldr.tech'], sinceMs: 0, limit: 10 })
+      .map((t) => t.id);
+    expect(ids).toEqual(['t3', 't2']);
+    expect(db.threadsFromSenders({ terms: ['  '], sinceMs: 0, limit: 10 })).toEqual([]);
+  });
+});
+
 describe('FTS', () => {
   it('finds messages by subject and by body text once the body arrives', () => {
     const db = makeDb();

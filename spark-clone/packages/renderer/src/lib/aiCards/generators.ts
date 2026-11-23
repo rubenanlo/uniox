@@ -19,6 +19,8 @@ import {
   DAY_MS,
   askJson,
   byNewest,
+  latestEditions,
+  newsSenderTerms,
   clock,
   keywords,
   lastInbound,
@@ -163,23 +165,20 @@ export async function makeTasksCard(): Promise<TasksCard> {
 
 /* ───────────── News digest ───────────── */
 
-export const DEFAULT_NEWS_SENDERS = ['tldrnewsletter'];
+const NEWS_LOOKBACK_MS = 4 * DAY_MS;
 
 export async function makeNewsCard(): Promise<NewsCard> {
-  const stored = await api.query('settings:get', { key: 'aiNewsSenders' });
-  const senders =
-    Array.isArray(stored) && stored.length ? (stored as string[]) : DEFAULT_NEWS_SENDERS;
-  const since = Date.now() - 36 * 3_600_000;
-  const found = new Map<string, ThreadSummary>();
-  for (const s of senders) {
-    const hits = await api
-      .query('search:threads', { query: `from:${s}`, limit: 25 })
-      .catch(() => [] as ThreadSummary[]);
-    for (const t of hits) if (t.lastMessageDate >= since) found.set(t.id, t);
-  }
-  const threads = [...found.values()].sort(byNewest).slice(0, 8);
+  const senders = newsSenderTerms(await api.query('settings:get', { key: 'aiNewsSenders' }));
+  const hits = await api
+    .query('threads:fromSenders', {
+      terms: senders,
+      sinceMs: Date.now() - NEWS_LOOKBACK_MS,
+      limit: 40,
+    })
+    .catch(() => [] as ThreadSummary[]);
+  const threads = latestEditions(hits);
   if (!threads.length) {
-    throw new Error(`No newsletters from ${senders.join(', ')} in the last day.`);
+    throw new Error(`No newsletters from ${senders.join(', ')} in the last few days.`);
   }
 
   const mine = await myAddresses();
@@ -190,12 +189,13 @@ export async function makeNewsCard(): Promise<NewsCard> {
     if (!m) continue;
     const edition = personName(m.from);
     if (!editions.includes(edition)) editions.push(edition);
-    const body = await messageText(m, 14_000);
+    const body = await messageText(m, 10_000);
     parts.push(`=== Edition: ${edition} · ${t.subject}\n${body.text}`);
   }
+  if (!parts.length) throw new Error('Couldn’t read the newsletter emails.');
 
   const out = await askJson<{ stories?: NewsStory[]; merged?: number }>(
-    "Below are today's newsletter emails. Make one digest: pull out the real stories (skip " +
+    'Below are the latest newsletter emails. Make one digest: pull out the real stories (skip ' +
       'sponsors, ads, job posts, referral and subscription blurbs), merge the same story covered ' +
       'by several editions into one, group them under short themes (e.g. "AI", "Web & frontend", ' +
       '"Startups & climate"), and keep the 15 most interesting. For each story: a short title, a ' +
@@ -207,6 +207,7 @@ export async function makeNewsCard(): Promise<NewsCard> {
     'You edit a daily news digest. Use only what is in the emails; never invent stories or links.',
   );
   return {
+    day: startOfDay(threads[0]!.lastMessageDate),
     editions,
     threads: threads.map((t) => ({ id: t.id, accountId: t.accountId })),
     stories: (out.stories ?? []).filter((s) => s?.title).slice(0, 15),

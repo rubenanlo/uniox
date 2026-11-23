@@ -122,3 +122,41 @@ export function bucketOf(due: string | null, today: number): TaskBucket {
   if (day < today + 7 * DAY_MS) return 'week';
   return 'later';
 }
+
+/** "Today’s news", or the day the newest editions came from ("Yesterday’s", "Friday’s"). */
+export function newsLabel(day: number | undefined, now = Date.now()): string {
+  if (day == null) return 'Today’s news';
+  const today = startOfDay(now);
+  if (day >= today) return 'Today’s news';
+  if (day >= startOfDay(today - 1)) return 'Yesterday’s news';
+  return `${new Date(day).toLocaleDateString(undefined, { weekday: 'long' })}’s news`;
+}
+
+/* News digest */
+
+export const DEFAULT_NEWS_SENDERS = ['tldr'];
+
+const NEWS_MAX_EDITIONS = 10;
+
+/**
+ * The sender terms the digest matches. The first default was the TLDR domain
+ * ("tldrnewsletter"), which missed TLDR editions sent from other addresses
+ * (tldr.tech, a "TLDR AI" name on another domain); upgrade it to plain "tldr".
+ */
+export function newsSenderTerms(stored: unknown): string[] {
+  const list = Array.isArray(stored)
+    ? (stored as unknown[]).filter((v): v is string => typeof v === 'string' && !!v.trim())
+    : [];
+  if (!list.length) return DEFAULT_NEWS_SENDERS;
+  return [
+    ...new Set(list.map((v) => (v.trim().toLowerCase() === 'tldrnewsletter' ? 'tldr' : v.trim()))),
+  ];
+}
+
+/** The newest day's editions: today's if any arrived, otherwise the last day that had some. */
+export function latestEditions(threads: ThreadSummary[]): ThreadSummary[] {
+  const sorted = [...threads].sort(byNewest);
+  if (!sorted.length) return [];
+  const day = startOfDay(sorted[0]!.lastMessageDate);
+  return sorted.filter((t) => startOfDay(t.lastMessageDate) === day).slice(0, NEWS_MAX_EDITIONS);
+}

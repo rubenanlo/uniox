@@ -55,7 +55,7 @@ import {
 import { ACCOUNT_SWATCHES, cn, defaultAccountColor, hueOf, initials } from '../lib/utils';
 import { useAssistant } from '../state/assistant';
 import { useKanban } from '../state/kanban';
-import { DEFAULT_NEWS_SENDERS } from '../lib/aiCards/generators';
+import { newsSenderTerms } from '../lib/aiCards/text';
 import { loadContactZones, saveContactZones, useZonePrompt } from '../state/contactZones';
 import { normalizeSignatureHtml, signatureText } from '../lib/signature';
 import { mutatePrioritySender } from '../state/priority';
@@ -659,7 +659,7 @@ function AiCardsFields() {
   useEffect(() => {
     void api.query('settings:get', { key: 'aiNotionAssignee' }).then((v) => setAssignee((v as string) || ''));
     void api.query('settings:get', { key: 'aiNewsSenders' }).then((v) =>
-      setSenders((Array.isArray(v) && v.length ? (v as string[]) : DEFAULT_NEWS_SENDERS).join(', ')),
+      setSenders(newsSenderTerms(v).join(', ')),
     );
     useKanban.getState().refresh();
   }, []);

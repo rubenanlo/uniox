@@ -50,6 +50,8 @@ export interface NewsStory {
 }
 
 export interface NewsCard {
+  /** Start of the local day the editions arrived (today, or the last day that had any). */
+  day?: number;
   editions: string[];
   /** The newsletter threads the digest was made from (for "Archive the emails"). */
   threads: { id: string; accountId: string }[];
