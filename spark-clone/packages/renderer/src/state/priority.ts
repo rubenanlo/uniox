@@ -1,4 +1,7 @@
+import type { Address, ThreadSummary } from '@app/shared';
+import { toast } from 'sonner';
 import { api } from '../lib/api';
+import { prioritySenderCandidates } from '../lib/utils';
 import { useUi } from './store';
 
 /**
@@ -54,4 +57,38 @@ export async function seedLegacyPriorityEmails(legacy: string[] | undefined): Pr
   const rows = await api.query('priority:list', undefined);
   if (rows.length > 0) return;
   for (const email of legacy) await mutatePrioritySender(email, true);
+}
+
+/** Our own addresses (every account), lowercased. */
+export async function selfEmails(): Promise<Set<string>> {
+  const accounts = await api.query('accounts:list', undefined).catch(() => []);
+  return new Set(accounts.map((a) => a.email.toLowerCase()));
+}
+
+const who = (a: Address) => a.name?.trim() || a.email;
+
+/**
+ * Add or remove one sender, with a toast that names them. Adding offers
+ * Undo; removing says so plainly (P again, or the bolt, puts them back).
+ */
+export function togglePrioritySender(a: Address, on: boolean): void {
+  void mutatePrioritySender(a.email, on);
+  if (on) {
+    toast(`${who(a)} is now Priority`, {
+      action: { label: 'Undo', onClick: () => void mutatePrioritySender(a.email, false) },
+    });
+  } else {
+    toast(`${who(a)} removed from Priority`);
+  }
+}
+
+/** P: flip the thread's latest sender (who isn't you) in or out of Priority. */
+export async function togglePriorityForThread(t: ThreadSummary): Promise<void> {
+  const [latest] = prioritySenderCandidates(t, await selfEmails());
+  if (!latest) {
+    toast('Only your own mail in this thread');
+    return;
+  }
+  const on = !useUi.getState().priorityEmails.includes(latest.email.toLowerCase());
+  togglePrioritySender(latest, on);
 }
