@@ -7,7 +7,7 @@ import { useStore } from '../lib/store';
 import { AvatarStack } from './ui';
 
 /* The four tilted answer tiles from the desktop invite card (PR #92). */
-const TILES: {
+export const TILES: {
   key: RsvpAnswer | 'propose';
   label: string;
   Icon: typeof Check;

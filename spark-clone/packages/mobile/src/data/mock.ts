@@ -415,6 +415,12 @@ export const mockApi: UnioxApi = {
           }
         : {
             summary:
+              (
+                {
+                  t3: 'Shannon sent the last tweaks from comms and wants your OK to publish tomorrow.',
+                  t4: 'Jeffrey needs your sign-off on the final country profiles before Monday.',
+                } as Record<string, string>
+              )[threadId] ??
               'Helen moved the freeze to Dec 4 and needs your OK on the revised country list by Tuesday.',
             replyIdeas: ['Confirm Dec 4', 'Ask about Kenya'],
           },
