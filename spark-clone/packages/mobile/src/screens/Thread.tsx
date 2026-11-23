@@ -30,13 +30,15 @@ import { useStore } from '../lib/store';
 import './thread.css';
 
 export function ThreadScreen({ id }: { id: string }) {
-  const { api, settings, saveSettings, act, send, showToast, accounts } = useStore();
+  const { api, settings, act, send, showToast, accounts } = useStore();
   const [data, setData] = useState<{ thread: MobileThread; messages: MobileMessage[] } | null>(() =>
     cachedThread(id),
   );
   const [ai, setAi] = useState<FirstRead | null>(null);
   const [more, setMore] = useState(false);
-  const layout = settings.threadLayout;
+  // The phone always opens on the conversation page. The reading layout setting
+  // is shared with the desktop, so switching to cards here is just for this email.
+  const [layout, setLayout] = useState<'cards' | 'chat'>('chat');
 
   useEffect(() => {
     let live = true;
@@ -106,7 +108,7 @@ export function ThreadScreen({ id }: { id: string }) {
           {
             icon: Rows3,
             label: layout === 'chat' ? 'Show as cards' : 'Show as conversation',
-            run: () => void saveSettings({ threadLayout: layout === 'chat' ? 'cards' : 'chat' }),
+            run: () => setLayout(layout === 'chat' ? 'cards' : 'chat'),
           },
           {
             icon: Reply,
@@ -245,7 +247,7 @@ export function ThreadScreen({ id }: { id: string }) {
             </span>
           </div>
         </div>
-        <LayoutToggle layout={layout} onChange={(l) => void saveSettings({ threadLayout: l })} />
+        <LayoutToggle layout={layout} onChange={setLayout} />
         <div style={{ margin: '10px 14px 0' }}>{aiBlock}</div>
         <CardsStack messages={messages} threadId={id} />
       </div>

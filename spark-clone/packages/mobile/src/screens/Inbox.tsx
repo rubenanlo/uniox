@@ -1,6 +1,6 @@
 import { Archive, Bell, Check, ChevronLeft, Newspaper, RefreshCw, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { Address, Category, MobileAccount, MobileThread } from '../data/types';
+import type { Address, Category, InviteInfo, MobileAccount, MobileThread } from '../data/types';
 import { InviteRow } from '../components/InviteRow';
 import { ThreadRow } from '../components/ThreadRow';
 import { AskSheet } from '../components/AskSheet';
@@ -88,6 +88,29 @@ export function Inbox() {
     [threads, accts],
   );
 
+  // Invite details for invite threads (date, organizer, your answer).
+  const inviteIds = visible
+    .filter((t) => t.category === 'invites' && t.inInbox)
+    .map((t) => t.id)
+    .join(',');
+  const [inviteInfo, setInviteInfo] = useState<Record<string, InviteInfo | null>>({});
+  useEffect(() => {
+    if (!inviteIds) return;
+    let live = true;
+    for (const id of inviteIds.split(',')) {
+      void api
+        .thread(id)
+        .then(({ messages }) => {
+          const m = [...messages].reverse().find((x) => x.invite);
+          if (live) setInviteInfo((p) => ({ ...p, [id]: m?.invite ?? null }));
+        })
+        .catch(() => live && setInviteInfo((p) => ({ ...p, [id]: null })));
+    }
+    return () => {
+      live = false;
+    };
+  }, [api, inviteIds]);
+
   const pullRefresh = async () => {
     await api.syncNow().catch(() => undefined);
     await refresh();
@@ -123,8 +146,19 @@ export function Inbox() {
   const shown = unreadOnly ? visible.filter((t) => t.unreadCount > 0) : visible;
   const personal = shown.filter((t) => t.category === 'personal' || t.category === 'invites');
   const priority = personal.filter((t) => t.priority && (t.unreadCount > 0 || t.pinned));
-  const invites = personal.filter((t) => t.category === 'invites' && !priority.includes(t));
-  const others = personal.filter((t) => !priority.includes(t) && !invites.includes(t));
+  // Only invites still waiting for an answer get the tiles; answered, past or
+  // "X accepted" notices read as ordinary mail.
+  const inviteCands = personal.filter((t) => t.category === 'invites' && !priority.includes(t));
+  const invites = inviteCands.filter((t) => {
+    const i = inviteInfo[t.id];
+    return !!i && !i.myAnswer && i.endMs > Date.now();
+  });
+  const others = personal.filter(
+    (t) =>
+      !priority.includes(t) &&
+      !invites.includes(t) &&
+      !(inviteCands.includes(t) && inviteInfo[t.id] === undefined),
+  );
   const unread = others.filter((t) => t.unreadCount > 0);
   const read = others.filter((t) => t.unreadCount === 0);
   const lists = BUNDLES.map((b) => ({
@@ -408,7 +442,7 @@ export function Inbox() {
               <div ref={invRef} style={{ scrollMarginTop: 12 }}>
                 <Section label="Invites" color="var(--violet)" />
                 {invites.map((t) => (
-                  <InviteRow key={t.id} thread={t} />
+                  <InviteRow key={t.id} thread={t} invite={inviteInfo[t.id] ?? null} />
                 ))}
               </div>
             )}

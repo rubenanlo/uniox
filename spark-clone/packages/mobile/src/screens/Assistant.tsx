@@ -8,11 +8,11 @@ import { clock12, greeting } from '../lib/format';
 import { back, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 
-const CHIPS = [
-  'When am I free this week?',
-  'Who has waited longest?',
-  'Draft my replies',
-  'What’s new in my newsletters?',
+const CHIPS: [label: string, question: string][] = [
+  ['When am I free?', 'When am I free this week?'],
+  ['Who waited longest?', 'Who has waited longest?'],
+  ['Draft replies', 'Draft my replies'],
+  ['Newsletters', 'What’s new in my newsletters?'],
 ];
 
 type SpeechCtor = new () => {
@@ -153,10 +153,10 @@ export function Assistant() {
           )}
         </p>
         <div className="fa-chips">
-          {CHIPS.map((c) => (
-            <button key={c} className="glass" onClick={() => void ask(c)}>
+          {CHIPS.map(([label, q]) => (
+            <button key={label} className="glass" onClick={() => void ask(q)}>
               <AiMark size={16} />
-              {c}
+              {label}
             </button>
           ))}
         </div>
