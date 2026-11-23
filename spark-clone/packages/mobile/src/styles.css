@@ -170,16 +170,30 @@ a { color: var(--accent); text-decoration: none; }
   border: 1px solid var(--glass-rim); box-shadow: var(--glass-shadow); }
 .glass-flat { background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--glass-rim); }
 
-.tabbar { position: fixed; left: 14px; right: 86px; bottom: calc(14px + var(--safe-bottom)); height: 62px; border-radius: 31px;
-  display: flex; align-items: center; justify-content: space-around; padding: 0 6px; z-index: 40; }
-.tab { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; color: var(--muted);
-  flex: 1; max-width: 76px; padding: 6px 0; border-radius: 24px; position: relative; }
-.tab.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.tab .dot { position: absolute; top: 5px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
-.fab { position: fixed; right: 14px; bottom: calc(14px + var(--safe-bottom)); width: 62px; height: 62px; border-radius: 31px;
-  display: grid; place-items: center; z-index: 40; color: var(--on-accent); background: var(--accent);
-  box-shadow: 0 10px 28px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
-.fab:active, .btn:active, .chip:active, .tile:active { transform: scale(.96); }
+/* Bottom navigation: glass handle that unfolds into a dock (TabBar in ui.tsx). */
+.dock-handle { position: fixed; left: 50%; bottom: calc(14px + var(--safe-bottom)); transform: translateX(-50%); z-index: 40;
+  width: 96px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center; gap: 7px;
+  touch-action: none; transition: transform .45s cubic-bezier(.34,1.4,.5,1), opacity .25s; }
+.dock-handle i { width: 34px; height: 4px; border-radius: 2px; background: var(--muted); opacity: .7; }
+.dock-handle .hd { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.dock-handle.hide { transform: translateX(-50%) translateY(10px) scale(.9); opacity: 0; pointer-events: none; }
+.dock-catch { position: fixed; inset: 0; z-index: 41; background: rgb(20 20 30 / .14); opacity: 0; pointer-events: none; transition: opacity .3s; }
+.dark .dock-catch { background: rgb(0 0 0 / .3); }
+.dock-catch.on { opacity: 1; pointer-events: auto; }
+.dock { position: fixed; left: 14px; right: 14px; bottom: calc(14px + var(--safe-bottom)); z-index: 42; border-radius: 28px; padding: 9px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; touch-action: none;
+  transform: translateY(40px) scale(.6, .4); transform-origin: 50% 100%; opacity: 0; pointer-events: none;
+  transition: transform .5s cubic-bezier(.34,1.4,.5,1), opacity .22s; }
+.dock.open { transform: none; opacity: 1; pointer-events: auto; }
+.dock button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0 8px; border-radius: 19px;
+  font-size: 11px; font-weight: 600; color: var(--muted); position: relative; transform: translateY(14px); opacity: 0;
+  transition: transform .5s cubic-bezier(.34,1.4,.5,1) calc(var(--i) * 45ms + 60ms), opacity .25s calc(var(--i) * 45ms + 60ms), background .2s; }
+.dock.open button { transform: none; opacity: 1; }
+.dock button.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.dock button.act { background: var(--accent); color: var(--on-accent); }
+.dock button:active { transform: scale(.94); }
+.dock .dot { position: absolute; top: 7px; right: calc(50% - 16px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+.btn:active, .chip:active, .tile:active { transform: scale(.96); }
 
 .ai-mark { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: #fff;
   background: linear-gradient(135deg, var(--aqua), var(--azure) 55%, var(--violet)); flex: none; }

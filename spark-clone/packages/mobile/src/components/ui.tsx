@@ -1,6 +1,6 @@
 import type { Address } from '@app/shared';
 import { Calendar, Home, Inbox, PenLine, Plus, Search, Sparkles, X } from 'lucide-react';
-import { type ReactNode, useEffect } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import { avatarColor, initials } from '../lib/format';
 import { go } from '../lib/router';
 import { useStore } from '../lib/store';
@@ -45,36 +45,116 @@ export function AiMark({ size = 26 }: { size?: number }) {
 
 export type Tab = 'home' | 'inbox' | 'calendar' | 'search';
 
+/**
+ * Bottom navigation: a small glass handle where the home bar sits. Tap it or
+ * drag it up and a glass dock unfolds with Home, Inbox, Calendar, Search and
+ * the screen's main action (Write, or New event on Calendar). Tapping outside,
+ * Esc, or pulling the dock down folds it away.
+ */
 export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'event' }) {
   const unread = useStore((s) => s.threads.some((t) => t.unreadCount > 0 && t.priority));
+  const [open, setOpen] = useState(false);
+  const drag = useRef<{ y: number; moved: boolean } | null>(null);
+  const handleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [open]);
   const tabs: [Tab, string, typeof Home][] = [
     ['home', 'Home', Home],
     ['inbox', 'Inbox', Inbox],
     ['calendar', 'Calendar', Calendar],
     ['search', 'Search', Search],
   ];
+  const goTo = (path: string) => {
+    setOpen(false);
+    go(path);
+  };
+  const lift = (dy: number) => {
+    if (handleRef.current) handleRef.current.style.transform = dy ? `translateX(-50%) translateY(${dy}px)` : '';
+  };
   return (
     <>
-      <nav className="tabbar glass">
-        {tabs.map(([k, label, Icon]) => (
+      <div className={`dock-catch ${open ? 'on' : ''}`} onClick={() => setOpen(false)} />
+      <nav
+        className={`dock glass ${open ? 'open' : ''}`}
+        aria-label="Go to"
+        aria-hidden={!open}
+        onPointerDown={(e) => (drag.current = { y: e.clientY, moved: false })}
+        onPointerMove={(e) => {
+          if (drag.current && e.clientY - drag.current.y > 26) {
+            drag.current = null;
+            setOpen(false);
+          }
+        }}
+        onPointerUp={() => (drag.current = null)}
+      >
+        {tabs.map(([k, label, Icon], i) => (
           <button
             key={k}
-            className={`tab ${on === k ? 'on' : ''}`}
-            onClick={() => go(k)}
+            style={{ '--i': i } as CSSProperties}
+            className={on === k ? 'on' : ''}
+            tabIndex={open ? 0 : -1}
             aria-current={on === k}
+            onClick={() => goTo(k)}
           >
             <Icon size={23} strokeWidth={1.8} />
             {k === 'inbox' && on !== 'inbox' && unread && <span className="dot" />}
             <span>{label}</span>
           </button>
         ))}
+        <button
+          style={{ '--i': 4 } as CSSProperties}
+          className="act"
+          tabIndex={open ? 0 : -1}
+          onClick={() => goTo(fab === 'event' ? 'calendar?new=1' : 'compose')}
+        >
+          {fab === 'event' ? <Plus size={23} /> : <PenLine size={22} />}
+          <span>{fab === 'event' ? 'Event' : 'Write'}</span>
+        </button>
       </nav>
       <button
-        className="fab"
-        aria-label={fab === 'event' ? 'New event' : 'Compose'}
-        onClick={() => go(fab === 'event' ? 'calendar?new=1' : 'compose')}
+        ref={handleRef}
+        className={`dock-handle glass ${open ? 'hide' : ''}`}
+        aria-label="Open navigation"
+        aria-expanded={open}
+        onPointerDown={(e) => {
+          drag.current = { y: e.clientY, moved: false };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          const dy = Math.min(0, e.clientY - d.y);
+          if (dy < -6) d.moved = true;
+          lift(dy * 0.5);
+          if (dy < -28) {
+            drag.current = { y: Infinity, moved: true };
+            lift(0);
+            setOpen(true);
+          }
+        }}
+        onPointerUp={() => {
+          lift(0);
+          const d = drag.current;
+          drag.current = null;
+          if (d && !d.moved) setOpen(true);
+        }}
+        onPointerCancel={() => {
+          lift(0);
+          drag.current = null;
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
-        {fab === 'event' ? <Plus size={26} /> : <PenLine size={25} />}
+        <i />
+        {unread && on !== 'inbox' && <span className="hd" />}
       </button>
     </>
   );
