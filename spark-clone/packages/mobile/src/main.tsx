@@ -1,7 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { installScrollToTop } from './lib/scrollTop';
 import './styles.css';
+
+installScrollToTop();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
