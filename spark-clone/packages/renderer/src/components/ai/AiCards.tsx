@@ -39,6 +39,7 @@ function Card({
   madeAt,
   active,
   onOpen,
+  wholeCard,
   children,
 }: {
   kind: AiCardKind;
@@ -48,6 +49,8 @@ function Card({
   madeAt: number;
   active?: boolean;
   onOpen?: () => void;
+  /** Clicking anywhere on the card (outside its own buttons) opens it. */
+  wholeCard?: boolean;
   children: ReactNode;
 }) {
   const run = useAiCards((s) => s.run);
@@ -55,8 +58,16 @@ function Card({
   const running = useAiCards((s) => !!s.running[kind]);
   return (
     <div
+      onClick={
+        wholeCard && onOpen
+          ? (e) => {
+              if (!(e.target as HTMLElement).closest('button')) onOpen();
+            }
+          : undefined
+      }
       className={cn(
         'ai-glass group relative flex min-w-0 flex-1 flex-col rounded-[18px] p-4',
+        wholeCard && onOpen && 'cursor-pointer',
         active && 'ring-accent/40 ring-2',
       )}
     >
@@ -154,11 +165,18 @@ const BUCKET_LEAD: Record<TaskBucket, string> = {
   none: 'no date',
 };
 
-function openThread(threadId: string) {
+/** The inbox narrowed to the threads on the Needs reply card, in the card's
+ *  (urgency) order. Opening one line selects that email; opening the card
+ *  previews the most urgent one without marking it read. */
+function openNeedsReply(ids: string[], threadId?: string) {
   const ui = useUi.getState();
   ui.setAccountFilter(undefined);
   ui.setView('inbox');
-  ui.selectThread(threadId);
+  ui.setThreadFilter({ label: 'Needs reply', ids });
+  const pick = threadId ?? ids[0];
+  if (pick) ui.selectThread(pick, !threadId);
+  // Land keyboard focus on the list so ↑/↓ walk the filtered emails at once.
+  requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-thread-list]')?.focus());
 }
 
 /** Today's AI cards under the Home timeline: only the ones the user asked for.
@@ -345,6 +363,7 @@ export function AiCardsRow({
     }
     if (kind === 'reply') {
       const { madeAt, data } = cards.reply!;
+      const ids = data.items.map((r) => r.threadId);
       return (
         <Card
           key={kind}
@@ -355,9 +374,15 @@ export function AiCardsRow({
             data.items.length ? `${data.items.length} waiting on you` : 'You’re all caught up'
           }
           madeAt={madeAt}
+          onOpen={data.items.length ? () => openNeedsReply(ids) : undefined}
+          wholeCard
         >
           {data.items.slice(0, 3).map((r) => (
-            <Line key={r.threadId} lead={ago(r.at, now)} onClick={() => openThread(r.threadId)}>
+            <Line
+              key={r.threadId}
+              lead={ago(r.at, now)}
+              onClick={() => openNeedsReply(ids, r.threadId)}
+            >
               {firstName(r.who)} · {r.ask}
             </Line>
           ))}

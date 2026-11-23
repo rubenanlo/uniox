@@ -39,6 +39,14 @@ export function navRowId(row: NavRow): string {
 
 export type { ComposerState } from '@app/shared';
 
+/** A named, ordered set of threads the inbox is narrowed to. */
+export interface ThreadFilter {
+  /** Chip text, e.g. "Needs reply". */
+  label: string;
+  /** Thread ids in display order. */
+  ids: string[];
+}
+
 interface UiState {
   view: MailView;
   accountFilter: string | undefined;
@@ -86,6 +94,12 @@ interface UiState {
   kanbanOpen: boolean;
   /** A bundle row was opened: show only this category as a dedicated list. */
   categoryFocus: Category | null;
+  /**
+   * The inbox narrowed to a hand-picked set of threads (e.g. the Home "Needs
+   * reply" card), shown in the given order with a clearable chip. Leaving the
+   * inbox drops it.
+   */
+  threadFilter: ThreadFilter | null;
   /** open schedule picker for a thread action */
   picker: { kind: 'snooze' | 'remind'; thread: ThreadSummary } | null;
   /**
@@ -143,6 +157,7 @@ interface UiState {
   setHomeBaseline(ts: number): void;
   setKanbanOpen(open: boolean): void;
   setCategoryFocus(category: Category | null): void;
+  setThreadFilter(filter: ThreadFilter | null): void;
   openPicker(picker: { kind: 'snooze' | 'remind'; thread: ThreadSummary }): void;
   closePicker(): void;
   setVisibleRows(rows: NavRow[]): void;
@@ -184,6 +199,7 @@ export const useUi = create<UiState>((set) => ({
   homeBaseline: Date.now(),
   kanbanOpen: false,
   categoryFocus: null,
+  threadFilter: null,
   picker: null,
   selectionAuto: false,
   userName: null,
@@ -202,6 +218,7 @@ export const useUi = create<UiState>((set) => ({
       selectedThreadId: null,
       hoveredThreadId: null,
       categoryFocus: null,
+      threadFilter: null,
       kanbanOpen: false,
       ...NO_MULTI,
     }),
@@ -267,6 +284,14 @@ export const useUi = create<UiState>((set) => ({
       // a selected bundle row does not exist inside (or after leaving) the dedicated list
       selectedThreadId: s.selectedThreadId?.startsWith('bundle:') ? null : s.selectedThreadId,
     })),
+  setThreadFilter: (threadFilter) =>
+    set((s) => ({
+      threadFilter,
+      categoryFocus: null,
+      hoveredThreadId: null,
+      ...NO_MULTI,
+      selectedThreadId: s.selectedThreadId?.startsWith('bundle:') ? null : s.selectedThreadId,
+    })),
   openPicker: (picker) => set({ picker }),
   closePicker: () => set({ picker: null }),
   setVisibleRows: (visibleRows) =>
@@ -281,7 +306,13 @@ export const useUi = create<UiState>((set) => ({
       };
     }),
   setMultiSelected: (multiSelected, selectedThreadId, selectionAnchor) =>
-    set({ multiSelected, selectedThreadId, selectionAnchor, selectionAuto: true, hoveredThreadId: null }),
+    set({
+      multiSelected,
+      selectedThreadId,
+      selectionAnchor,
+      selectionAuto: true,
+      hoveredThreadId: null,
+    }),
   clearMultiSelect: () => set(NO_MULTI),
 }));
 
