@@ -1,38 +1,365 @@
 /* Design E conversation page (te-*) */
-.te-page { min-height: 100%; }
-.screen.te { padding-left: 16px; padding-right: 16px; overflow-x: hidden; padding-bottom: calc(150px + var(--safe-bottom)); }
-.te-top { display: flex; align-items: center; gap: 4px; padding: 8px 0 0; }
-.te-top .eyebrow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.te-ic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; }
-.te-top .ib-orb { width: 36px; height: 36px; margin-left: 4px; }
-.te-head { display: flex; gap: 14px; align-items: center; padding: 16px 4px 4px; }
-.te-head .ring { position: relative; width: 62px; height: 62px; flex: none; display: grid; place-items: center; }
-.te-head .ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
-.te-head h2 { margin: 0; font-size: 21px; letter-spacing: -.015em; line-height: 1.2; overflow-wrap: anywhere; }
-.te-head p { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
-.te-gist { margin: 14px 0 6px; border-radius: 22px; padding: 14px 16px; }
-.te-gist .lb { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.te-gist .tx { margin-top: 8px; font-size: 18px; line-height: 1.42; letter-spacing: -.01em; }
-.te-gist .tx b { font-weight: 650; }
-.te-slots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
-.te-slots > span { display: inline-flex; align-items: center; gap: 4px; margin-right: 2px; }
-.te-slots button { padding: 5px 10px; border-radius: 99px; font-size: 12.5px; font-weight: 600; color: var(--accent);
-  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent); }
-.te-msgs { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
-.te-fold { align-self: center; margin: 10px 0 2px; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 7px 14px; border-radius: 99px; border: 1px solid var(--hair); }
-.te-day { text-align: center; font: 600 10.5px/1 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: .14em; color: var(--faint); text-transform: uppercase; margin: 10px 0 2px; }
-.te-quick { display: flex; gap: 8px; overflow-x: auto; padding: 14px 0 2px; scrollbar-width: none; }
-.te-quick button { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px 8px 9px; border-radius: 99px; font-size: 13.5px; font-weight: 600;
-  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent); color: var(--accent); background: color-mix(in oklch, var(--accent) 8%, var(--surface)); }
+.te-page {
+  min-height: 100%;
+}
+.screen.te {
+  padding-left: 16px;
+  padding-right: 16px;
+  overflow-x: hidden;
+  padding-bottom: calc(16px + var(--safe-bottom));
+}
+.te-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0 0;
+}
+.te-top .eyebrow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.te-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  flex: none;
+}
+.te-top .ib-orb {
+  width: 36px;
+  height: 36px;
+  margin-left: 4px;
+}
+.te-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 4px 4px;
+}
+.te-head .ring {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.te-head .ring svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.te-head h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.te-head p {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.te-gist {
+  margin: 14px 0 6px;
+  border-radius: 22px;
+  padding: 14px 16px;
+}
+.te-gist .lb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.te-gist .tx {
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
+}
+.te-gist .tx b {
+  font-weight: 650;
+}
+.te-slots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.te-slots > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+.te-slots button {
+  padding: 5px 10px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+}
+.te-msgs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+}
+.te-fold {
+  align-self: center;
+  margin: 10px 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 7px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--hair);
+}
+.te-day {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+  margin: 8px 0 0;
+}
+.te-day i {
+  flex: 1;
+  height: 1px;
+  background: var(--hair);
+}
+.te-quick {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 14px 0 2px;
+  scrollbar-width: none;
+}
+.te-quick button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px 8px 9px;
+  border-radius: 99px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+  color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+}
 /* Older messages: one line each until tapped */
-.te-line { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 8px 12px 8px 8px; border-radius: 16px;
-  background: color-mix(in srgb, var(--surface) 55%, transparent); border: 1px solid var(--hair); font-size: 14px; }
-.te-line b { flex: none; font-weight: 650; }
-.te-line span { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.te-line time { flex: none; font-size: 12px; color: var(--faint); }
+.te-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px 8px 8px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  border: 1px solid var(--hair);
+  font-size: 14px;
+}
+.te-line b {
+  flex: none;
+  font-weight: 650;
+}
+.te-line span {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.te-line time {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+}
 /* Forwarded / quoted history folded under a message */
-.te-qbtn { display: flex; width: fit-content; align-items: center; gap: 5px; margin-top: 10px; padding: 5px 11px; border-radius: 99px; font-size: 12.5px; font-weight: 600;
-  color: var(--muted); border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent); }
-.bubble-out .te-qbtn { color: inherit; border-color: color-mix(in srgb, currentColor 35%, transparent); }
-.te-quoted { margin-top: 10px; padding-left: 10px; border-left: 2px solid color-mix(in oklch, var(--ink) 14%, transparent); color: var(--muted); font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.bubble-out .te-quoted { color: inherit; opacity: .85; border-left-color: color-mix(in srgb, currentColor 40%, transparent); }
+.te-qbtn {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 5px 11px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid color-mix(in oklch, var(--ink) 12%, transparent);
+}
+.bubble-out .te-qbtn {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+.te-quoted {
+  margin-top: 10px;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in oklch, var(--ink) 14%, transparent);
+  color: var(--muted);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bubble-out .te-quoted {
+  color: inherit;
+  opacity: 0.85;
+  border-left-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+/* Chat bubbles, desktop chat look: meta line over a bubble, tap to fold */
+.te-msgs {
+  gap: 14px;
+}
+.te-msg {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.te-msg > .av {
+  margin-top: 20px;
+  flex: none;
+}
+.te-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.te-msg.out {
+  justify-content: flex-end;
+}
+.te-msg.out .te-col {
+  flex: 0 1 auto;
+  max-width: 82%;
+  align-items: flex-end;
+}
+.te-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--faint);
+  padding: 0 4px;
+}
+.te-meta b {
+  color: var(--muted);
+  font-weight: 600;
+}
+.te-meta .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.te-foldbtn {
+  margin-left: 6px;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.te-bubble {
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 13px;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  background: var(--surface);
+  border-radius: 6px 17px 17px 17px;
+  box-shadow: 0 1px 2px rgb(20 30 70 / 0.06);
+  -webkit-tap-highlight-color: transparent;
+}
+.dark .te-bubble {
+  background: rgb(255 255 255 / 0.07);
+  box-shadow: none;
+}
+.te-msg.out .te-bubble {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-radius: 17px 17px 6px 17px;
+  box-shadow: none;
+  font-size: 14.5px;
+}
+.te-bubble.shut {
+  width: 100%;
+}
+.te-msg.out .te-bubble.shut {
+  width: auto;
+  max-width: 100%;
+}
+.te-pv {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.te-pv > span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.te-pv svg {
+  flex: none;
+  color: var(--faint);
+}
+.te-msg.out .te-qbtn {
+  color: inherit;
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+}
+/* Reply field at the end of the conversation, not floating over it */
+.te-reply {
+  margin: 14px -4px 0;
+  padding: 8px 8px 6px 14px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--hair);
+  box-shadow: 0 8px 24px -14px rgb(0 0 0 / 0.35);
+}
+.dark .te-reply {
+  background: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.1);
+}
+.te-reply textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.4;
+  max-height: 140px;
+  background: transparent;
+}
+.te-reply .send {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+}
+.te-reply > .row-flex.muted {
+  gap: 16px;
+  padding: 2px 0;
+}
