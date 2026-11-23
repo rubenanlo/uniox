@@ -181,6 +181,10 @@ function MailView() {
         s.setSearchQuery(''); // close the committed search, back to the list as it was
         return;
       }
+      if (s.threadFilter) {
+        s.setThreadFilter(null); // back out of the filtered list (Home's Needs reply) to the inbox
+        return;
+      }
       if (s.categoryFocus) {
         s.setCategoryFocus(null); // back out of the category drill-in to the inbox
         return;

@@ -18,6 +18,7 @@ import {
   Plus,
   Tags,
   Trash2,
+  X,
   Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -50,6 +51,7 @@ import {
   useUi,
   type ListLayout,
   type NavRow,
+  type ThreadFilter,
 } from '../../state/store';
 import { Keycaps } from '../ui/Keycap';
 import { Tip } from '../ui/Tip';
@@ -219,6 +221,16 @@ function buildSmartItems(
 }
 
 /** The dedicated list behind a bundle row: pure chronology + date sections. */
+/** A hand-picked filter keeps its own order (the Needs reply card ranks by
+ *  urgency), so there are no date sections to reshuffle it. */
+function buildFilterItems(threads: ThreadSummary[], ids: string[]): Item[] {
+  const byId = new Map(threads.map((t) => [t.id, t]));
+  return ids.flatMap((id) => {
+    const thread = byId.get(id);
+    return thread ? [{ kind: 'thread' as const, thread }] : [];
+  });
+}
+
 function buildFocusItems(threads: ThreadSummary[]): Item[] {
   return withDateSections(
     [...threads]
@@ -438,6 +450,38 @@ function FocusHeader({ category, threads }: { category: Category; threads: Threa
       <span className="text-[12.5px] font-bold">{meta?.label ?? category}</span>
       <span className="text-ink-faint text-[11px] tabular-nums">{threads.length}</span>
       <CardActions threads={threads} />
+    </div>
+  );
+}
+
+/** Shown while the inbox is narrowed to a hand-picked set (Home's Needs reply
+ *  card). The chip's × (or Esc, or the Inbox arrow) clears it. */
+function FilterHeader({ filter, count }: { filter: ThreadFilter; count: number }) {
+  const clear = () => useUi.getState().setThreadFilter(null);
+  return (
+    <div
+      data-focus-header
+      className="border-hairline flex shrink-0 items-center gap-2 border-b px-2 py-1.5"
+    >
+      <button
+        onClick={clear}
+        className="text-ink-muted hover:text-ink flex items-center gap-1 rounded-md px-1.5 py-1 text-[12px]"
+        title="Back to Inbox — Esc"
+      >
+        <ArrowLeft size={13} /> Inbox
+      </button>
+      <span className="border-accent/35 bg-accent/10 text-accent flex h-6 items-center gap-1.5 rounded-full border pr-1 pl-2.5 text-[12px] font-medium">
+        {filter.label}
+        <span className="tabular-nums opacity-70">{count}</span>
+        <button
+          onClick={clear}
+          title="Clear filter — Esc"
+          aria-label={`Clear ${filter.label} filter`}
+          className="hover:bg-accent/15 flex h-4.5 w-4.5 items-center justify-center rounded-full"
+        >
+          <X size={11} />
+        </button>
+      </span>
     </div>
   );
 }
@@ -1102,6 +1146,7 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
   const searchQuery = useUi((s) => s.searchQuery);
   const categoryFocus = useUi((s) => s.categoryFocus);
   const setCategoryFocus = useUi((s) => s.setCategoryFocus);
+  const threadFilter = useUi((s) => s.threadFilter);
   const split = useUi((s) => s.split);
   const parentRef = useRef<HTMLDivElement>(null);
   const priorityEmails = useUi((s) => s.priorityEmails);
@@ -1123,7 +1168,8 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
   const heldUnreadId = heldRef.current;
   // Priority + unread-first sections apply to the inbox, not search results.
   const inboxSections = view === 'inbox' && !searchQuery.trim();
-  const focus = smartGrouping ? categoryFocus : null;
+  const filter = inboxSections ? threadFilter : null;
+  const focus = smartGrouping && !filter ? categoryFocus : null;
 
   const prio = useMemo(() => new Set(priorityEmails.map((e) => e.toLowerCase())), [priorityEmails]);
   // A from: search labels each hit with the sender that matched, instead of
@@ -1164,12 +1210,15 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
   );
   const items = useMemo(
     () =>
-      focus
-        ? buildFocusItems(focusThreads)
-        : buildItems(shownThreads, listLayout, smartGrouping, prio, inboxSections, heldUnreadId, {
-            expanded: priorityExpanded,
-          }),
+      filter
+        ? buildFilterItems(shownThreads, filter.ids)
+        : focus
+          ? buildFocusItems(focusThreads)
+          : buildItems(shownThreads, listLayout, smartGrouping, prio, inboxSections, heldUnreadId, {
+              expanded: priorityExpanded,
+            }),
     [
+      filter,
       focus,
       focusThreads,
       shownThreads,
@@ -1219,7 +1268,7 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
   // Jump back to the top whenever we enter or leave a dedicated list.
   useEffect(() => {
     virtualizer.scrollToIndex(0);
-  }, [focus, virtualizer]);
+  }, [focus, filter, virtualizer]);
 
   // Priority group toggling: a soft settle animation both ways. Expanding
   // keeps you on the email you were on (the selection effect below scrolls it
@@ -1340,7 +1389,19 @@ export function ThreadList({ threads }: { threads: ThreadSummary[] }) {
 
   return (
     <div className="flex h-full flex-col">
+      {filter && <FilterHeader filter={filter} count={items.length} />}
       {focus && <FocusHeader category={focus} threads={focusThreads} />}
+      {filter && !items.length && (
+        <div className="text-ink-muted flex flex-col items-center gap-2 px-6 pt-16 text-center text-[12.5px]">
+          <p>Nothing left here. You’re all caught up.</p>
+          <button
+            onClick={() => useUi.getState().setThreadFilter(null)}
+            className="text-accent hover:underline"
+          >
+            Show the whole inbox
+          </button>
+        </div>
+      )}
       <div
         ref={parentRef}
         data-thread-list
