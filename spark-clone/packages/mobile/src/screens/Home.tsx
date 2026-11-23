@@ -17,7 +17,6 @@ import {
   firstName,
   greeting,
   startOfDay,
-  workdayPercent,
 } from "../lib/format";
 import { go } from "../lib/router";
 import { useStore } from "../lib/store";
@@ -41,14 +40,7 @@ const CHAT_CHIPS = [
 const askTo = (q: string) => `assistant?q=${encodeURIComponent(q)}`;
 const NEWS_Q = "assistant?q=What%20is%20new%20in%20my%20newsletters%3F";
 
-/* Horizon geometry: each day spans 7:00–20:00 on the line. */
-const PX = 52;
-const H0 = 7;
-const H1 = 20;
-const GAP = 50;
-const DAY_W = (H1 - H0) * PX;
 const DAY_MS = 86_400_000;
-const LEAD = 110;
 
 const reduceMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -112,7 +104,7 @@ function usePullToSearch(enabled: boolean) {
     const down = (e: PointerEvent) => {
       if (e.button !== 0 || g) return;
       const t = e.target as Element;
-      if (t.closest(".hz-line, .hz-cards, .hz-peek")) return;
+      if (t.closest(".hz-cards")) return;
       g = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null };
     };
     const move = (e: PointerEvent) => {
@@ -175,7 +167,6 @@ export function Home() {
   const now = useMemo(() => new Date(nowMs), [nowMs]);
   const [events, setEvents] = useState<MobileEvent[]>([]);
   const [fanned, setFanned] = useState(false);
-  const [sel, setSel] = useState<string | null>(null);
   const active = useActive();
   const { rootRef, bubbleRef } = usePullToSearch(!fanned);
 
@@ -225,35 +216,11 @@ export function Home() {
   const name = /\s/.test(full)
     ? firstName({ email: "", name: full })
     : (me?.email.split(/[.@]/)[0] ?? "there");
-  const pct = workdayPercent(now);
 
-  // The line: today on the right, earlier days with priority mail to its left
-  // (the same four days the old timeline showed).
-  const recent = priority.filter((t) => t.lastMessageAt > nowMs - 4 * DAY_MS);
-  const days = [
-    ...new Set([...recent.map((t) => startOfDay(t.lastMessageAt)), today0]),
-  ].sort((a, b) => a - b);
-  const dayX = (day: number) => LEAD + days.indexOf(day) * (DAY_W + GAP);
-  const xOf = (ms: number) =>
-    dayX(startOfDay(ms)) + (Math.min(H1, Math.max(H0, hourOf(ms))) - H0) * PX;
-  const trackW = dayX(today0) + DAY_W + 60;
-  const next = todays.find((e) => e.startMs > nowMs);
-  const selThread = recent.find((t) => t.id === sel) ?? null;
-
-  const lineRef = useRef<HTMLDivElement>(null);
   const briefRef = useRef<HTMLButtonElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
   const [slide, setSlide] = useState(0);
   const [closing, setClosing] = useState(false);
-
-  // Open on "now", once the line has its width.
-  const scrolled = useRef(false);
-  useLayoutEffect(() => {
-    const el = lineRef.current;
-    if (!el || scrolled.current || !days.length) return;
-    el.scrollLeft = xOf(nowMs) - el.clientWidth * 0.62;
-    scrolled.current = true;
-  });
 
   // The pill's width follows its label (both labels sit in one grid cell).
   const sizeBrief = (fold: boolean) => {
@@ -355,7 +322,6 @@ export function Home() {
   }, [fanned]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openBrief = () => {
-    setSel(null);
     setFanned(true);
     setSlide(0);
     morph(true);
@@ -393,11 +359,6 @@ export function Home() {
       },
       360 + cards.length * 40,
     );
-  };
-
-  const peek = (id: string) => {
-    if (fanned) foldBrief();
-    setSel((s) => (s === id ? null : id));
   };
 
   const row = (
@@ -510,7 +471,7 @@ export function Home() {
           e.preventDefault();
           foldBrief();
         }}
-        className={`hz ${fanned ? "fanned" : ""} ${selThread ? "peeking" : ""} ${active ? "" : "hz-idle"}`}
+        className={`hz ${fanned ? "fanned" : ""} ${active ? "" : "hz-idle"}`}
       >
         <div className="hz-sky" style={skyPos}>
           <i />
@@ -630,112 +591,8 @@ export function Home() {
             </span>
           </span>
         </button>
-
-        <div
-          className="hz-line"
-          ref={lineRef}
-          aria-label="Priority mail across the last days"
-        >
-          <div className="hz-track" style={{ width: trackW }}>
-            <span className="hz-end">
-              That’s
-              <br />
-              everything
-            </span>
-            {days.map((d) => (
-              <span key={d}>
-                <span
-                  className="hz-base"
-                  style={{ left: dayX(d), width: DAY_W }}
-                />
-                <span className="hz-day" style={{ left: dayX(d) }}>
-                  {dayLabel(d, nowMs)}
-                </span>
-                {[9, 12, 15, 18].map((h) => (
-                  <span
-                    key={h}
-                    className="hz-tick"
-                    style={{ left: dayX(d) + (h - H0) * PX }}
-                  >
-                    {h}:00
-                  </span>
-                ))}
-              </span>
-            ))}
-            <span
-              className="hz-lit"
-              style={{
-                left: dayX(today0) + (9 - H0) * PX,
-                width: Math.max(0, Math.min(18, hourOf(nowMs)) - 9) * PX,
-              }}
-            />
-            {todays.map((e) => (
-              <button
-                key={e.id}
-                className={`hz-meet ${e.endMs <= nowMs ? "past" : ""}`}
-                style={{
-                  left: xOf(e.startMs),
-                  width: Math.max(
-                    8,
-                    ((e.endMs - e.startMs) / 3_600_000) * PX - 3,
-                  ),
-                }}
-                aria-label={`${e.title}, ${clock(e.startMs)}`}
-                onClick={() => go(`calendar?event=${encodeURIComponent(e.id)}`)}
-              >
-                {e === next && (
-                  <span>
-                    {clock(e.startMs)} {e.title}
-                  </span>
-                )}
-              </button>
-            ))}
-            {recent.map((t) => (
-              <button
-                key={t.id}
-                className={`hz-pin ${t.unreadCount > 0 ? "unread" : ""} ${sel === t.id ? "sel" : ""}`}
-                style={{ left: xOf(t.lastMessageAt) }}
-                aria-label={`${displayName(t.lastFrom)}: ${t.subject}`}
-                onClick={() => peek(t.id)}
-              >
-                <i />
-              </button>
-            ))}
-            <span className="hz-now" style={{ left: xOf(nowMs) }}>
-              <span>
-                Now · {clock(nowMs)} · {pct}%
-              </span>
-            </span>
-          </div>
-        </div>
-        <div className="hz-hint">
-          Tap a dot to peek · swipe the line to go back in time
-        </div>
       </div>
 
-      <button
-        className={`hz-peek ${selThread ? "on" : ""}`}
-        aria-hidden={!selThread}
-        tabIndex={selThread ? 0 : -1}
-        onClick={() =>
-          selThread && go(`thread/${encodeURIComponent(selThread.id)}`)
-        }
-      >
-        {selThread && (
-          <>
-            <Avatar who={selThread.lastFrom} size={36} />
-            <span className="tx">
-              <b>{displayName(selThread.lastFrom)}</b>
-              <span>{selThread.subject}</span>
-              <em>
-                {dayLabel(selThread.lastMessageAt, nowMs)} ·{" "}
-                {clock(selThread.lastMessageAt)} · tap to open
-              </em>
-            </span>
-            <ChevronRight size={16} color="var(--faint)" />
-          </>
-        )}
-      </button>
       <div className="hz-pull glass" ref={bubbleRef} aria-hidden>
         <Search size={20} />
       </div>
