@@ -45,6 +45,47 @@ export function inlineDataImages(html: string): { html: string; images: InlineIm
 
 const fmt = (a: Address) => (a.name ? `"${a.name.replace(/"/g, '')}" <${a.email}>` : a.email);
 
+const REPLY_PREFIX = /^\s*((re|aw|sv|antw)\s*:\s*)+/i;
+
+/**
+ * In-Reply-To / References for an edited draft: the stored draft's own
+ * headers, or (for drafts saved before those were kept) the newest real
+ * message of the account whose subject the "Re:" draft answers.
+ */
+export function draftThreading(
+  db: MailDb,
+  draftMessageId: string,
+  accountId: string,
+  subject: string,
+): { inReplyTo: string; references: string } | null {
+  const row = db.raw
+    .prepare(`SELECT in_reply_to, refs_json FROM messages WHERE id = ?`)
+    .get(draftMessageId) as { in_reply_to: string | null; refs_json: string } | undefined;
+  if (row?.in_reply_to) {
+    const refs: string[] = JSON.parse(row.refs_json || '[]');
+    return {
+      inReplyTo: row.in_reply_to,
+      references: (refs.length ? refs : [row.in_reply_to]).join(' '),
+    };
+  }
+  if (!REPLY_PREFIX.test(subject)) return null;
+  const base = subject.replace(REPLY_PREFIX, '').trim();
+  if (!base) return null;
+  const candidates = db.raw
+    .prepare(
+      `SELECT m.message_id_hdr, m.refs_json, m.subject FROM messages m
+         JOIN folders f ON f.id = m.folder_id
+        WHERE m.account_id = ? AND m.draft = 0 AND coalesce(m.message_id_hdr, '') != ''
+          AND f.role NOT IN ('trash', 'spam') AND instr(m.subject, ?) > 0
+        ORDER BY m.date DESC LIMIT 20`,
+    )
+    .all(accountId, base) as { message_id_hdr: string; refs_json: string; subject: string }[];
+  const hit = candidates.find((c) => c.subject.replace(REPLY_PREFIX, '').trim() === base);
+  if (!hit) return null;
+  const prior: string[] = JSON.parse(hit.refs_json || '[]');
+  return { inReplyTo: hit.message_id_hdr, references: [...prior, hit.message_id_hdr].join(' ') };
+}
+
 export async function composeRaw(
   db: MailDb,
   account: Account,
@@ -64,6 +105,13 @@ export async function composeRaw(
       const prior: string[] = JSON.parse(hdr.refs_json || '[]');
       references = [...prior, hdr.message_id_hdr].join(' ');
     }
+  } else if (draft.deleteDraftMessageId) {
+    // An edited draft has no reply target of its own: carry over the stored
+    // draft's threading headers, or every re-save (and the final send) would
+    // split off into a conversation of its own.
+    const kept = draftThreading(db, draft.deleteDraftMessageId, draft.accountId, draft.subject);
+    inReplyTo = kept?.inReplyTo;
+    references = kept?.references;
   }
 
   const inline = inlineDataImages(draft.html);

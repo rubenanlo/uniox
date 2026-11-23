@@ -173,6 +173,26 @@ describe('threads and aggregates', () => {
     expect(db.getThreadMessagesForDisplay('t1')).toHaveLength(2);
   });
 
+  it('does not flag a thread as holding a draft once the draft is in Trash', () => {
+    const db = makeDb();
+    setup(db);
+    db.upsertFolder({ id: 'f-trash', accountId: 'acc1', path: 'Trash', role: 'trash', delimiter: '/' });
+    db.upsertFolder({ id: 'f-drafts', accountId: 'acc1', path: 'Drafts', role: 'drafts', delimiter: '/' });
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1', uid: 1, messageIdHdr: '<a@x>' }));
+    db.insertMessage(msg({ id: 'm-old', uid: 2, messageIdHdr: '<d@x>', folderId: 'f-trash', draft: true }));
+    db.refreshThreadAggregates('t1');
+    expect(db.listThreads({ view: 'inbox', limit: 10, offset: 0 })[0]!.hasDraft).toBe(false);
+
+    // A live draft in Drafts still shows, in the list and in the reader.
+    db.insertMessage(
+      msg({ id: 'm-live', uid: 3, messageIdHdr: '<e@x>', folderId: 'f-drafts', draft: true, date: 5000 }),
+    );
+    db.refreshThreadAggregates('t1');
+    expect(db.listThreads({ view: 'inbox', limit: 10, offset: 0 })[0]!.hasDraft).toBe(true);
+    expect(db.getThreadMessagesForDisplay('t1').map((m) => m.id)).toEqual(['m1', 'm-live']);
+  });
+
   it('keeps distinct messages that share no Message-ID', () => {
     const db = makeDb();
     setup(db);
