@@ -1,4 +1,4 @@
-import { Bell, ChevronRight, Search, X } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -210,6 +210,10 @@ export function Home() {
     .filter((e) => !e.allDay && !e.free && e.endMs > nowMs)
     .slice(0, 3);
   const unread = priority.filter((t) => t.unreadCount > 0).length;
+  // Same count as the Notifications screen's Unread tab.
+  const alerts = threads.filter(
+    (t) => t.unreadCount > 0 && t.category !== "promotions",
+  ).length;
   const full = accounts.find((a) => a.email === me?.email)?.displayName ?? "";
   const name = /\s/.test(full)
     ? firstName({ email: "", name: full })
@@ -493,6 +497,15 @@ export function Home() {
     <>
       <div
         ref={rootRef}
+        onClickCapture={(e) => {
+          // While the brief is open, a tap anywhere outside it only folds it.
+          if (!fanned) return;
+          const t = e.target as Element;
+          if (t.closest(".hz-cards, .hz-brief")) return;
+          e.stopPropagation();
+          e.preventDefault();
+          foldBrief();
+        }}
         className={`hz ${fanned ? "fanned" : ""} ${selThread ? "peeking" : ""} ${active ? "" : "hz-idle"}`}
       >
         <div className="hz-sky" style={skyPos}>
@@ -500,34 +513,9 @@ export function Home() {
           <i />
           <i />
         </div>
-        <div className="navbar" style={{ padding: "0 18px" }}>
-          <button
-            className="row-flex"
-            aria-label="Settings"
-            onClick={() => go("settings")}
-          >
-            <Avatar
-              who={{ email: me?.email ?? "me", name: me?.email }}
-              size={30}
-            />
-          </button>
-          <div className="row-flex">
-            <button
-              className="navbtn g"
-              aria-label="Notifications"
-              onClick={() => go("notifications")}
-            >
-              <Bell size={20} />
-            </button>
-            <button
-              className="navbtn g accent"
-              aria-label="Assistant"
-              onClick={() => go("assistant")}
-            >
-              <AiMark size={24} />
-            </button>
-          </div>
-        </div>
+        {/* No top bar: the name opens Settings, notifications join the
+            sentence, and Brief me is the only AI button. */}
+        <div className="hz-top" aria-hidden />
 
         <div className="hz-head">
           <div className="eyebrow">
@@ -538,7 +526,14 @@ export function Home() {
             })}
           </div>
           <div className="greet">
-            {greeting(now)}, <b>{name}</b>
+            {greeting(now)},{" "}
+            <button
+              className="hz-w hz-name"
+              aria-label={`${name}, open Settings`}
+              onClick={() => go("settings")}
+            >
+              {name}
+            </button>
           </div>
           <div className="sub">{workdayLine(now)}</div>
           <p className="hz-sent">
@@ -564,6 +559,21 @@ export function Home() {
               </button>
               .
             </span>
+            {alerts > 0 && (
+              <>
+                {" "}
+                You also have{" "}
+                <span className="hz-nb">
+                  <button
+                    className="hz-w hz-alert"
+                    onClick={() => go("notifications")}
+                  >
+                    {count(alerts, "notification", "notifications")}
+                  </button>
+                  .
+                </span>
+              </>
+            )}
           </p>
         </div>
 
@@ -582,13 +592,6 @@ export function Home() {
                     <div className="hd">
                       <AiMark />
                       <b>{TITLE[k]}</b>
-                      <button
-                        className="x"
-                        aria-label="Fold the brief"
-                        onClick={foldBrief}
-                      >
-                        <X size={17} />
-                      </button>
                     </div>
                     {cardBody(k)}
                     <span className="sheen" aria-hidden />
@@ -610,8 +613,8 @@ export function Home() {
         <button
           ref={briefRef}
           className="hz-brief glass"
-          aria-label={fanned ? "Fold the brief" : "Brief me"}
-          onClick={fanned ? foldBrief : openBrief}
+          aria-label={fanned ? "Ask the assistant" : "Brief me"}
+          onClick={fanned ? () => go("assistant") : openBrief}
         >
           <AiMark size={22} />
           <span className="hz-lbs">
@@ -619,7 +622,7 @@ export function Home() {
               Brief me
             </span>
             <span className={`hz-lb lb-fold ${fanned ? "in" : "down"}`}>
-              Fold the brief
+              Ask anything
             </span>
           </span>
         </button>

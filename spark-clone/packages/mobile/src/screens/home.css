@@ -4,7 +4,10 @@
 .hz { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden;
   padding-top: var(--safe-top); padding-bottom: calc(18px + var(--safe-bottom)); touch-action: pan-x; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 
-.hz-sky { position: absolute; inset: 0; pointer-events: none; opacity: .5; }
+/* The glow starts below the status bar so the clock and battery stay crisp. */
+.hz-sky { position: absolute; inset: 0; pointer-events: none; opacity: .5;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, transparent calc(var(--safe-top) + 24px), #000 calc(var(--safe-top) + 150px));
+  mask-image: linear-gradient(180deg, transparent 0, transparent calc(var(--safe-top) + 24px), #000 calc(var(--safe-top) + 150px)); }
 .dark .hz-sky { opacity: .3; }
 .hz-sky i { position: absolute; border-radius: 50%; filter: blur(60px); left: var(--sx); top: var(--sy);
   transform: translate(-50%, -50%); transition: left 1.4s cubic-bezier(.22,1,.36,1), top 1.4s cubic-bezier(.22,1,.36,1); }
@@ -16,7 +19,10 @@
 @keyframes hz-d3 { 50% { transform: translate(-36%, -46%); } }
 .hz-idle .hz-sky i { animation-play-state: paused; }
 
-.hz .navbar { position: relative; z-index: 3; }
+.hz-top { height: 48px; flex: none; }
+.hz-name { text-transform: capitalize; }
+/* A small red dot marks the notifications words. */
+.hz-alert::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 2px; background: var(--danger); }
 .hz-head { position: relative; z-index: 2; text-align: center; padding: 0 24px; flex: none;
   margin-top: 9vh; transition: margin-top .6s cubic-bezier(.34,1.4,.5,1); }
 .hz.fanned .hz-head { margin-top: 4px; }
@@ -49,7 +55,6 @@
 .hz-card { position: relative; overflow: hidden; flex: 0 0 min(300px, 80vw); scroll-snap-align: center; border-radius: 22px; padding: 14px 16px; }
 .hz-card .hd { display: flex; align-items: center; gap: 10px; }
 .hz-card .hd b { font-size: 15px; flex: 1; }
-.hz-card .x { color: var(--muted); padding: 4px; margin: -4px; display: grid; }
 .hz-row { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 12px; text-align: left; }
 .hz-row .bar { width: 4px; align-self: stretch; border-radius: 2px; flex: none; }
 .hz-row .tx { flex: 1; min-width: 0; }
