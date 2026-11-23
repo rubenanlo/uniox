@@ -1,5 +1,7 @@
 /* Uniox service worker: app-shell cache (offline launch) and Web Push. */
 const CACHE = 'uniox-shell-v1';
+// Holds the thread a tapped notification should open, until the app reads it.
+const OPEN = 'uniox-open';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -14,7 +16,9 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE && k !== OPEN).map((k) => caches.delete(k))),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -73,13 +77,23 @@ self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = new URL(e.notification.data?.url || './#/inbox', self.registration.scope).href;
   e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    (async () => {
+      // iOS often drops a message to a suspended app, or opens the start page
+      // instead of the URL; the app also reads this note when it comes forward.
+      const box = await caches.open(OPEN);
+      await box.put('./__open', new Response(JSON.stringify({ url, at: Date.now() })));
+      const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const win = list[0];
       if (win) {
         win.postMessage({ type: 'open', url });
-        return win.focus();
+        try {
+          await win.focus();
+        } catch {
+          /* focus can be refused; the note still opens the thread */
+        }
+        return;
       }
-      return self.clients.openWindow(url);
-    }),
+      await self.clients.openWindow(url);
+    })(),
   );
 });
