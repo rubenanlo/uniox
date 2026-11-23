@@ -725,7 +725,8 @@ export class MailDb {
     // bare name/email columns come from that sender's newest message.
     const spanning = this.stmt(
         `SELECT
-           (SELECT max(draft) FROM messages WHERE thread_id = ?) AS has_draft,
+           (SELECT max(m.draft) FROM messages m JOIN folders f ON f.id = m.folder_id
+             WHERE m.thread_id = ? AND f.role NOT IN ('trash', 'spam')) AS has_draft,
            (SELECT json_group_array(json_object('name', name, 'email', email))
               FROM (SELECT lower(json_extract(from_json, '$.email')) AS email,
                            coalesce(json_extract(from_json, '$.name'), '') AS name,
