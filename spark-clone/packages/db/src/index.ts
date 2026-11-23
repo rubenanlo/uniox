@@ -581,11 +581,17 @@ export class MailDb {
    * message multi-homed across INBOX + a label folder). Prefers the most
    * canonical folder copy so operations target a real location. Rows with no
    * Message-ID header can't be deduped and are each kept. For the reading pane.
+   *
+   * Messages whose only copies sit in Trash or Spam are left out while the
+   * thread still has live mail: a deleted (or superseded) draft is moved to
+   * Trash, where the copy no longer counts as a draft, so it used to show up
+   * in the conversation as if it had been sent. A thread that is wholly in Trash or
+   * Spam keeps every message, so it still reads normally from those views.
    */
   private canonicalRows(threadId: string): Row[] {
-    return this.stmt(
+    const rows = this.stmt(
         `SELECT m.* FROM (
-           SELECT m.*, ROW_NUMBER() OVER (
+           SELECT m.*, f.role AS folder_role, ROW_NUMBER() OVER (
              PARTITION BY CASE WHEN m.message_id_hdr IS NULL OR m.message_id_hdr = ''
                                THEN m.id ELSE m.message_id_hdr END
              ORDER BY (CASE f.role
@@ -599,6 +605,8 @@ export class MailDb {
          ORDER BY m.date ASC`,
       )
       .all(threadId) as Row[];
+    const binned = (r: Row) => r.folder_role === 'trash' || r.folder_role === 'spam';
+    return rows.some((r) => !binned(r)) ? rows.filter((r) => !binned(r)) : rows;
   }
 
   getThreadMessagesForDisplay(threadId: string): MessageMeta[] {

@@ -135,6 +135,44 @@ describe('threads and aggregates', () => {
     expect(t!.unreadCount).toBe(1);
   });
 
+  it('hides deleted drafts sitting in Trash from a live conversation', () => {
+    const db = makeDb();
+    setup(db);
+    db.upsertFolder({ id: 'f-trash', accountId: 'acc1', path: 'Trash', role: 'trash', delimiter: '/' });
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1', uid: 1, messageIdHdr: '<a@x>' }));
+    // A deleted draft, moved to Trash without its \\Draft flag: it read as sent.
+    db.insertMessage(
+      msg({
+        id: 'm-trashed',
+        uid: 2,
+        messageIdHdr: '<draft@x>',
+        folderId: 'f-trash',
+        from: { name: 'Alice', email: 'alice@dev.local' },
+        date: Date.now() + 1000,
+      }),
+    );
+    // A message with live copies elsewhere keeps showing even if one copy is binned.
+    db.insertMessage(msg({ id: 'm2-arch', uid: 3, messageIdHdr: '<b@x>', folderId: 'f-arch' }));
+    db.insertMessage(msg({ id: 'm2-trash', uid: 4, messageIdHdr: '<b@x>', folderId: 'f-trash' }));
+    db.refreshThreadAggregates('t1');
+
+    expect(db.getThreadMessagesForDisplay('t1').map((m) => m.id).sort()).toEqual(['m1', 'm2-arch']);
+    const [t] = db.listThreads({ view: 'inbox', limit: 10, offset: 0 });
+    expect(t!.messageCount).toBe(2);
+  });
+
+  it('keeps every message of a thread that is wholly in Trash', () => {
+    const db = makeDb();
+    setup(db);
+    db.upsertFolder({ id: 'f-trash', accountId: 'acc1', path: 'Trash', role: 'trash', delimiter: '/' });
+    db.createThread('t1', 'acc1', 'Hello');
+    db.insertMessage(msg({ id: 'm1', uid: 1, messageIdHdr: '<a@x>', folderId: 'f-trash' }));
+    db.insertMessage(msg({ id: 'm2', uid: 2, messageIdHdr: '<b@x>', folderId: 'f-trash' }));
+    db.refreshThreadAggregates('t1');
+    expect(db.getThreadMessagesForDisplay('t1')).toHaveLength(2);
+  });
+
   it('keeps distinct messages that share no Message-ID', () => {
     const db = makeDb();
     setup(db);
