@@ -223,9 +223,18 @@ a { color: var(--accent); text-decoration: none; }
 .chips::-webkit-scrollbar { display: none; }
 .swatch { width: 9px; height: 9px; border-radius: 5px; flex: none; }
 
-.trow { position: relative; overflow: hidden; }
-.trow-actions { position: absolute; inset: 0; display: flex; justify-content: space-between; color: #fff; font-size: 12px; font-weight: 600; }
-.trow-actions > div { display: flex; align-items: center; padding: 0 22px; gap: 6px; }
+.trow { position: relative; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Swipe actions: they grow with the finger like Mail; a long swipe lets Archive take the row. */
+.trow-acts, .trow-read { position: absolute; top: 0; bottom: 0; display: flex; overflow: hidden; color: #fff; }
+.trow-acts { right: 0; }
+.trow-acts button { color: #fff; display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; flex-grow: 0; flex-shrink: 0; transition: flex-basis .28s cubic-bezier(.2,1.1,.35,1); }
+.trow-snooze { background: #e8a33a; }
+.trow-archive { background: #34a853; }
+.trow-archive.armed { justify-content: flex-start; padding-left: 26px; }
+.trow-acts span, .trow-read span { display: flex; flex-direction: column; align-items: center; gap: 3px; transition: transform .2s cubic-bezier(.2,1.4,.4,1); }
+.trow-acts small, .trow-read small { font-size: 11.5px; font-weight: 600; letter-spacing: .01em; }
+.trow-read { left: 0; background: var(--accent); color: var(--on-accent); align-items: center; padding-left: 24px; }
+.trow-read span.pop { transform: scale(1.12); }
 .row { display: flex; gap: 12px; padding: 12px 18px; align-items: flex-start; position: relative; background: var(--app); touch-action: pan-y; }
 .trow + .trow .row::before, .row + .row::before { content: ''; position: absolute; top: 0; left: 70px; right: 0; border-top: 1px solid var(--hair); }
 .row .meta { flex: 1; min-width: 0; }
