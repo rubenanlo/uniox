@@ -192,7 +192,7 @@ const messages: Record<string, MobileMessage[]> = {
       'm4',
       't2',
       HELEN,
-      'Hi Ruben,\n\nSharing the revised freeze dates for the SDG Index 2027. We are pushing the data freeze to Thursday, December 4 so the regional teams have one more week on the new indicators.\n\nCould you confirm the country list by Tuesday? Kenya and Ghana are still pending their statistical office sign-off.\n\nBest,\nHelen',
+      'Hi Ruben,\n\nSharing the revised freeze dates for the SDG Index 2027. We are pushing the data freeze to Thursday, December 4 so the regional teams have one more week on the new indicators.\n\nCould you confirm the country list by Tuesday? Kenya and Ghana are still pending their statistical office sign-off.\n\nBest,\nHelen\n\n---------- Forwarded message ---------\nFrom: Data Team <data@unsdsn.org>\nDate: Mon, Nov 23, 2026 at 8:02 AM\nSubject: Freeze schedule\nTo: Helen Martin <helen@unsdsn.org>\n\nHi Helen,\n\nBelow is the full schedule for the regional reviews, the indicator checks and the final freeze. Each region has a named reviewer and a backup.\n\nWeek 1: Africa and the Middle East\nWeek 2: Asia and the Pacific\nWeek 3: Europe and Central Asia\nWeek 4: Latin America and the Caribbean\n\nThanks,\nThe Data Team',
       todayAt(9, 14, -9),
       false,
       true,

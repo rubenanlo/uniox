@@ -16,14 +16,14 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useEdgeBackAndPull } from '../lib/gestures';
 import type { FirstRead, MobileMessage, MobileThread } from '../data/types';
 import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
 import { tomorrowMorning } from '../components/ThreadRow';
 import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
-import { chatText, clock12, displayName, firstName, listTime, shortDate } from '../lib/format';
+import { clock12, displayName, firstName, listTime, shortDate, splitQuoted } from '../lib/format';
 import { cachedThread, cacheThread } from '../lib/offline';
 import { back, go } from '../lib/router';
 import { useStore } from '../lib/store';
@@ -462,7 +462,26 @@ function ChatMessage({
   showName: boolean;
   threadId: string;
 }) {
-  const text = chatText(m.text ?? m.snippet);
+  const { main, quoted } = splitQuoted(m.text ?? m.snippet);
+  // A bare forward has nothing above the history, so show the history itself.
+  const text = main || quoted;
+  const fold = main ? quoted : '';
+  const isFwd = /forwarded|transféré/i.test(fold.split('\n', 1)[0] ?? '');
+  const [showQuoted, setShowQuoted] = useState(false);
+  const quotedPart = fold ? (
+    showQuoted ? (
+      <>
+        <div className="te-quoted">{fold}</div>
+        <button className="te-qbtn" onClick={() => setShowQuoted(false)}>
+          Hide {isFwd ? 'forwarded message' : 'quoted text'}
+        </button>
+      </>
+    ) : (
+      <button className="te-qbtn" onClick={() => setShowQuoted(true)}>
+        <MoreHorizontal size={14} /> Show {isFwd ? 'forwarded message' : 'quoted text'}
+      </button>
+    )
+  ) : null;
   if (m.invite) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -482,6 +501,7 @@ function ChatMessage({
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <div className="bubble-out mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
           {text}
+          {quotedPart}
         </div>
       </div>
     );
@@ -498,6 +518,7 @@ function ChatMessage({
         <Avatar who={m.from} size={32} />
         <div className="bubble-in mail-text" style={{ maxWidth: '82%', fontSize: 15 }}>
           {text || m.snippet}
+          {quotedPart}
           {m.attachments.length > 0 && (
             <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
               <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
@@ -726,9 +747,21 @@ function ConversationE({
   const h = thread.priority ? waitingHours(messages) : null;
   const C = 2 * Math.PI * 29;
   const frac = h == null ? 0 : Math.min(1, Math.max(0.05, h / 10));
-  // Keep the newest two in view; fold the rest behind one button.
-  const foldN = !unfold && messages.length > 3 ? messages.length - 2 : 0;
+  // Open on the newest message: older ones are one-line rows (tap to open one),
+  // and past six of them the oldest hide behind one button.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const lastId = messages[messages.length - 1]?.id;
+  const foldN = !unfold && messages.length > 7 ? messages.length - 7 : 0;
   const shown = messages.slice(foldN);
+  const latestRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = latestRef.current;
+    const box = ref.current;
+    if (!el || !box || messages.length < 2) return;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    // Only jump when the newest message starts below the first screen.
+    if (top > box.clientHeight * 0.55) box.scrollTop += top - 90;
+  }, [lastId]); // eslint-disable-line react-hooks/exhaustive-deps
   let gist: ReactNode = ai?.summary ?? null;
   if (ai?.summary && first && ai.summary.startsWith(first))
     gist = (
@@ -831,7 +864,7 @@ function ConversationE({
         <div className="te-msgs">
           {foldN > 0 && (
             <button className="te-fold" onClick={() => setUnfold(true)}>
-              {foldN} earlier message{foldN > 1 ? 's' : ''}
+              {foldN} older message{foldN > 1 ? 's' : ''}
             </button>
           )}
           {shown.map((m, i) => {
@@ -841,11 +874,31 @@ function ConversationE({
             return (
               <div key={m.id} style={{ display: 'contents' }}>
                 {newDay && <div className="te-day">{dayWord(m.date)}</div>}
-                <ChatMessage
-                  m={m}
-                  showName={!m.fromMe && (newDay || prev?.from?.email !== m.from?.email)}
-                  threadId={thread.id}
-                />
+                {m.id !== lastId && !opened.has(m.id) && !m.invite ? (
+                  <button
+                    className="te-line"
+                    onClick={() => setOpened((s) => new Set(s).add(m.id))}
+                  >
+                    <Avatar who={m.from} size={26} />
+                    <b>{m.fromMe ? 'You' : firstName(m.from) || displayName(m.from)}</b>
+                    <span>{splitQuoted(m.text ?? m.snippet).main || m.snippet}</span>
+                    <time>{listTime(m.date)}</time>
+                  </button>
+                ) : (
+                  <div
+                    ref={m.id === lastId ? latestRef : undefined}
+                    style={{ display: 'contents' }}
+                  >
+                    <ChatMessage
+                      m={m}
+                      showName={
+                        !m.fromMe &&
+                        (newDay || m.id === lastId || prev?.from?.email !== m.from?.email)
+                      }
+                      threadId={thread.id}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

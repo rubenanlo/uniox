@@ -89,6 +89,50 @@ export function timeRange(start: number, end: number): string {
 }
 
 /** Plain text quote-trimming for chat bubbles: drops "On … wrote:" history and signatures. */
+/** Lines that start the quoted or forwarded history under a message. */
+const QUOTE_START = [
+  /^On .+wrote:\s*$/,
+  /^-{2,}\s*Original Message/i,
+  /^-{2,}\s*Forwarded message/i,
+  /^Begin forwarded message:?\s*$/i,
+  /^-{2,}\s*Message transféré/i,
+  /^Le .+a écrit\s*:/,
+  /^El .+escribió:/,
+  /^>/,
+  /^_{8,}\s*$/,
+];
+
+/**
+ * Splits a plain-text message into what this sender wrote and the quoted or
+ * forwarded history below it (Outlook "From: … Sent:" blocks too). Nothing is
+ * dropped: the history is returned so the reader can fold it behind a tap.
+ */
+export function splitQuoted(text: string): { main: string; quoted: string } {
+  const lines = text.replace(/\r/g, '').split('\n');
+  let cut = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!.trim();
+    if (QUOTE_START.some((re) => re.test(line))) {
+      cut = i;
+      break;
+    }
+    if (
+      /^From:\s/i.test(line) &&
+      lines.slice(i + 1, i + 5).some((l) => /^(Sent|Date|Envoyé):\s/i.test(l.trim()))
+    ) {
+      cut = i;
+      break;
+    }
+  }
+  const tidy = (ls: string[]) =>
+    ls
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  if (cut < 0) return { main: tidy(lines), quoted: '' };
+  return { main: tidy(lines.slice(0, cut)), quoted: tidy(lines.slice(cut)) };
+}
+
 export function chatText(text: string): string {
   const lines = text.replace(/\r/g, '').split('\n');
   const out: string[] = [];
