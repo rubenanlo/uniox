@@ -382,12 +382,34 @@ function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadI
     () =>
       new Set(messages.filter((m, i) => m.unread || i === messages.length - 1).map((m) => m.id)),
   );
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   return (
     <div style={{ margin: '12px 14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
       {messages.map((m) =>
         open.has(m.id) ? (
           <div key={m.id} className="card pop" style={{ padding: 16 }}>
-            <div className="row-flex" style={{ gap: 11 }}>
+            {/* Tapping the sender row folds the message back to one line. */}
+            <div
+              className="row-flex"
+              role="button"
+              tabIndex={0}
+              aria-expanded="true"
+              aria-label={`Collapse message from ${m.fromMe ? 'you' : displayName(m.from)}`}
+              style={{ gap: 11, cursor: 'pointer' }}
+              onClick={() => toggle(m.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggle(m.id);
+                }
+              }}
+            >
               <Avatar who={m.from} />
               <div className="grow">
                 <div style={{ fontWeight: 600, fontSize: 15.5 }}>
@@ -401,7 +423,10 @@ function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadI
               <button
                 className="muted"
                 aria-label="Reply"
-                onClick={() => go(`compose?reply=${encodeURIComponent(threadId)}`)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  go(`compose?reply=${encodeURIComponent(threadId)}`);
+                }}
               >
                 <Reply size={20} />
               </button>
@@ -420,7 +445,8 @@ function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadI
             key={m.id}
             className="card row-flex"
             style={{ padding: '12px 14px', gap: 10, textAlign: 'left' }}
-            onClick={() => setOpen(new Set([...open, m.id]))}
+            aria-expanded="false"
+            onClick={() => toggle(m.id)}
           >
             <Avatar who={m.from} size={30} />
             <span style={{ fontWeight: 600, fontSize: 14.5 }}>
