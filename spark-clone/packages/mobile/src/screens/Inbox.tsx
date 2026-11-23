@@ -5,7 +5,7 @@ import { InviteRow } from '../components/InviteRow';
 import { ThreadRow } from '../components/ThreadRow';
 import { AskSheet } from '../components/AskSheet';
 import { Avatar, Empty, Spinner, TabBar } from '../components/ui';
-import { displayName, firstName } from '../lib/format';
+import { displayName, firstName, listTime } from '../lib/format';
 import { useEdgeBackAndPull } from '../lib/gestures';
 import { useGists } from '../lib/gists';
 import { go, useRoute } from '../lib/router';
@@ -176,6 +176,7 @@ export function Inbox() {
     who: Address | null;
     items: MobileThread[];
     newest: number;
+    waiting: boolean;
   }[] = [];
   for (const t of priority) {
     const key = t.lastFrom?.email?.toLowerCase() ?? t.id;
@@ -187,7 +188,16 @@ export function Inbox() {
         who: t.lastFrom,
         items: [t],
         newest: t.lastMessageAt,
+        waiting: true,
       });
+  }
+  // Then every other priority person in view, newest first, as quick filters.
+  for (const t of personal
+    .filter((x) => x.priority && !priority.includes(x))
+    .sort((a, b) => b.lastMessageAt - a.lastMessageAt)) {
+    const key = t.lastFrom?.email?.toLowerCase() ?? t.id;
+    if (!people.some((x) => x.key === key))
+      people.push({ key, who: t.lastFrom, items: [t], newest: t.lastMessageAt, waiting: false });
   }
   const sel = person && people.some((p) => p.key === person) ? person : null;
   const fromSel = sel
@@ -377,7 +387,11 @@ export function Inbox() {
                 const h = (now - p.newest) / 3_600_000;
                 const frac = Math.min(1, Math.max(0.04, h / 10));
                 const C = 2 * Math.PI * 33;
-                const count = p.items.length > 1 ? p.items.length : (p.items[0]?.messageCount ?? 1);
+                const count = !p.waiting
+                  ? 0
+                  : p.items.length > 1
+                    ? p.items.length
+                    : (p.items[0]?.messageCount ?? 1);
                 return (
                   <button
                     key={p.key}
@@ -407,7 +421,7 @@ export function Inbox() {
                           cy="35"
                           r="33"
                           fill="none"
-                          stroke="url(#ibg)"
+                          stroke={p.waiting ? 'url(#ibg)' : 'none'}
                           strokeWidth="3"
                           strokeLinecap="round"
                           strokeDasharray={`${C * frac} ${C}`}
@@ -418,41 +432,50 @@ export function Inbox() {
                     </span>
                     <b>{firstName(p.who) || displayName(p.who)}</b>
                     <span>
-                      waiting{' '}
-                      {h < 1
-                        ? `${Math.max(1, Math.round(h * 60))} min`
-                        : h < 48
-                          ? `${Math.round(h)} h`
-                          : `${Math.round(h / 24)} d`}
+                      {p.waiting
+                        ? `waiting ${
+                            h < 1
+                              ? `${Math.max(1, Math.round(h * 60))} min`
+                              : h < 48
+                                ? `${Math.round(h)} h`
+                                : `${Math.round(h / 24)} d`
+                          }`
+                        : listTime(p.newest)}
                     </span>
                   </button>
                 );
               })}
             </div>
-            <div className="sect">
-              <span className="eyebrow" style={{ color: 'var(--priority)' }}>
-                {sel ? `From ${firstName(people.find((p) => p.key === sel)?.who)}` : 'Needs you'}
-              </span>
-              {sel && (
-                <button className="ib-clear" onClick={() => setPerson(null)}>
-                  Show everyone
-                </button>
-              )}
-            </div>
-            <div className="ib-gist">
-              {(sel ? fromSel : priority).map((t) =>
-                priority.includes(t) ? (
-                  <ThreadRow
-                    key={t.id}
-                    thread={t}
-                    accountColor={color(t.accountId)}
-                    gist={gists[t.id] ?? null}
-                  />
-                ) : (
-                  <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
-                ),
-              )}
-            </div>
+            {(sel || priority.length > 0) && (
+              <>
+                <div className="sect">
+                  <span className="eyebrow" style={{ color: 'var(--priority)' }}>
+                    {sel
+                      ? `From ${firstName(people.find((p) => p.key === sel)?.who)}`
+                      : 'Needs you'}
+                  </span>
+                  {sel && (
+                    <button className="ib-clear" onClick={() => setPerson(null)}>
+                      Show everyone
+                    </button>
+                  )}
+                </div>
+                <div className="ib-gist">
+                  {(sel ? fromSel : priority).map((t) =>
+                    priority.includes(t) ? (
+                      <ThreadRow
+                        key={t.id}
+                        thread={t}
+                        accountColor={color(t.accountId)}
+                        gist={gists[t.id] ?? null}
+                      />
+                    ) : (
+                      <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
+                    ),
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
 
