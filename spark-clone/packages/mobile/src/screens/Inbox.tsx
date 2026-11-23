@@ -52,6 +52,8 @@ export function Inbox() {
   /** Accounts shown; empty means all of them. */
   const [accts, setAccts] = useState<Set<string>>(loadAccts);
   const [pickOpen, setPickOpen] = useState(false);
+  /** In the picker, everything unticked while the user chooses which to turn on. */
+  const [cleared, setCleared] = useState(false);
   const [person, setPerson] = useState<string | null>(null);
   const [stack, setStack] = useState<Category | null>(null);
   const [restAll, setRestAll] = useState(false);
@@ -211,17 +213,27 @@ export function Inbox() {
     ).length;
   const toggle = (id: string) => {
     setPerson(null);
+    if (cleared) {
+      setCleared(false);
+      setAccts(accounts.length === 1 ? new Set() : new Set([id]));
+      return;
+    }
+    if (accts.size === 1 && accts.has(id)) {
+      setCleared(true);
+      return;
+    }
     setAccts((s) => {
       const next = new Set(s.size ? s : accounts.map((a) => a.id));
-      if (next.has(id)) {
-        if (next.size === 1) {
-          showToast({ text: 'Keep at least one account on' });
-          return s;
-        }
-        next.delete(id);
-      } else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next.size === accounts.length ? new Set() : next;
     });
+  };
+
+  // Closing with nothing ticked keeps the choice from before.
+  const closePick = () => {
+    setCleared(false);
+    setPickOpen(false);
   };
 
   const [ask, setAsk] = useState(false);
@@ -332,19 +344,27 @@ export function Inbox() {
           {sentence}
           {pickOpen && (
             <>
-              <div className="ib-catch" onClick={() => setPickOpen(false)} />
+              <div className="ib-catch" onClick={closePick} />
               <AccountChecklist
                 accounts={accounts}
-                on={on}
-                all={!accts.size}
+                on={(id) => !cleared && on(id)}
+                all={!cleared && !accts.size}
                 newIn={newIn}
-                onAll={() => (setAccts(new Set()), setPerson(null))}
+                onAll={() => {
+                  setPerson(null);
+                  if (!cleared && !accts.size) setCleared(true);
+                  else {
+                    setCleared(false);
+                    setAccts(new Set());
+                  }
+                }}
                 onToggle={toggle}
                 onOnly={(id) => (
+                  setCleared(false),
                   setAccts(accounts.length === 1 ? new Set() : new Set([id])),
                   setPerson(null)
                 )}
-                onDone={() => setPickOpen(false)}
+                onDone={closePick}
               />
             </>
           )}
@@ -454,32 +474,43 @@ export function Inbox() {
                 ))}
               </>
             )}
-            {!unreadOnly && (read.length > 0 || lists.length > 0) && (
+            {!unreadOnly && read.length > 0 && (
               <div ref={waitRef} style={{ scrollMarginTop: 12 }}>
-                <Section label="Can wait" />
-                {lists.length > 0 && (
-                  <div className="ib-stacks">
-                    {lists.map(({ key, label, color: c, Icon, items }) => (
-                      <button
-                        key={key}
-                        className={`ib-stack ${stack === key ? 'on' : ''}`}
-                        style={{ ['--c' as string]: c }}
-                        aria-expanded={stack === key}
-                        onClick={() => setStack(stack === key ? null : key)}
-                      >
-                        <span className="lay" />
-                        <span className="lay" />
-                        <span className="top glass">
-                          <span className="ic">
-                            <Icon size={13} />
-                          </span>
-                          <b>{items.length}</b>
-                          <span>{label}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                <Section label="Earlier" />
+                {(restAll ? read : read.slice(0, 40)).map((t) => (
+                  <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
+                ))}
+                {!restAll && read.length > 40 && (
+                  <button className="ib-more" onClick={() => setRestAll(true)}>
+                    Show {read.length - 40} more
+                  </button>
                 )}
+              </div>
+            )}
+            {!unreadOnly && lists.length > 0 && (
+              <div ref={read.length ? undefined : waitRef} style={{ scrollMarginTop: 12 }}>
+                <Section label="Can wait" />
+                <div className="ib-stacks">
+                  {lists.map(({ key, label, color: c, Icon, items }) => (
+                    <button
+                      key={key}
+                      className={`ib-stack ${stack === key ? 'on' : ''}`}
+                      style={{ ['--c' as string]: c }}
+                      aria-expanded={stack === key}
+                      onClick={() => setStack(stack === key ? null : key)}
+                    >
+                      <span className="lay" />
+                      <span className="lay" />
+                      <span className="top glass">
+                        <span className="ic">
+                          <Icon size={13} />
+                        </span>
+                        <b>{items.length}</b>
+                        <span>{label}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
                 {lists
                   .filter((b) => b.key === stack)
                   .map((b) => (
@@ -510,14 +541,6 @@ export function Inbox() {
                       </div>
                     </div>
                   ))}
-                {(restAll ? read : read.slice(0, 40)).map((t) => (
-                  <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
-                ))}
-                {!restAll && read.length > 40 && (
-                  <button className="ib-more" onClick={() => setRestAll(true)}>
-                    Show {read.length - 40} more
-                  </button>
-                )}
               </div>
             )}
           </>
