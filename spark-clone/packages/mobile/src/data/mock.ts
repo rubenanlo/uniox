@@ -1,3 +1,4 @@
+import { dedupeMirroredEvents } from '@app/shared';
 import type { AiKeyStatus, ThreadAction, UnioxApi } from './api';
 import {
   type Address,
@@ -257,6 +258,7 @@ function ev(
   return {
     id,
     accountId: 'a1',
+    calendarId: 'a1:primary',
     calendarName: 'ruben@unsdsn.org',
     title,
     startMs: start,
@@ -306,6 +308,15 @@ function eventsAround(): MobileEvent[] {
     }),
   );
   out.push(ev('freeze', 'Data freeze', todayAt(14, 30, 2), todayAt(15, 30, 2), '#c7402d'));
+  // A personal event and the "Busy" block it mirrors onto the work calendar.
+  out.push(
+    ev('dentist', 'Dentist', todayAt(17, 30, 1), todayAt(18, 15, 1), '#d97a1f', {
+      accountId: 'a2',
+      calendarId: 'a2:primary',
+      calendarName: 'ruben@gmail.com',
+    }),
+    ev('dentist-mirror', 'Busy', todayAt(17, 30, 1), todayAt(18, 15, 1), '#2f63e7'),
+  );
   return out;
 }
 
@@ -358,7 +369,8 @@ export const mockApi: UnioxApi = {
     emit();
   },
   send: () => delay(undefined, 300),
-  events: (from, to) => delay(eventsAround().filter((e) => e.endMs > from && e.startMs < to)),
+  events: (from, to) =>
+    delay(dedupeMirroredEvents(eventsAround().filter((e) => e.endMs > from && e.startMs < to))),
   rsvp: () => delay(undefined),
   async createEvent(input) {
     created.push(
