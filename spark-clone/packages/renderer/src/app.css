@@ -1271,3 +1271,96 @@ html[data-island='frosted'] .qr-bubble-in:has(> .qr-fold) {
   background: rgb(255 255 255 / 0.1);
   box-shadow: none;
 }
+
+/* Assistant: today's events as a timeline card (components/orb/EventTimeline). */
+.tl-rail::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgb(23 20 42 / 0.08);
+}
+.dark .tl-rail::before {
+  background: rgb(255 255 255 / 0.12);
+}
+.tl > :first-child .tl-rail::before {
+  top: 16px;
+}
+.tl > :last-child .tl-rail::before {
+  bottom: calc(100% - 16px);
+}
+.tl-rail-gap::before {
+  background: repeating-linear-gradient(rgb(23 20 42 / 0.1) 0 3px, transparent 3px 7px);
+}
+.dark .tl-rail-gap::before {
+  background: repeating-linear-gradient(rgb(255 255 255 / 0.14) 0 3px, transparent 3px 7px);
+}
+.tl-dot {
+  background: var(--c);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.5);
+}
+.dark .tl-dot {
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.08);
+}
+.tl-card {
+  background: rgb(255 255 255 / 0.42);
+  border-color: rgb(255 255 255 / 0.7);
+}
+.dark .tl-card {
+  background: rgb(255 255 255 / 0.07);
+  border-color: rgb(255 255 255 / 0.16);
+}
+.tl-card-next {
+  border-color: color-mix(in oklch, var(--color-accent) 45%, transparent);
+  box-shadow: 0 8px 24px -14px var(--color-accent);
+}
+.tl-busy {
+  border-color: rgb(23 20 42 / 0.12);
+  background: repeating-linear-gradient(135deg, transparent 0 5px, rgb(23 20 42 / 0.04) 5px 10px);
+}
+.dark .tl-busy {
+  border-color: rgb(255 255 255 / 0.14);
+  background: repeating-linear-gradient(135deg, transparent 0 5px, rgb(255 255 255 / 0.05) 5px 10px);
+}
+.tl-allday {
+  background: color-mix(in oklch, var(--c) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--c) 30%, transparent);
+}
+.tl-details {
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.26s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tl-details-open {
+  grid-template-rows: 1fr;
+}
+@keyframes tl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.tl-rise {
+  animation: tl-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-rise {
+    animation: none;
+  }
+  .tl-details {
+    transition: none;
+  }
+}
+.tl-ghost {
+  background: rgb(23 20 42 / 0.05);
+}
+.tl-ghost:hover {
+  background: rgb(23 20 42 / 0.09);
+}
+.dark .tl-ghost {
+  background: rgb(255 255 255 / 0.07);
+}
+.dark .tl-ghost:hover {
+  background: rgb(255 255 255 / 0.12);
+}
