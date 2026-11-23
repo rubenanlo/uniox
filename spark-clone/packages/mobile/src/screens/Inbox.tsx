@@ -458,18 +458,13 @@ export function Inbox() {
             </div>
             {(sel || priority.length > 0) && (
               <>
-                <div className="sect">
-                  <span className="eyebrow" style={{ color: 'var(--priority)' }}>
-                    {sel
-                      ? `From ${firstName(people.find((p) => p.key === sel)?.who)}`
-                      : 'Needs you'}
-                  </span>
-                  {sel && (
-                    <button className="ib-clear" onClick={() => setPerson(null)}>
-                      Show everyone
-                    </button>
-                  )}
-                </div>
+                <Section
+                  label={
+                    sel ? `From ${firstName(people.find((p) => p.key === sel)?.who)}` : 'Needs you'
+                  }
+                  count={(sel ? fromSel : priority).length}
+                  action={sel ? { label: 'Show everyone', run: () => setPerson(null) } : undefined}
+                />
                 <div className="ib-gist">
                   {cap(sel ? `from:${sel}` : 'needs', sel ? fromSel : priority).map((t) =>
                     priority.includes(t) ? (
@@ -494,7 +489,7 @@ export function Inbox() {
           <>
             {invites.length > 0 && (
               <div ref={invRef} style={{ scrollMarginTop: 12 }}>
-                <Section label="Invites" color="var(--violet)" />
+                <Section label="Invites" count={invites.length} />
                 {cap('invites', invites).map((t) => (
                   <InviteRow key={t.id} thread={t} invite={inviteInfo[t.id] ?? null} />
                 ))}
@@ -503,7 +498,16 @@ export function Inbox() {
             )}
             {unread.length > 0 && (
               <>
-                <Section label="Unread" />
+                <Section
+                  label="Unread"
+                  count={unread.length}
+                  action={{
+                    label: 'Mark read',
+                    run: () => {
+                      for (const t of unread) void act(t, { kind: 'read', read: true });
+                    },
+                  }}
+                />
                 {cap('unread', unread).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
@@ -512,7 +516,7 @@ export function Inbox() {
             )}
             {!unreadOnly && readPriority.length > 0 && (
               <>
-                <Section label="Priority" color="var(--priority)" />
+                <Section label="Priority" count={readPriority.length} />
                 {cap('priority', readPriority).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
@@ -521,7 +525,7 @@ export function Inbox() {
             )}
             {!unreadOnly && read.length > 0 && (
               <div ref={waitRef} style={{ scrollMarginTop: 12 }}>
-                <Section label="Earlier" />
+                <Section label="Earlier" count={read.length} />
                 {cap('earlier', read).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
@@ -530,7 +534,7 @@ export function Inbox() {
             )}
             {!unreadOnly && lists.length > 0 && (
               <div ref={read.length ? undefined : waitRef} style={{ scrollMarginTop: 12 }}>
-                <Section label="Can wait" />
+                <Section label="Can wait" count={listCount} />
                 <div className="ib-stacks">
                   {lists.map(({ key, label, color: c, Icon, items }) => (
                     <button
@@ -597,12 +601,24 @@ export function Inbox() {
 
 const acctName = (a: MobileAccount) => a.displayName || a.email.split('@')[0];
 
-function Section({ label, color }: { label: string; color?: string }) {
+function Section({
+  label,
+  count,
+  action,
+}: {
+  label: string;
+  count?: number;
+  action?: { label: string; run: () => void };
+}) {
   return (
-    <div className="sect">
-      <span className="eyebrow" style={color ? { color } : undefined}>
-        {label}
-      </span>
+    <div className="ib-sect">
+      <h2>{label}</h2>
+      {count ? <span className="ib-sect-n">{count}</span> : null}
+      {action && (
+        <button className="ib-sect-act" onClick={action.run}>
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }

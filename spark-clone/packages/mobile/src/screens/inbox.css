@@ -113,3 +113,9 @@
 @keyframes ib-spin { to { transform: rotate(1turn); } }
 .ib-idle .ib-orb::after { animation-play-state: paused; }
 .ib-ptr { display: grid; place-items: center; overflow: hidden; color: var(--muted); transition: height .3s cubic-bezier(.34,1.4,.5,1); }
+
+/* Section titles: large, bold, ink, with a grey count and an optional action on the right. */
+.ib-sect { display: flex; align-items: center; gap: 10px; padding: 26px 18px 8px; }
+.ib-sect h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.025em; color: var(--ink); }
+.ib-sect-n { font-size: 15px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ib-sect-act { margin-left: auto; padding: 6px 0 6px 12px; font-size: 13px; font-weight: 600; color: var(--accent); }
