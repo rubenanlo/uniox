@@ -72,6 +72,8 @@ export interface InviteInfo {
 export interface MobileEvent {
   id: string;
   accountId: string;
+  /** Google calendar id; with accountId it tells mirrored copies apart. */
+  calendarId: string;
   calendarName: string;
   title: string;
   startMs: number;

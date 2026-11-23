@@ -1,3 +1,4 @@
+import { dedupeMirroredEvents } from '@app/shared';
 import type { AiKeyStatus, ThreadAction, UnioxApi } from './api';
 import {
   type Address,
@@ -257,6 +258,7 @@ function ev(
   return {
     id,
     accountId: 'a1',
+    calendarId: 'a1:primary',
     calendarName: 'ruben@unsdsn.org',
     title,
     startMs: start,
@@ -306,6 +308,15 @@ function eventsAround(): MobileEvent[] {
     }),
   );
   out.push(ev('freeze', 'Data freeze', todayAt(14, 30, 2), todayAt(15, 30, 2), '#c7402d'));
+  // A personal event and the "Busy" block it mirrors onto the work calendar.
+  out.push(
+    ev('dentist', 'Dentist', todayAt(17, 30, 1), todayAt(18, 15, 1), '#d97a1f', {
+      accountId: 'a2',
+      calendarId: 'a2:primary',
+      calendarName: 'ruben@gmail.com',
+    }),
+    ev('dentist-mirror', 'Busy', todayAt(17, 30, 1), todayAt(18, 15, 1), '#2f63e7'),
+  );
   return out;
 }
 
@@ -358,8 +369,25 @@ export const mockApi: UnioxApi = {
     emit();
   },
   send: () => delay(undefined, 300),
-  events: (from, to) => delay(eventsAround().filter((e) => e.endMs > from && e.startMs < to)),
+  events: (from, to) =>
+    delay(dedupeMirroredEvents(eventsAround().filter((e) => e.endMs > from && e.startMs < to))),
   rsvp: () => delay(undefined),
+  proposeTime: () => delay(undefined, 400),
+  freeBusy(_acct, emails, from, to) {
+    const mine = eventsAround()
+      .filter((e) => !e.allDay && !e.free && e.endMs > from && e.startMs < to)
+      .map((e) => ({ startMs: e.startMs, endMs: e.endMs }));
+    const busy: Record<string, { startMs: number; endMs: number }[] | null> = { 'me@example.com': mine };
+    emails.forEach((e, i) => {
+      const blocks: { startMs: number; endMs: number }[] = [];
+      for (let d = new Date(from); d.getTime() < to; d.setDate(d.getDate() + 1)) {
+        const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), (h % 1) * 60).getTime();
+        blocks.push({ startMs: at(10 + i), endMs: at(11.5 + i) }, { startMs: at(15), endMs: at(16) });
+      }
+      busy[e.toLowerCase()] = i > 1 ? null : blocks;
+    });
+    return delay({ me: 'me@example.com', busy });
+  },
   async createEvent(input) {
     created.push(
       ev(
@@ -403,6 +431,12 @@ export const mockApi: UnioxApi = {
           }
         : {
             summary:
+              (
+                {
+                  t3: 'Shannon sent the last tweaks from comms and wants your OK to publish tomorrow.',
+                  t4: 'Jeffrey needs your sign-off on the final country profiles before Monday.',
+                } as Record<string, string>
+              )[threadId] ??
               'Helen moved the freeze to Dec 4 and needs your OK on the revised country list by Tuesday.',
             replyIdeas: ['Confirm Dec 4', 'Ask about Kenya'],
           },

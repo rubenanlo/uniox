@@ -57,12 +57,7 @@ export function App() {
         );
         break;
       case 'assistant':
-        screen = (
-          <>
-            <Home />
-            <Assistant />
-          </>
-        );
+        screen = <Assistant />;
         break;
       case 'calendar':
         screen = <CalendarScreen />;

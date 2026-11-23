@@ -1,38 +1,74 @@
-import { ArrowUp, X } from 'lucide-react';
+import { ArrowUp, Mic, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { AssistantTurn } from '../data/types';
-import { AiMark, Spinner } from '../components/ui';
+import { AiMark } from '../components/ui';
+import '../components/ask.css';
+import type { AssistantTurn, MobileEvent } from '../data/types';
+import { useEdgeBackAndPull } from '../lib/gestures';
+import { clock12, greeting } from '../lib/format';
 import { back, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 
-const STARTERS = [
-  'What do I need to do before Monday?',
-  'Summarize my unread priority mail',
-  'Prep me for my next meeting',
-  "What's new in my newsletters?",
+const CHIPS = [
+  'When am I free this week?',
+  'Who has waited longest?',
+  'Draft my replies',
+  'What’s new in my newsletters?',
 ];
 
-/** The ⌘J assistant, as a frosted full-height sheet. */
+type SpeechCtor = new () => {
+  lang: string;
+  interimResults: boolean;
+  onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+};
+const Speech: SpeechCtor | undefined =
+  (window as unknown as { SpeechRecognition?: SpeechCtor; webkitSpeechRecognition?: SpeechCtor })
+    .SpeechRecognition ??
+  (window as unknown as { webkitSpeechRecognition?: SpeechCtor }).webkitSpeechRecognition;
+
+/**
+ * The full Assistant: a page in the Inbox voice. A greeting sentence sums up
+ * the evening, chips start common asks, every answer is a frosted card. Swipe
+ * from the left edge to go back.
+ */
 export function Assistant() {
-  const api = useStore((s) => s.api);
+  const { api, threads } = useStore();
   const q = useRoute().query.get('q');
   const [turns, setTurns] = useState<AssistantTurn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [next, setNext] = useState<MobileEvent | null>(null);
   const end = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEdgeBackAndPull(
+    ref,
+    () => back('home'),
+    async () => {},
+  );
+
+  useEffect(() => {
+    const now = Date.now();
+    void api
+      .events(now, now + 2 * 86_400_000)
+      .then((ev) => setNext(ev.find((e) => !e.allDay && !e.free && e.startMs > now) ?? null))
+      .catch(() => {});
+  }, [api]);
 
   const ask = async (text: string) => {
     if (!text.trim() || busy) return;
-    const next: AssistantTurn[] = [...turns, { role: 'user', text: text.trim() }];
-    setTurns(next);
+    const nextTurns: AssistantTurn[] = [...turns, { role: 'user', text: text.trim() }];
+    setTurns(nextTurns);
     setInput('');
     setBusy(true);
     try {
-      const reply = await api.assistant(next);
-      setTurns([...next, { role: 'assistant', text: reply }]);
+      const reply = await api.assistant(nextTurns);
+      setTurns([...nextTurns, { role: 'assistant', text: reply }]);
     } catch (e) {
       setTurns([
-        ...next,
+        ...nextTurns,
         { role: 'assistant', text: `Sorry, that failed: ${(e as Error).message}` },
       ]);
     } finally {
@@ -49,122 +85,136 @@ export function Assistant() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth' });
+    if (turns.length) end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns, busy]);
 
+  const rec = useRef<InstanceType<SpeechCtor> | null>(null);
+  const dictate = () => {
+    if (!Speech) return;
+    if (listening) {
+      rec.current?.stop();
+      return;
+    }
+    const r = new Speech();
+    r.lang = navigator.language || 'en-US';
+    r.interimResults = false;
+    r.onresult = (e) => {
+      const t = e.results[0]?.[0]?.transcript;
+      if (t) setInput((v) => (v ? `${v} ${t}` : t));
+    };
+    r.onend = () => setListening(false);
+    rec.current = r;
+    setListening(true);
+    r.start();
+  };
+
+  const waiting = threads.filter((t) => t.inInbox && t.priority && t.unreadCount > 0).length;
+  const today = new Date().toLocaleDateString([], {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
   return (
-    <>
+    <div className="ib-page">
       <div className="wash" />
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'color-mix(in srgb, var(--app) 30%, transparent)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          zIndex: 43,
-        }}
-        onClick={() => back('home')}
-      />
-      <div
-        className="glass pop"
-        style={{
-          position: 'fixed',
-          left: 10,
-          right: 10,
-          top: 'calc(var(--safe-top) + 16px)',
-          bottom: 'calc(var(--safe-bottom) + 12px)',
-          borderRadius: 32,
-          zIndex: 45,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div className="row-flex" style={{ padding: '16px 16px 8px', gap: 10 }}>
-          <AiMark size={34} />
-          <div className="grow">
-            <b style={{ fontSize: 17 }}>Assistant</b>
-            <div className="muted" style={{ fontSize: 12.5 }}>
-              Knows your mail and calendar
-            </div>
-          </div>
-          <button className="navbtn" aria-label="Close" onClick={() => back('home')}>
-            <X size={20} />
-          </button>
+      <div className="screen no-tabs fa" ref={ref}>
+        <div className="fa-top">
+          <span className="eyebrow">Assistant · {today}</span>
+          <span className="ib-orb glass" aria-hidden>
+            <Sparkles size={17} />
+          </span>
         </div>
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '8px 16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          {turns.length === 0 && (
-            <div className="muted" style={{ fontSize: 15, lineHeight: 1.5, marginTop: 8 }}>
-              Ask about your inbox or calendar. For example:
-            </div>
+        <p className="fa-sent">
+          {greeting()}.{' '}
+          {waiting > 0 ? (
+            <>
+              <button
+                className="w"
+                onClick={() => void ask('Who is waiting on my reply, and for what?')}
+              >
+                {waiting} {waiting === 1 ? 'person' : 'people'}
+              </button>{' '}
+              {waiting === 1 ? 'waits' : 'wait'} on you
+            </>
+          ) : (
+            <>Nobody is waiting on you</>
           )}
+          {next ? (
+            <>
+              , and your next meeting is{' '}
+              <b>
+                {next.title} at {clock12(next.startMs)}
+              </b>
+              .
+            </>
+          ) : (
+            '.'
+          )}
+        </p>
+        <div className="fa-chips">
+          {CHIPS.map((c) => (
+            <button key={c} className="glass" onClick={() => void ask(c)}>
+              <AiMark size={16} />
+              {c}
+            </button>
+          ))}
+        </div>
+        {turns.length > 0 && <div className="fa-day">Today</div>}
+        <div className="fa-conv">
           {turns.map((t, i) =>
             t.role === 'user' ? (
-              <div key={i} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <div className="bubble-out" style={{ maxWidth: '80%' }}>
-                  {t.text}
-                </div>
+              <div key={i} className="fa-q">
+                {t.text}
               </div>
             ) : (
-              <div key={i} className="mail-text pop" style={{ fontSize: 15, lineHeight: 1.5 }}>
-                {t.text}
+              <div key={i} className="fa-a glass">
+                <div className="lb">
+                  <AiMark size={18} />
+                  Assistant
+                </div>
+                <div className="ask-text">{t.text}</div>
               </div>
             ),
           )}
           {busy && (
-            <div className="row-flex muted" style={{ fontSize: 14 }}>
-              <Spinner /> Thinking…
+            <div className="fa-a glass">
+              <div className="ask-think" aria-label="Thinking">
+                <i />
+                <i />
+                <i />
+              </div>
             </div>
           )}
           <div ref={end} />
         </div>
-        <div style={{ padding: '0 16px 16px' }}>
-          <div className="chips" style={{ padding: '0 0 10px' }}>
-            {(turns.length
-              ? ['Draft replies for these', 'Anything urgent?', 'What about tomorrow?']
-              : STARTERS
-            ).map((s) => (
-              <button key={s} className="chip" onClick={() => void ask(s)}>
-                {s}
-              </button>
-            ))}
-          </div>
-          <form
-            className="row-flex"
-            style={{
-              height: 48,
-              borderRadius: 24,
-              padding: '0 6px 0 16px',
-              background: 'color-mix(in srgb, var(--surface) 75%, transparent)',
-              border: '1px solid color-mix(in oklch, var(--ink) 10%, transparent)',
-            }}
-            onSubmit={(e) => {
-              e.preventDefault();
-              void ask(input);
-            }}
-          >
-            <input
-              className="grow"
-              style={{ fontSize: 16 }}
-              placeholder="Ask anything…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <button className="send" disabled={!input.trim() || busy} aria-label="Ask">
-              <ArrowUp size={20} />
-            </button>
-          </form>
-        </div>
       </div>
-    </>
+      <form
+        className="fa-bar glass"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void ask(input);
+        }}
+      >
+        <input
+          placeholder={listening ? 'Listening…' : 'Ask about mail, people, your calendar…'}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        {Speech && (
+          <button
+            type="button"
+            className={`mic ${listening ? 'on' : ''}`}
+            aria-label="Dictate"
+            onClick={dictate}
+          >
+            <Mic size={18} />
+          </button>
+        )}
+        <button className="send" disabled={!input.trim() || busy} aria-label="Ask">
+          <ArrowUp size={19} />
+        </button>
+      </form>
+    </div>
   );
 }

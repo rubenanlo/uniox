@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { dedupeMirroredEvents } from '@app/shared';
 import type { ThreadAction, UnioxApi } from './api';
 import {
   DEFAULT_SETTINGS,
@@ -47,6 +48,7 @@ interface MessageRow {
 interface EventRow {
   id: string;
   account_id: string;
+  calendar_id: string;
   calendar_name: string;
   title: string;
   start_ms: number;
@@ -103,6 +105,7 @@ const answer = (a: string | null): RsvpAnswer | null =>
 export const toEvent = (r: EventRow): MobileEvent => ({
   id: r.id,
   accountId: r.account_id,
+  calendarId: `${r.account_id}:${r.calendar_id}`,
   calendarName: r.calendar_name,
   title: r.title,
   startMs: Number(r.start_ms),
@@ -230,7 +233,17 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
         .lt('start_ms', to)
         .order('start_ms');
       if (error) throw error;
-      return (data as EventRow[]).map(toEvent);
+      // Hide "Busy" mirrors and the same invite shown by a second account.
+      return dedupeMirroredEvents((data as EventRow[]).map(toEvent));
+    },
+    async freeBusy(accountId, emails, fromMs, toMs) {
+      return (await fn('mail', { action: 'freebusy', accountId, emails, fromMs, toMs })) as {
+        me: string;
+        busy: Record<string, { startMs: number; endMs: number }[] | null>;
+      };
+    },
+    async proposeTime(eventId, startMs, endMs, label) {
+      await fn('mail', { action: 'propose', eventId, startMs, endMs, label });
     },
     async rsvp(eventId, _accountId, ans) {
       await fn('mail', { action: 'rsvp', eventId, answer: ans });
@@ -264,7 +277,7 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
       return {
         answer: ai.answer,
         threads: ((threads.data ?? []) as ThreadRow[]).map(toThread),
-        events: ((events.data ?? []) as EventRow[]).map(toEvent),
+        events: dedupeMirroredEvents(((events.data ?? []) as EventRow[]).map(toEvent)),
       };
     },
     firstRead: (threadId) => fn('ai', { task: 'firstRead', threadId }),

@@ -49,6 +49,15 @@ export interface UnioxApi {
 
   events(fromMs: number, toMs: number): Promise<MobileEvent[]>;
   rsvp(eventId: string, accountId: string, answer: RsvpAnswer): Promise<void>;
+  /** Propose a new time to the organizer (iTIP COUNTER, like Gmail). */
+  proposeTime(eventId: string, startMs: number, endMs: number, label: string): Promise<void>;
+  /** Busy blocks per email (null = not visible to you); `me` is your own address. */
+  freeBusy(
+    accountId: string,
+    emails: string[],
+    fromMs: number,
+    toMs: number,
+  ): Promise<{ me: string; busy: Record<string, { startMs: number; endMs: number }[] | null> }>;
   createEvent(input: {
     accountId: string;
     title: string;

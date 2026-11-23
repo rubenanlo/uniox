@@ -366,6 +366,8 @@ export function buildMime(opts: {
   body: string;
   inReplyTo?: string | null;
   references?: string | null;
+  /** An iTIP part (REPLY / COUNTER) calendar apps act on. */
+  calendar?: { method: string; content: string };
 }): string {
   const boundary = `uniox-${crypto.randomUUID()}`;
   const head = [
@@ -392,6 +394,15 @@ export function buildMime(opts: {
     'Content-Transfer-Encoding: base64',
     '',
     b64(html),
+    ...(opts.calendar
+      ? [
+          `--${boundary}`,
+          `Content-Type: text/calendar; charset=UTF-8; method=${opts.calendar.method}`,
+          'Content-Transfer-Encoding: base64',
+          '',
+          b64(opts.calendar.content),
+        ]
+      : []),
     `--${boundary}--`,
     '',
   ].join('\r\n');

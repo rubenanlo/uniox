@@ -10,6 +10,8 @@ type Body =
   | { action: 'snooze'; threadId: string; until: number }
   | { action: 'send'; accountId: string; to: Addr[]; cc: Addr[]; subject: string; body: string; threadId?: string; inReplyToMessageId?: string }
   | { action: 'rsvp'; eventId: string; answer: 'accepted' | 'tentative' | 'declined' }
+  | { action: 'propose'; eventId: string; startMs: number; endMs: number; note?: string; label?: string }
+  | { action: 'freebusy'; accountId: string; emails: string[]; fromMs: number; toMs: number }
   | { action: 'createEvent'; accountId: string; title: string; startMs: number; endMs: number; addMeet: boolean };
 
 /** Mail and calendar writes for the phone. Every call acts on the caller's own data. */
@@ -132,6 +134,111 @@ Deno.serve(async (req) => {
         const { data: msgs } = await db.from('messages').select('id, invite').eq('user_id', userId).filter('invite->>eventId', 'eq', ev.id);
         for (const m of msgs ?? []) await db.from('messages').update({ invite: { ...m.invite, myAnswer: b.answer } }).eq('id', m.id);
         return json({ ok: true });
+      }
+
+      case 'propose': {
+        // Google's API has no "propose a new time" call. Like Gmail, Outlook and
+        // the desktop app, send the organizer an iTIP COUNTER; Google Calendar
+        // shows it on the event as a proposed new time.
+        const { data: ev } = await db
+          .from('events')
+          .select('id, account_id, calendar_id, google_event_id')
+          .eq('id', b.eventId)
+          .eq('user_id', userId)
+          .single();
+        if (!ev) throw new Error('event not found');
+        if (!(b.endMs > b.startMs)) throw new Error('bad time');
+        const acct = await account(ev.account_id);
+        const token = await accessToken(db, acct.id);
+        const g = await gfetch<{
+          iCalUID: string;
+          sequence?: number;
+          summary?: string;
+          location?: string;
+          organizer?: { email: string; displayName?: string };
+          originalStartTime?: { dateTime?: string; date?: string };
+        }>(token, `${CAL}/calendars/${encodeURIComponent(ev.calendar_id)}/events/${ev.google_event_id}`);
+        if (!g.organizer?.email) throw new Error('this event has no organizer to ask');
+        const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+        const esc = (t: string) => t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+        const q = (t: string) => `"${t.replace(/"/g, "'")}"`;
+        const rid = g.originalStartTime?.dateTime
+          ? `RECURRENCE-ID:${stamp(Date.parse(g.originalStartTime.dateTime))}`
+          : g.originalStartTime?.date
+            ? `RECURRENCE-ID;VALUE=DATE:${g.originalStartTime.date.replace(/-/g, '')}`
+            : null;
+        const fold = (l: string) => {
+          const out: string[] = [];
+          let rest = l;
+          while (rest.length > 74) {
+            out.push(rest.slice(0, 74));
+            rest = ' ' + rest.slice(74);
+          }
+          out.push(rest);
+          return out.join('\r\n');
+        };
+        const summary = g.summary || 'Invitation';
+        const ics =
+          [
+            'BEGIN:VCALENDAR',
+            'PRODID:-//Uniox//Mail//EN',
+            'VERSION:2.0',
+            'CALSCALE:GREGORIAN',
+            'METHOD:COUNTER',
+            'BEGIN:VEVENT',
+            `UID:${g.iCalUID}`,
+            ...(rid ? [rid] : []),
+            `SEQUENCE:${g.sequence ?? 0}`,
+            `DTSTAMP:${stamp(Date.now())}`,
+            `DTSTART:${stamp(b.startMs)}`,
+            `DTEND:${stamp(b.endMs)}`,
+            `SUMMARY:${esc(summary)}`,
+            ...(g.location ? [`LOCATION:${esc(g.location)}`] : []),
+            `ORGANIZER${g.organizer.displayName ? `;CN=${q(g.organizer.displayName)}` : ''}:mailto:${g.organizer.email}`,
+            `ATTENDEE;PARTSTAT=TENTATIVE${acct.display_name ? `;CN=${q(acct.display_name)}` : ''}:mailto:${acct.email}`,
+            ...(b.note?.trim() ? [`COMMENT:${esc(b.note.trim())}`] : []),
+            'END:VEVENT',
+            'END:VCALENDAR',
+          ]
+            .map(fold)
+            .join('\r\n') + '\r\n';
+        const when = b.label?.slice(0, 80) || new Date(b.startMs).toUTCString();
+        const mime = buildMime({
+          from: { email: acct.email, name: acct.display_name || undefined },
+          to: [{ email: g.organizer.email, name: g.organizer.displayName }],
+          cc: [],
+          subject: `New time proposed: ${summary}`,
+          body: `${acct.display_name || acct.email} proposed a new time for ${summary}: ${when}.${b.note?.trim() ? `\n\n${b.note.trim()}` : ''}`,
+          calendar: { method: 'COUNTER', content: ics },
+        });
+        await gfetch(token, `${GMAIL}/messages/send`, { method: 'POST', body: JSON.stringify({ raw: encodeB64Url(mime) }) });
+        return json({ ok: true });
+      }
+
+      case 'freebusy': {
+        // Busy times for you and the other guests, for the propose-time picker.
+        // People outside your organization usually come back empty (no access).
+        const acct = await account(b.accountId);
+        const token = await accessToken(db, acct.id);
+        const emails = [...new Set([acct.email, ...b.emails.slice(0, 20)].map((e) => e.toLowerCase()))];
+        const r = await gfetch<{ calendars: Record<string, { busy?: { start: string; end: string }[]; errors?: unknown[] }> }>(
+          token,
+          `${CAL}/freeBusy`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              timeMin: new Date(b.fromMs).toISOString(),
+              timeMax: new Date(b.toMs).toISOString(),
+              items: emails.map((id) => ({ id: id === acct.email.toLowerCase() ? 'primary' : id })),
+            }),
+          },
+        );
+        const out: Record<string, { startMs: number; endMs: number }[] | null> = {};
+        for (const e of emails) {
+          const c = r.calendars[e === acct.email.toLowerCase() ? 'primary' : e];
+          out[e] = !c || c.errors?.length ? null : (c.busy ?? []).map((x) => ({ startMs: Date.parse(x.start), endMs: Date.parse(x.end) }));
+        }
+        return json({ me: acct.email.toLowerCase(), busy: out });
       }
 
       case 'createEvent': {

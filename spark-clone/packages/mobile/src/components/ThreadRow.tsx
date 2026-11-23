@@ -1,7 +1,7 @@
 import { Archive, Clock, MailOpen, Paperclip, Pin } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { MobileThread } from '../data/types';
-import { displayName, listTime } from '../lib/format';
+import { displayName, firstName, listTime } from '../lib/format';
 import { go } from '../lib/router';
 import { useStore } from '../lib/store';
 import { Avatar, Highlight } from './ui';
@@ -25,18 +25,30 @@ export function ThreadRow({
   thread,
   query,
   accountColor,
+  gist,
 }: {
   thread: MobileThread;
   query?: string;
   accountColor?: string;
+  /**
+   * Priority rows: the AI's one-sentence gist replaces sender/subject/snippet.
+   * `null` means the gist is still loading or unavailable (row shows the subject).
+   */
+  gist?: string | null;
 }) {
   const act = useStore((s) => s.act);
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const start = useRef<{ x: number; y: number; locked: 'x' | 'y' | null } | null>(null);
+  const start = useRef<{
+    x: number;
+    y: number;
+    locked: 'x' | 'y' | null;
+  } | null>(null);
   const unread = thread.unreadCount > 0;
 
   const onDown = (e: React.PointerEvent) => {
+    // The left edge belongs to the back gesture.
+    if (e.pointerType === 'touch' && e.clientX <= 28) return;
     start.current = { x: e.clientX, y: e.clientY, locked: null };
   };
   const onMove = (e: React.PointerEvent) => {
@@ -73,7 +85,13 @@ export function ThreadRow({
   return (
     <div className="trow">
       <div className="trow-actions">
-        <div style={{ background: 'var(--accent)', width: '50%', color: 'var(--on-accent)' }}>
+        <div
+          style={{
+            background: 'var(--accent)',
+            width: '50%',
+            color: 'var(--on-accent)',
+          }}
+        >
           <MailOpen size={20} /> {unread ? 'Read' : 'Unread'}
         </div>
         <div style={{ width: '50%', justifyContent: 'flex-end', padding: 0 }}>
@@ -131,35 +149,93 @@ export function ThreadRow({
           go(`thread/${encodeURIComponent(thread.id)}`);
         }}
       >
-        <Avatar who={thread.lastFrom} />
-        <div className="meta">
-          <div className="top">
-            {unread && <span className="unread-dot" />}
-            <span className="from">
-              <Highlight text={displayName(thread.lastFrom)} query={query ?? ''} />
-            </span>
-            {thread.messageCount > 1 && (
-              <span className="faint" style={{ fontSize: 13 }}>
-                {thread.messageCount}
-              </span>
-            )}
-            {accountColor && (
-              <span className="swatch" style={{ background: accountColor, width: 7, height: 7 }} />
-            )}
-            <span className="time">
-              {thread.pinned && <Pin size={12} color="var(--priority)" />}
-              {thread.hasAttachments && <Paperclip size={12} />}
-              {listTime(thread.lastMessageAt)}
-            </span>
-          </div>
-          <div className="subj">
-            <Highlight text={thread.subject || '(no subject)'} query={query ?? ''} />
-          </div>
-          <div className="snip">
-            <Highlight text={thread.snippet} query={query ?? ''} />
-          </div>
-        </div>
+        {gist !== undefined ? (
+          <GistBody thread={thread} gist={gist} accountColor={accountColor} />
+        ) : (
+          <>
+            <Avatar who={thread.lastFrom} />
+            <div className="meta">
+              <div className="top">
+                {unread && <span className="unread-dot" />}
+                <span className="from">
+                  <Highlight text={displayName(thread.lastFrom)} query={query ?? ''} />
+                </span>
+                {thread.messageCount > 1 && (
+                  <span className="faint" style={{ fontSize: 13 }}>
+                    {thread.messageCount}
+                  </span>
+                )}
+                {accountColor && (
+                  <span
+                    className="swatch"
+                    style={{ background: accountColor, width: 7, height: 7 }}
+                  />
+                )}
+                <span className="time">
+                  {thread.pinned && <Pin size={12} color="var(--priority)" />}
+                  {thread.hasAttachments && <Paperclip size={12} />}
+                  {listTime(thread.lastMessageAt)}
+                </span>
+              </div>
+              <div className="subj">
+                <Highlight text={thread.subject || '(no subject)'} query={query ?? ''} />
+              </div>
+              <div className="snip">
+                <Highlight text={thread.snippet} query={query ?? ''} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+/** A priority row: one plain sentence of what the email wants, then a quiet meta line. */
+function GistBody({
+  thread,
+  gist,
+  accountColor,
+}: {
+  thread: MobileThread;
+  gist: string | null;
+  accountColor?: string;
+}) {
+  const name = firstName(thread.lastFrom);
+  const lead = gist && name && gist.startsWith(name) ? name : '';
+  const unread = thread.unreadCount > 0;
+  return (
+    <>
+      <span
+        className={`gist-mk ${unread ? 'on' : ''}`}
+        aria-label={unread ? 'Unread' : undefined}
+      />
+      <div className="meta">
+        <div className="gist-tx">
+          {gist ? (
+            <>
+              {lead && <b>{lead}</b>}
+              {gist.slice(lead.length)}
+            </>
+          ) : (
+            <>
+              <b>{displayName(thread.lastFrom)}</b>: {thread.subject || '(no subject)'}
+            </>
+          )}
+        </div>
+        <div className="gist-meta">
+          {gist && <span className="ai-tag">AI</span>}
+          {accountColor && (
+            <span className="swatch" style={{ background: accountColor, width: 7, height: 7 }} />
+          )}
+          <span className="gist-sub">{gist ? thread.subject : thread.snippet}</span>
+          <span className="gist-time">
+            {thread.hasAttachments && <Paperclip size={11} />}
+            {listTime(thread.lastMessageAt)}
+            {thread.messageCount > 1 ? ` · ${thread.messageCount}` : ''}
+          </span>
+        </div>
+      </div>
+    </>
   );
 }

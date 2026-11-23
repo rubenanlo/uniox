@@ -4,27 +4,34 @@ import { conf } from './db.ts';
 
 let configured = false;
 
+export type PushResult = { host: string; ok: boolean; status?: number; error?: string };
+
 /** Sends a Web Push to every device the user registered; prunes dead ones. */
 export async function pushToUser(
   db: SupabaseClient,
   userId: string,
   payload: { title: string; body: string; url: string; tag?: string; threadId?: string },
-): Promise<void> {
+): Promise<PushResult[]> {
   const publicKey = await conf(db, 'VAPID_PUBLIC_KEY');
   const privateKey = await conf(db, 'VAPID_PRIVATE_KEY');
-  if (!publicKey || !privateKey) return; // push not set up yet
+  if (!publicKey || !privateKey) return []; // push not set up yet
   if (!configured) {
     webpush.setVapidDetails((await conf(db, 'VAPID_SUBJECT')) ?? 'mailto:uniox@localhost', publicKey, privateKey);
     configured = true;
   }
   const { data: subs } = await db.from('push_subscriptions').select('id, endpoint, keys').eq('user_id', userId);
+  const results: PushResult[] = [];
   for (const s of subs ?? []) {
+    const host = new URL(s.endpoint).host;
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload), { TTL: 3600 });
+      const res = await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload), { TTL: 3600 });
+      results.push({ host, ok: true, status: res.statusCode });
     } catch (e) {
       const status = (e as { statusCode?: number }).statusCode;
       if (status === 404 || status === 410) await db.from('push_subscriptions').delete().eq('id', s.id);
       else console.error('push failed', status, (e as Error).message);
+      results.push({ host, ok: false, status, error: String((e as { body?: string }).body || (e as Error).message).slice(0, 200) });
     }
   }
+  return results;
 }
