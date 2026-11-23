@@ -24,8 +24,8 @@
 /* A small red dot marks the notifications words. */
 .hz-alert::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 2px; background: var(--danger); }
 .hz-head { position: relative; z-index: 2; text-align: center; padding: 0 24px; flex: none;
-  margin-top: 8px; transition: margin-top .6s cubic-bezier(.34,1.4,.5,1); }
-.hz.fanned .hz-head { margin-top: 0; }
+  margin-top: 44px; transition: margin-top .6s cubic-bezier(.34,1.4,.5,1); }
+.hz.fanned .hz-head { margin-top: 28px; }
 .hz-head .greet { font-size: 30px; letter-spacing: -.02em; margin-top: 8px; color: var(--muted); line-height: 1.15; }
 .hz-head .greet b { color: var(--ink); font-weight: 600; text-transform: capitalize; }
 .hz-head .sub { margin-top: 6px; color: var(--muted); font-size: 15px; }
