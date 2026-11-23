@@ -39,6 +39,9 @@
 .ib-faces::-webkit-scrollbar { display: none; }
 .ib-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; flex: none; transition: opacity .3s; }
 .ib-face.dim { opacity: .45; }
+.ib-face.off .ib-ring { filter: grayscale(1); opacity: .45; }
+.ib-face.off > b, .ib-face.off > span:not(.ib-ring) { color: var(--faint); }
+.ib-face.off[aria-pressed="true"] .ib-ring { filter: none; opacity: 1; }
 .ib-ring { position: relative; width: 70px; height: 70px; display: grid; place-items: center; }
 .ib-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
 .ib-ring .c { position: absolute; top: 0; right: 0; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--app);
