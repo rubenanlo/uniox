@@ -151,7 +151,7 @@ export function Inbox() {
   const inviteCands = personal.filter((t) => t.category === 'invites' && !priority.includes(t));
   const invites = inviteCands.filter((t) => {
     const i = inviteInfo[t.id];
-    return !!i && !i.myAnswer && i.endMs > Date.now();
+    return !!i && !!i.eventId && !i.myAnswer && i.endMs > Date.now();
   });
   const others = personal.filter(
     (t) =>

@@ -210,11 +210,12 @@ export async function syncThread(
     headers: ref.headers,
     fromAddress: ref.from?.email ?? '',
     subject: ref.subject,
-    // Accept/decline notices (REPLY) and counter-proposals are answers, not invites.
+    // Only a real request needs an answer: accept/decline notices (REPLY), counter-proposals
+    // and booking confirmations (PUBLISH) are not invites.
     hasCalendar: msgs.some((m) => {
       if (!m.calendar) return false;
       const method = parseIcs(m.calendar)?.method;
-      return method !== 'REPLY' && method !== 'COUNTER';
+      return method === 'REQUEST';
     }),
     threadHasOurReply,
     knownCorrespondent: !!ref.from && contacts.has(ref.from.email),
@@ -286,7 +287,7 @@ export async function syncThread(
 
 async function inviteFor(db: SupabaseClient, acct: AccountRow, ics: string) {
   const inv = parseIcs(ics);
-  if (!inv || inv.method === 'REPLY') return null;
+  if (!inv || inv.method !== 'REQUEST') return null;
   let eventId: string | null = null;
   let myAnswer: string | null = null;
   let meetingUrl: string | undefined;

@@ -1,4 +1,4 @@
-import { ChevronRight, Search } from "lucide-react";
+import { ArrowUp, ChevronRight, Search } from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -24,14 +24,21 @@ import { useStore } from "../lib/store";
 import { useNow } from "../lib/useNow";
 import "./home.css";
 
-type CardKind = "reply" | "plate" | "prep" | "news";
-const CARDS: CardKind[] = ["reply", "plate", "prep", "news"];
+type CardKind = "reply" | "plate" | "prep" | "news" | "chat";
+const CARDS: CardKind[] = ["reply", "plate", "prep", "news", "chat"];
 const TITLE: Record<CardKind, string> = {
   reply: "Needs your reply",
   plate: "On your plate",
   prep: "Coming up",
   news: "Today’s news",
+  chat: "Ask anything",
 };
+const CHAT_CHIPS = [
+  "When am I free this week?",
+  "Who has waited longest?",
+  "Draft my replies",
+];
+const askTo = (q: string) => `assistant?q=${encodeURIComponent(q)}`;
 const NEWS_Q = "assistant?q=What%20is%20new%20in%20my%20newsletters%3F";
 
 /* Horizon geometry: each day spans 7:00–20:00 on the line. */
@@ -308,70 +315,41 @@ export function Home() {
     );
   };
 
-  /** Vector from a card's centre to the button's centre. */
-  const toButton = (el: Element) => {
-    const b = briefRef.current!.getBoundingClientRect();
-    const r = el.getBoundingClientRect();
-    return [
-      b.left + b.width / 2 - (r.left + r.width / 2),
-      b.top + b.height / 2 - (r.top + r.height / 2),
-    ];
-  };
-
-  // Cards bloom out of the button, one after another, then their rows cascade.
+  // Cards rise from just below their place and tilt upright, one after another;
+  // their rows follow. No blur or zoom, so it stays calm.
   useLayoutEffect(() => {
     if (!fanned || closing || reduceMotion()) return;
     const cards = [...(cardsRef.current?.querySelectorAll(".hz-card") ?? [])];
-    const rot = [-6, -2, 2, 6];
     cards.forEach((c, i) => {
-      const [dx, dy] = toButton(c);
       c.animate(
         [
           {
-            transform: `translate(${dx}px,${dy}px) rotate(${rot[i]}deg) scale(.15)`,
+            transform: "perspective(700px) translateY(46px) rotateX(28deg)",
             opacity: 0,
-            filter: "blur(10px)",
-            borderRadius: "999px",
           },
-          { opacity: 1, filter: "blur(0)", offset: 0.55 },
-          {
-            transform: "none",
-            opacity: 1,
-            filter: "blur(0)",
-            borderRadius: "22px",
-          },
+          { opacity: 1, offset: 0.45 },
+          { transform: "none", opacity: 1 },
         ],
         {
-          duration: 720,
-          delay: i * 80,
-          easing: "cubic-bezier(.34,1.3,.5,1)",
+          duration: 640,
+          delay: i * 70,
+          easing: "cubic-bezier(.22,1,.36,1)",
           fill: "backwards",
         },
       );
-      c.querySelectorAll(".hz-row").forEach((r, j) =>
+      c.querySelectorAll(".hz-row, .hz-chat > *").forEach((r, j) =>
         r.animate(
           [
-            { opacity: 0, transform: "translateY(6px)" },
+            { opacity: 0, transform: "translateY(8px)" },
             { opacity: 1, transform: "none" },
           ],
           {
-            duration: 450,
-            delay: i * 80 + 300 + j * 60,
+            duration: 420,
+            delay: i * 70 + 240 + j * 50,
             easing: "cubic-bezier(.22,1,.36,1)",
             fill: "backwards",
           },
         ),
-      );
-      c.querySelector(".sheen")?.animate(
-        [
-          { transform: "translateX(-140%) skewX(-18deg)" },
-          { transform: "translateX(320%) skewX(-18deg)" },
-        ],
-        {
-          duration: 1100,
-          delay: i * 80 + 360,
-          easing: "cubic-bezier(.22,1,.36,1)",
-        },
       );
     });
   }, [fanned]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -392,20 +370,17 @@ export function Home() {
     }
     setClosing(true);
     cards.forEach((c, i) => {
-      const [dx, dy] = toButton(c);
       c.animate(
         [
           { transform: "none", opacity: 1 },
           {
-            transform: `translate(${dx}px,${dy}px) scale(.12)`,
+            transform: "perspective(700px) translateY(40px) rotateX(24deg)",
             opacity: 0,
-            filter: "blur(8px)",
-            borderRadius: "999px",
           },
         ],
         {
-          duration: 420,
-          delay: (cards.length - 1 - i) * 50,
+          duration: 360,
+          delay: (cards.length - 1 - i) * 40,
           easing: "cubic-bezier(.55,0,.75,.3)",
           fill: "forwards",
         },
@@ -416,7 +391,7 @@ export function Home() {
         setFanned(false);
         setClosing(false);
       },
-      420 + cards.length * 50,
+      360 + cards.length * 40,
     );
   };
 
@@ -476,6 +451,35 @@ export function Home() {
         )
       ) : (
         <div className="empty">Nothing else on the calendar.</div>
+      );
+    if (k === "chat")
+      return (
+        <div className="hz-chat">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const q = new FormData(e.currentTarget)
+                .get("q")
+                ?.toString()
+                .trim();
+              go(q ? askTo(q) : "assistant");
+            }}
+          >
+            <input
+              name="q"
+              placeholder="Ask about mail, people, your calendar…"
+              enterKeyHint="send"
+            />
+            <button type="submit" aria-label="Ask">
+              <ArrowUp size={16} />
+            </button>
+          </form>
+          {CHAT_CHIPS.map((q) => (
+            <button key={q} className="chip" onClick={() => go(askTo(q))}>
+              {q}
+            </button>
+          ))}
+        </div>
       );
     return row(
       "news",
@@ -613,8 +617,8 @@ export function Home() {
         <button
           ref={briefRef}
           className="hz-brief glass"
-          aria-label={fanned ? "Ask the assistant" : "Brief me"}
-          onClick={fanned ? () => go("assistant") : openBrief}
+          aria-label={fanned ? "Fold the brief" : "Brief me"}
+          onClick={fanned ? foldBrief : openBrief}
         >
           <AiMark size={22} />
           <span className="hz-lbs">
@@ -622,7 +626,7 @@ export function Home() {
               Brief me
             </span>
             <span className={`hz-lb lb-fold ${fanned ? "in" : "down"}`}>
-              Ask anything
+              Fold
             </span>
           </span>
         </button>
