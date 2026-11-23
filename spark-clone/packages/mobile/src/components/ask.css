@@ -23,11 +23,11 @@
 .ask-foot .send { width: 36px; height: 36px; }
 .ask-full { display: flex; align-items: center; justify-content: center; gap: 2px; width: 100%; margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
 
-.screen.fa { padding-bottom: calc(110px + var(--safe-bottom)); }
+.screen.fa { padding-left: 18px; padding-right: 18px; overflow-x: hidden; padding-bottom: calc(110px + var(--safe-bottom)); }
 .fa-top { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
 .fa-sent { margin: 14px 2px 4px; font-size: 24px; line-height: 1.4; letter-spacing: -.018em; color: var(--muted); }
 .fa-sent b { color: var(--ink); font-weight: 600; }
-.fa-chips { display: flex; gap: 8px; overflow-x: auto; margin: 12px -18px 0; padding: 0 18px 4px; scrollbar-width: none; }
+.fa-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0 0 4px; }
 .fa-chips button { flex: none; display: flex; align-items: center; gap: 7px; padding: 8px 14px 8px 9px; border-radius: 99px; font-size: 13.5px; font-weight: 600; }
 .fa-day { margin: 18px 0 0; text-align: center; font: 600 10.5px/1 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: .14em; color: var(--faint); text-transform: uppercase; }
 .fa-conv { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }

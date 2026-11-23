@@ -17,13 +17,20 @@ const DONE: Record<RsvpAnswer, string> = {
  * and the four tilted answer tiles. Answering sends the RSVP to Google, then
  * the email leaves the list (Undo brings it back).
  */
-export function InviteRow({ thread }: { thread: MobileThread }) {
+export function InviteRow({
+  thread,
+  invite: given,
+}: {
+  thread: MobileThread;
+  invite?: InviteInfo | null;
+}) {
   const { api, act, showToast } = useStore();
-  const [invite, setInvite] = useState<InviteInfo | null>(null);
+  const [invite, setInvite] = useState<InviteInfo | null>(given ?? null);
   const [answer, setAnswer] = useState<RsvpAnswer | null>(null);
   const [proposing, setProposing] = useState(false);
 
   useEffect(() => {
+    if (given) return;
     let live = true;
     void api
       .thread(thread.id)
@@ -35,7 +42,7 @@ export function InviteRow({ thread }: { thread: MobileThread }) {
     return () => {
       live = false;
     };
-  }, [api, thread.id]);
+  }, [api, thread.id, given]);
 
   const respond = async (key: RsvpAnswer | 'propose') => {
     if (key === 'propose') {

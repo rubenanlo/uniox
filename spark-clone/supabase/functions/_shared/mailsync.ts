@@ -4,6 +4,7 @@ import {
   type Addr,
   accessToken,
   CAL,
+  decodeB64Url,
   GMAIL,
   GoogleError,
   gfetch,
@@ -172,6 +173,18 @@ export async function syncThread(
   const all = (raw.messages ?? []).map(parseMessage).filter((m) => !m.labelIds.includes('DRAFT'));
   const binned = (m: ParsedMessage) => m.labelIds.includes('TRASH') || m.labelIds.includes('SPAM');
   const msgs = all.some((m) => !binned(m)) ? all.filter((m) => !binned(m)) : all;
+  // Most invites carry the .ics as an attachment, not inline; fetch it so the card shows.
+  for (const m of msgs) {
+    if (m.calendar) continue;
+    const ics = m.attachments.find((a) => a.contentType === 'text/calendar' && a.size < 200_000);
+    if (!ics) continue;
+    try {
+      const att = await gfetch<{ data?: string }>(token, `${GMAIL}/messages/${m.id}/attachments/${ics.id}`);
+      if (att.data) m.calendar = decodeB64Url(att.data);
+    } catch (e) {
+      console.error('invite attachment', e);
+    }
+  }
   if (!msgs.length) {
     await db.from('threads').delete().eq('id', key);
     return null;
@@ -197,7 +210,12 @@ export async function syncThread(
     headers: ref.headers,
     fromAddress: ref.from?.email ?? '',
     subject: ref.subject,
-    hasCalendar: msgs.some((m) => !!m.calendar),
+    // Accept/decline notices (REPLY) and counter-proposals are answers, not invites.
+    hasCalendar: msgs.some((m) => {
+      if (!m.calendar) return false;
+      const method = parseIcs(m.calendar)?.method;
+      return method !== 'REPLY' && method !== 'COUNTER';
+    }),
     threadHasOurReply,
     knownCorrespondent: !!ref.from && contacts.has(ref.from.email),
     sameOrgSender: !!ref.from && sameOrgDomain(ref.from.email, me),
