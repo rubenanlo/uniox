@@ -209,6 +209,11 @@ export function Inbox() {
     if (!people.some((x) => x.key === key))
       people.push({ key, who: t.lastFrom, items: [t], newest: t.lastMessageAt, waiting: false });
   }
+  // People with unread mail come first; the rest look switched off but still filter.
+  const unreadBy = new Set(
+    personal.filter((t) => t.unreadCount > 0).map((t) => t.lastFrom?.email?.toLowerCase() ?? t.id),
+  );
+  people.sort((a, b) => Number(unreadBy.has(b.key)) - Number(unreadBy.has(a.key)));
   const sel = person && people.some((p) => p.key === person) ? person : null;
   const fromSel = sel
     ? personal.filter((t) => (t.lastFrom?.email?.toLowerCase() ?? t.id) === sel)
@@ -405,7 +410,7 @@ export function Inbox() {
                 return (
                   <button
                     key={p.key}
-                    className={`ib-face ${sel && sel !== p.key ? 'dim' : ''}`}
+                    className={`ib-face ${sel && sel !== p.key ? 'dim' : ''} ${unreadBy.has(p.key) ? '' : 'off'}`}
                     aria-pressed={sel === p.key}
                     onClick={() => setPerson(sel === p.key ? null : p.key)}
                   >
