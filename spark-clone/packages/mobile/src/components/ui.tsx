@@ -79,7 +79,7 @@ export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'ev
     <>
       <div className={`dock-catch ${open ? 'on' : ''}`} onClick={() => setOpen(false)} />
       <nav
-        className={`dock glass ${open ? 'open' : ''}`}
+        className={`dock ${open ? 'open' : ''}`}
         aria-label="Go to"
         aria-hidden={!open}
         onPointerDown={(e) => (drag.current = { y: e.clientY, moved: false })}
@@ -91,28 +91,30 @@ export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'ev
         }}
         onPointerUp={() => (drag.current = null)}
       >
-        {tabs.map(([k, label, Icon], i) => (
-          <button
-            key={k}
-            style={{ '--i': i } as CSSProperties}
-            className={on === k ? 'on' : ''}
-            tabIndex={open ? 0 : -1}
-            aria-current={on === k}
-            onClick={() => goTo(k)}
-          >
-            <Icon size={23} strokeWidth={1.8} />
-            {k === 'inbox' && on !== 'inbox' && unread && <span className="dot" />}
-            <span>{label}</span>
-          </button>
-        ))}
+        <div className="places glass">
+          {tabs.map(([k, label, Icon], i) => (
+            <button
+              key={k}
+              style={{ '--i': i } as CSSProperties}
+              className={on === k ? 'on' : ''}
+              tabIndex={open ? 0 : -1}
+              aria-current={on === k}
+              onClick={() => goTo(k)}
+            >
+              <Icon size={22} strokeWidth={1.8} />
+              {k === 'inbox' && on !== 'inbox' && unread && <span className="dot" />}
+              <span className="lb">{label}</span>
+            </button>
+          ))}
+        </div>
         <button
           style={{ '--i': 4 } as CSSProperties}
-          className="act"
+          className="act glass"
+          aria-label={fab === 'event' ? 'New event' : 'Write'}
           tabIndex={open ? 0 : -1}
           onClick={() => goTo(fab === 'event' ? 'calendar?new=1' : 'compose')}
         >
-          {fab === 'event' ? <Plus size={23} /> : <PenLine size={22} />}
-          <span>{fab === 'event' ? 'Event' : 'Write'}</span>
+          {fab === 'event' ? <Plus size={24} /> : <PenLine size={22} />}
         </button>
       </nav>
       <button
