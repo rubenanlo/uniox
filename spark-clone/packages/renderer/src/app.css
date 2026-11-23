@@ -425,19 +425,10 @@ body {
   user-select: text;
 }
 
-/* Chat reading layout (ChatThreadView): the island's conversation on a soft
-   daylight wash, so the email bubbles read as white panes like on the glass. */
+/* Chat reading layout (ChatThreadView): the conversation sits on the app's own
+   background (same as the rest of the window), with the email bubbles as white panes. */
 .chat-wash {
-  background:
-    radial-gradient(120% 70% at 100% 0%, color-mix(in oklch, var(--color-azure) 7%, transparent), transparent 60%),
-    radial-gradient(90% 60% at 0% 100%, color-mix(in oklch, var(--color-violet) 5%, transparent), transparent 60%),
-    color-mix(in oklch, var(--color-sunken) 45%, var(--color-paper));
-}
-.dark .chat-wash {
-  background:
-    radial-gradient(120% 70% at 100% 0%, color-mix(in oklch, var(--color-azure) 9%, transparent), transparent 60%),
-    radial-gradient(90% 60% at 0% 100%, color-mix(in oklch, var(--color-violet) 7%, transparent), transparent 60%),
-    color-mix(in oklch, var(--color-sunken) 55%, var(--color-paper));
+  background: var(--color-app);
 }
 .chat-wash .qr-bubble-in {
   background: var(--color-surface);
