@@ -481,6 +481,41 @@ function ChatMessage({
   const fold = main ? quoted : '';
   const isFwd = /forwarded|transféré/i.test(fold.split('\n', 1)[0] ?? '');
   const [showQuoted, setShowQuoted] = useState(false);
+  // Fold/open glides: remember the bubble's size before the switch, then
+  // animate from it to the new size once React has swapped the content.
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const before = useRef<DOMRect | null>(null);
+  const firstRun = useRef(true);
+  useLayoutEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    const el = bubbleRef.current;
+    const from = before.current;
+    before.current = null;
+    if (!el || !from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const to = el.getBoundingClientRect();
+    el.getAnimations().forEach((a) => a.cancel());
+    const ease = 'cubic-bezier(.2, .8, .2, 1)';
+    el.animate(
+      [
+        { height: `${from.height}px`, width: `${from.width}px`, overflow: 'hidden' },
+        { height: `${to.height}px`, width: `${to.width}px`, overflow: 'hidden' },
+      ],
+      { duration: 320, easing: ease },
+    );
+    el.firstElementChild?.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 220,
+      delay: 60,
+      easing: 'ease-out',
+      fill: 'backwards',
+    });
+  }, [open]);
+  const toggle = () => {
+    before.current = bubbleRef.current?.getBoundingClientRect() ?? null;
+    onToggle();
+  };
   if (m.invite) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -496,10 +531,10 @@ function ChatMessage({
     );
   }
   const tap = (e: React.MouseEvent) => {
-    if (!open) return onToggle();
+    if (!open) return toggle();
     if ((e.target as Element).closest('a, button, input, textarea')) return;
     if (window.getSelection()?.toString()) return;
-    onToggle();
+    toggle();
   };
   const out = m.fromMe;
   return (
@@ -512,12 +547,13 @@ function ChatMessage({
           <span>·</span>
           <span>{listTime(m.date)}</span>
           {open && (
-            <button className="te-foldbtn" onClick={onToggle}>
+            <button className="te-foldbtn" onClick={toggle}>
               Fold
             </button>
           )}
         </div>
         <div
+          ref={bubbleRef}
           className={`te-bubble${open ? ' mail-text' : ' shut'}`}
           role="button"
           tabIndex={0}
@@ -526,12 +562,12 @@ function ChatMessage({
           onKeyDown={(e) => {
             if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
               e.preventDefault();
-              onToggle();
+              toggle();
             }
           }}
         >
           {open ? (
-            <>
+            <div>
               {text || m.snippet}
               {fold &&
                 (showQuoted ? (
@@ -551,7 +587,7 @@ function ChatMessage({
                   <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <span className="te-pv">
               <span>{preview(m)}</span>
