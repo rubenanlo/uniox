@@ -43,6 +43,7 @@ function loadAccts(): Set<string> {
   }
 }
 
+const PER_SECTION = 10;
 export function Inbox() {
   const { threads, accounts, loading, refresh, api, settings, act, showToast } = useStore();
   const route = useRoute();
@@ -56,7 +57,14 @@ export function Inbox() {
   const [cleared, setCleared] = useState(false);
   const [person, setPerson] = useState<string | null>(null);
   const [stack, setStack] = useState<Category | null>(null);
-  const [restAll, setRestAll] = useState(false);
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const cap = <T,>(key: string, list: T[]) => (opened.has(key) ? list : list.slice(0, PER_SECTION));
+  const more = (key: string, total: number) =>
+    !opened.has(key) && total > PER_SECTION ? (
+      <button className="ib-more" onClick={() => setOpened((o) => new Set(o).add(key))}>
+        Show {total - PER_SECTION} more
+      </button>
+    ) : null;
   const invRef = useRef<HTMLDivElement>(null);
   const waitRef = useRef<HTMLDivElement>(null);
 
@@ -162,7 +170,9 @@ export function Inbox() {
       !(inviteCands.includes(t) && inviteInfo[t.id] === undefined),
   );
   const unread = others.filter((t) => t.unreadCount > 0);
-  const read = others.filter((t) => t.unreadCount === 0);
+  const readAll = others.filter((t) => t.unreadCount === 0);
+  const readPriority = readAll.filter((t) => t.priority);
+  const read = readAll.filter((t) => !t.priority);
   const lists = BUNDLES.map((b) => ({
     ...b,
     items: visible.filter((t) => t.category === b.key),
@@ -461,7 +471,7 @@ export function Inbox() {
                   )}
                 </div>
                 <div className="ib-gist">
-                  {(sel ? fromSel : priority).map((t) =>
+                  {cap(sel ? `from:${sel}` : 'needs', sel ? fromSel : priority).map((t) =>
                     priority.includes(t) ? (
                       <ThreadRow
                         key={t.id}
@@ -473,6 +483,7 @@ export function Inbox() {
                       <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                     ),
                   )}
+                  {more(sel ? `from:${sel}` : 'needs', (sel ? fromSel : priority).length)}
                 </div>
               </>
             )}
@@ -484,30 +495,37 @@ export function Inbox() {
             {invites.length > 0 && (
               <div ref={invRef} style={{ scrollMarginTop: 12 }}>
                 <Section label="Invites" color="var(--violet)" />
-                {invites.map((t) => (
+                {cap('invites', invites).map((t) => (
                   <InviteRow key={t.id} thread={t} invite={inviteInfo[t.id] ?? null} />
                 ))}
+                {more('invites', invites.length)}
               </div>
             )}
             {unread.length > 0 && (
               <>
                 <Section label="Unread" />
-                {unread.map((t) => (
+                {cap('unread', unread).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
+                {more('unread', unread.length)}
+              </>
+            )}
+            {!unreadOnly && readPriority.length > 0 && (
+              <>
+                <Section label="Priority" color="var(--priority)" />
+                {cap('priority', readPriority).map((t) => (
+                  <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
+                ))}
+                {more('priority', readPriority.length)}
               </>
             )}
             {!unreadOnly && read.length > 0 && (
               <div ref={waitRef} style={{ scrollMarginTop: 12 }}>
                 <Section label="Earlier" />
-                {(restAll ? read : read.slice(0, 40)).map((t) => (
+                {cap('earlier', read).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
-                {!restAll && read.length > 40 && (
-                  <button className="ib-more" onClick={() => setRestAll(true)}>
-                    Show {read.length - 40} more
-                  </button>
-                )}
+                {more('earlier', read.length)}
               </div>
             )}
             {!unreadOnly && lists.length > 0 && (
