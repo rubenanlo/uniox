@@ -18,6 +18,7 @@ import {
   TimesNote,
 } from '../quickreply/ChatParts';
 import { nameOf, useChatThread } from '../quickreply/useChatThread';
+import { PriorityMark } from './PriorityBolt';
 import {
   DraftItem,
   ThreadHeader,
@@ -64,6 +65,7 @@ function BubbleMeta({ message, mine }: { message: MessageMeta; mine: boolean }) 
       <span className={cn('text-ink-muted', !message.seen && !mine && 'text-ink font-semibold')}>
         {mine ? 'You' : nameOf(message.from)}
       </span>
+      {!mine && <PriorityMark email={message.from?.email} />}
       <span>·</span>
       <span className="tabular-nums">{timeLabel(message.date)}</span>
       {mine && message.to.length > 0 && (

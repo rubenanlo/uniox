@@ -172,3 +172,21 @@ export function withPriorityFrom(t: ThreadSummary, prio: Set<string>): ThreadSum
   if (t.participants[0] === match) return t;
   return { ...t, participants: [match, ...t.participants.filter((a) => a !== match)] };
 }
+
+/**
+ * The people in a thread who could be made Priority: everyone who wrote in
+ * it, most recent first, never one of our own accounts. Older cached rows
+ * have no `senders`, so they fall back to participants.
+ */
+export function prioritySenderCandidates(t: ThreadSummary, self: Set<string>): Address[] {
+  const pool: Address[] = t.senders?.length ? t.senders : t.participants;
+  const seen = new Set<string>();
+  const out: Address[] = [];
+  for (const a of pool) {
+    const key = a.email?.trim().toLowerCase();
+    if (!key || self.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
+}

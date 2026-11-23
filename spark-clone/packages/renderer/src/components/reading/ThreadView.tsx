@@ -26,6 +26,7 @@ import { InviteCard } from '../invite/InviteCard';
 import { AvailabilitySuggestions } from './AvailabilitySuggestions';
 import { ChatThreadView } from './ChatThreadView';
 import { MessageBody } from './MessageBody';
+import { PriorityButton, PriorityMark } from './PriorityBolt';
 
 const UNDO_SEND_MS = 5000;
 
@@ -205,6 +206,7 @@ function MessageItem({
             <span className={cn('truncate text-[12.5px]', !message.seen && 'font-bold')}>
               {message.from ? <AddressLabel addr={message.from} /> : from}
             </span>
+            <PriorityMark email={message.from?.email} className="self-center" />
             <span className="text-ink-faint shrink-0 text-[11px]">
               {formatFullDate(message.date)}
             </span>
@@ -353,6 +355,7 @@ export function ThreadHeader({ thread }: { thread: ThreadSummary }) {
             </Tip>
           ))}
         </div>
+        <PriorityButton thread={thread} className={iconBtn} />
         <Tip label="Snooze" keys={keysFor('snooze')}>
           <button onClick={() => respond('snooze')} className={iconBtn}>
             <AlarmClock size={15} />

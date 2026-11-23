@@ -12,6 +12,7 @@ import { printThread } from '../lib/print';
 import { focusGatekeeper, openSelectedThread, toggleSidebarReveal } from '../lib/panels';
 import { toastWithUndo, handleTriageUndo } from '../lib/undo';
 import { bundleByRowId, keyboardTargetId, navRowId, PRIORITY_TOGGLE_ID, useUi } from '../state/store';
+import { togglePriorityForThread } from '../state/priority';
 
 export interface KeyCombo {
   key: string; // KeyboardEvent.key, lowercase
@@ -295,6 +296,18 @@ export const ACTIONS: AppAction[] = [
     perform: (id) => {
       const t = threadById(id) ?? target();
       if (t) useUi.getState().openPicker({ kind: 'remind', thread: t });
+    },
+  },
+  {
+    id: 'priority-sender',
+    label: 'Add / remove sender from Priority',
+    combo: { key: 'p' },
+    context: 'thread',
+    section: 'Triage',
+    perform: (id) => {
+      if (useUi.getState().view === 'calendar') return;
+      const t = threadById(id) ?? target();
+      if (t) void togglePriorityForThread(t);
     },
   },
   {

@@ -165,6 +165,8 @@ function MailView() {
       const s = useUi.getState();
       if (s.composer || s.commandOpen || s.settingsOpen || s.shortcutsOpen || s.picker) return;
       if (assistantOwnsEscape()) return; // the assistant's own Esc closes it first
+      // Small popovers (e.g. the Priority picker) mark themselves and close on their own Esc.
+      if (document.querySelector('[data-owns-escape]')) return;
       // The time zone dialog and the times calendar close on their own Esc.
       if (useZonePrompt.getState().questions || useTimesCalendarOpen.getState()) return;
       e.preventDefault();
