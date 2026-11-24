@@ -273,6 +273,7 @@ function ev(
 }
 
 const created: MobileEvent[] = [];
+const answers: Record<string, MobileEvent['myAnswer']> = {};
 
 function eventsAround(): MobileEvent[] {
   const out: MobileEvent[] = [...created];
@@ -305,7 +306,24 @@ function eventsAround(): MobileEvent[] {
       meetingUrl: 'https://meet.google.com/stc-rvw-019',
       myAnswer: null,
       organizer: GUILLAUME,
+      attendees: [GUILLAUME, HELEN],
     }),
+    // Two invites waiting today: one clashes with lunch, one falls in free time.
+    ev('budget', 'SDSN budget review', todayAt(12, 30), todayAt(13, 30), '#8a5cd6', {
+      meetingUrl: 'https://meet.google.com/bud-gets-001',
+      myAnswer: null,
+      organizer: HELEN,
+      attendees: [HELEN, JEFFREY, ALYSON],
+    }),
+    ev('q1', 'Q1 planning', todayAt(17, 30), todayAt(18, 0), '#1f9a6b', {
+      myAnswer: null,
+      organizer: ALYSON,
+      attendees: [ALYSON, GUILLAUME],
+    }),
+    {
+      ...ev('retreat', 'Team retreat', todayAt(0, 0), todayAt(0, 0, 1), '#d97a1f'),
+      allDay: true,
+    },
   );
   out.push(ev('freeze', 'Data freeze', todayAt(14, 30, 2), todayAt(15, 30, 2), '#c7402d'));
   // A personal event and the "Busy" block it mirrors onto the work calendar.
@@ -317,7 +335,7 @@ function eventsAround(): MobileEvent[] {
     }),
     ev('dentist-mirror', 'Busy', todayAt(17, 30, 1), todayAt(18, 15, 1), '#2f63e7'),
   );
-  return out;
+  return out.map((e) => (e.id in answers ? { ...e, myAnswer: answers[e.id]! } : e));
 }
 
 let settings: SharedSettings = { ...DEFAULT_SETTINGS };
@@ -371,18 +389,33 @@ export const mockApi: UnioxApi = {
   send: () => delay(undefined, 300),
   events: (from, to) =>
     delay(dedupeMirroredEvents(eventsAround().filter((e) => e.endMs > from && e.startMs < to))),
-  rsvp: () => delay(undefined),
+  rsvp: (eventId, _acct, answer) => {
+    answers[eventId] = answer;
+    return delay(undefined);
+  },
   proposeTime: () => delay(undefined, 400),
   freeBusy(_acct, emails, from, to) {
     const mine = eventsAround()
       .filter((e) => !e.allDay && !e.free && e.endMs > from && e.startMs < to)
       .map((e) => ({ startMs: e.startMs, endMs: e.endMs }));
-    const busy: Record<string, { startMs: number; endMs: number }[] | null> = { 'me@example.com': mine };
+    const busy: Record<string, { startMs: number; endMs: number }[] | null> = {
+      'me@example.com': mine,
+    };
     emails.forEach((e, i) => {
       const blocks: { startMs: number; endMs: number }[] = [];
       for (let d = new Date(from); d.getTime() < to; d.setDate(d.getDate() + 1)) {
-        const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(h), (h % 1) * 60).getTime();
-        blocks.push({ startMs: at(10 + i), endMs: at(11.5 + i) }, { startMs: at(15), endMs: at(16) });
+        const at = (h: number) =>
+          new Date(
+            d.getFullYear(),
+            d.getMonth(),
+            d.getDate(),
+            Math.floor(h),
+            (h % 1) * 60,
+          ).getTime();
+        blocks.push(
+          { startMs: at(10 + i), endMs: at(11.5 + i) },
+          { startMs: at(15), endMs: at(16) },
+        );
       }
       busy[e.toLowerCase()] = i > 1 ? null : blocks;
     });
