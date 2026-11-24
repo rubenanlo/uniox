@@ -581,6 +581,7 @@ export function WeekFolds({
   const today = startOfDay(now);
   const ws = startOfWeek(day);
   const [needOpen, setNeedOpen] = useState(false);
+  const [pickOpen, setPickOpen] = useState(false);
   const [opened, setOpened] = useState<{ ws: number; d: number | null } | null>(null);
   const needRef = useRef<HTMLDivElement>(null);
 
@@ -629,7 +630,10 @@ export function WeekFolds({
     <div className="cal">
       <CalTop label={label} onToday={() => setDay(today)} view={view} setView={setView} />
       <p className="cal-sent">
-        <b>{weekWord}</b> {past ? 'held' : 'holds'} {plural(total, 'meeting')}.
+        <button className="ib-w" aria-expanded={pickOpen} onClick={() => setPickOpen(!pickOpen)}>
+          {weekWord}
+        </button>{' '}
+        {past ? 'held' : 'holds'} {plural(total, 'meeting')}.
         {pending.length > 0 && (
           <>
             {' '}
@@ -653,10 +657,53 @@ export function WeekFolds({
           <>
             {' '}
             {list(openWords).replace(/^./, (c) => c.toUpperCase())}{' '}
-            {openWords.length === 1 && openWords[0] !== 'the weekend' ? 'is' : 'are'} open.
+            {openWords.length === 1 ? 'is' : 'are'} open.
           </>
         )}
       </p>
+
+      <div className={`cal-fold${pickOpen ? ' open' : ''}`} inert={!pickOpen}>
+        <div>
+          <div className="cal-week cal-weeks glass">
+            <button
+              className="nav"
+              aria-label="Earlier weeks"
+              onClick={() => setDay(addDays(day, -28))}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            {[-2, -1, 0, 1, 2].map((k) => {
+              const w = addDays(ws, 7 * k);
+              const end = addDays(w, 6);
+              const count = events.filter(
+                (e) => !e.allDay && !e.free && e.startMs >= w && e.startMs < addDays(w, 7),
+              ).length;
+              return (
+                <button
+                  key={w}
+                  className={`d${k === 0 ? ' sel' : ''}${w === startOfWeek(today) ? ' today' : ''}`}
+                  aria-label={`Week of ${new Date(w).toLocaleDateString([], { month: 'long', day: 'numeric' })}, ${plural(count, 'meeting')}`}
+                  aria-pressed={k === 0}
+                  onClick={() => setDay(addDays(day, 7 * k))}
+                >
+                  <div className="wd">{new Date(w).toLocaleDateString([], { month: 'short' })}</div>
+                  <div className="n">
+                    {new Date(w).getDate()} – {new Date(end).getDate()}
+                  </div>
+                  <div className="bar" style={{ width: Math.min(40, 6 + count * 2) }} />
+                </button>
+              );
+            })}
+            <button
+              className="nav"
+              aria-label="Later weeks"
+              onClick={() => setDay(addDays(day, 28))}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
 
       <Needs
         pending={pending}

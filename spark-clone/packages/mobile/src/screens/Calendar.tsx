@@ -36,7 +36,9 @@ export function CalendarScreen() {
     const ws = startOfWeek(day);
     return view === 'list'
       ? [startOfDay(now), addDays(startOfDay(now), 30)]
-      : [addDays(ws, -7), addDays(ws, 14)];
+      : view === 'week'
+        ? [addDays(ws, -14), addDays(ws, 21)] // the week picker shows two weeks each side
+        : [addDays(ws, -7), addDays(ws, 14)];
   }, [day, view, now]);
 
   const load = useCallback(

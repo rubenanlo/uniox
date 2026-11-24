@@ -29,6 +29,9 @@
 .cal-week .dots i { width: 4px; height: 4px; border-radius: 2px; background: var(--muted); }
 .cal-week .nav { width: 30px; height: 44px; display: grid; place-items: center; color: var(--muted); flex: none; }
 
+.cal-weeks .n { width: auto; padding: 0 5px; height: 30px; border-radius: 15px; font-size: 13.5px; white-space: nowrap; display: inline-grid; }
+.cal-weeks .bar { height: 4px; border-radius: 2px; margin: 6px auto 0; background: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet)); }
+
 /* Needs your answer */
 .cal-need-h { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; margin-top: 16px; text-align: left; }
 .cal-need-h h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.025em; }
