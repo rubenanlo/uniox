@@ -92,8 +92,8 @@ export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'ev
         }}
         onPointerUp={() => (drag.current = null)}
       >
-        {on === 'inbox' ? (
-          <DockSentence open={open} goTo={goTo} />
+        {on === 'inbox' || on === 'calendar' ? (
+          <DockSentence open={open} goTo={goTo} on={on} />
         ) : (
           <div className="places glass">
             {tabs.map(([k, label, Icon], i) => (
@@ -112,7 +112,7 @@ export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'ev
             ))}
           </div>
         )}
-        {on !== 'inbox' && (
+        {on !== 'inbox' && on !== 'calendar' && (
           <button
             style={{ '--i': 4 } as CSSProperties}
             className="act glass"
@@ -169,23 +169,63 @@ export function TabBar({ on, fab = 'compose' }: { on: Tab; fab?: 'compose' | 'ev
   );
 }
 
+/** A new event from the island, keeping the Calendar view you are in. */
+function newEventPath(): string {
+  const view = new URLSearchParams(location.hash.split('?')[1] ?? '').get('view');
+  return view && view !== 'day' ? `calendar?view=${view}&new=1` : 'calendar?new=1';
+}
+
 /**
  * The Inbox's opened dock: one sentence in the Inbox voice. You are already in
  * the Inbox and Home is an edge swipe away, so it only offers Calendar,
  * Search and Write.
  */
-function DockSentence({ open, goTo }: { open: boolean; goTo: (p: string) => void }) {
+function DockSentence({
+  open,
+  goTo,
+  on,
+}: {
+  open: boolean;
+  goTo: (p: string) => void;
+  on: 'inbox' | 'calendar';
+}) {
   const api = useStore((s) => s.api);
   const [next, setNext] = useState<{ title: string; startMs: number } | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || on !== 'inbox') return;
     const now = Date.now();
     void api
       .events(now, now + 86_400_000)
       .then((ev) => setNext(ev.find((e) => !e.allDay && !e.free && e.startMs > now) ?? null))
       .catch(() => setNext(null));
-  }, [open, api]);
+  }, [open, api, on]);
   const tab = open ? 0 : -1;
+  // In the Calendar the same card leads to the Inbox, a new email, Search and
+  // a new event. Home is an edge swipe away there too.
+  if (on === 'calendar')
+    return (
+      <div className="dk-sent glass">
+        <p>
+          Your day stays here. Peek at the{' '}
+          <button className="w" tabIndex={tab} onClick={() => goTo('inbox')}>
+            Inbox
+          </button>
+          ,{' '}
+          <button className="w" tabIndex={tab} onClick={() => goTo('compose')}>
+            write an email
+          </button>
+          ,{' '}
+          <button className="w" tabIndex={tab} onClick={() => goTo('search')}>
+            search
+          </button>{' '}
+          for something, or add an{' '}
+          <button className="w" tabIndex={tab} onClick={() => goTo(newEventPath())}>
+            event
+          </button>
+          .
+        </p>
+      </div>
+    );
   return (
     <div className="dk-sent glass">
       <p>
