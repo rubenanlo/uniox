@@ -14,9 +14,9 @@ import {
 import { go, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 import { useNow } from '../lib/useNow';
-import { CalTop, DayRiver, WeekFolds } from './CalendarDay';
+import { CalTop, DayRiver, MonthDots, WeekFolds } from './CalendarDay';
 
-type View = 'day' | 'week' | 'list';
+type View = 'day' | 'week' | 'month' | 'list';
 
 export function CalendarScreen() {
   const { api, threads } = useStore();
@@ -34,6 +34,12 @@ export function CalendarScreen() {
 
   const range = useMemo(() => {
     const ws = startOfWeek(day);
+    if (view === 'month') {
+      const x = new Date(day);
+      const first = new Date(x.getFullYear(), x.getMonth(), 1).getTime();
+      const next = new Date(x.getFullYear(), x.getMonth() + 1, 1).getTime();
+      return [startOfWeek(first), addDays(next, 7)];
+    }
     return view === 'list'
       ? [startOfDay(now), addDays(startOfDay(now), 30)]
       : view === 'week'
@@ -48,7 +54,6 @@ export function CalendarScreen() {
   useEffect(load, [load, threads]);
 
   const setView = (v: View) => go(`calendar?view=${v}`, true);
-  const step = (n: number) => setDay((d) => addDays(d, view === 'week' ? 7 * n : n));
   const open = events.find((e) => e.id === openId);
   return (
     <>
@@ -61,8 +66,8 @@ export function CalendarScreen() {
           touch.current = null;
           if (x0 == null || x1 == null) return;
           // From the left edge the swipe goes back Home, as in the Inbox.
-          if (x0 < 28 && x1 - x0 > 90) return go('home');
-          if (view !== 'list' && Math.abs(x1 - x0) > 70) step(x1 < x0 ? 1 : -1);
+          // Days, weeks and months change only through the sentence's pickers.
+          if (x0 < 28 && x1 - x0 > 90) go('home');
         }}
       >
         {view === 'day' ? (
@@ -89,6 +94,20 @@ export function CalendarScreen() {
             onChanged={load}
             onDetails={(e) => go(`calendar?view=week&event=${encodeURIComponent(e.id)}`, true)}
             onOpenDay={(d) => (setDay(d), go('calendar', true))}
+            onPlan={(d) => (setDay(d), go('calendar?new=1', true))}
+          />
+        ) : view === 'month' ? (
+          <MonthDots
+            day={day}
+            setDay={setDay}
+            events={events}
+            now={now}
+            view={view}
+            setView={setView}
+            onChanged={load}
+            onDetails={(e) => go(`calendar?view=month&event=${encodeURIComponent(e.id)}`, true)}
+            onOpenDay={(d) => (setDay(d), go('calendar', true))}
+            onOpenWeek={(d) => (setDay(d), go('calendar?view=week', true))}
             onPlan={(d) => (setDay(d), go('calendar?new=1', true))}
           />
         ) : (

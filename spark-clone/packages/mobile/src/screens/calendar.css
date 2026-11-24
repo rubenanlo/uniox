@@ -130,3 +130,34 @@
 .cal-link.flush { padding-left: 0; color: var(--muted); font-weight: 500; font-size: 13.5px; }
 .cal-gap-h .cal-link.plan { padding-right: 0; }
 @media (prefers-reduced-motion: reduce) { .cal-fold, .cal-week .n, .cal-fold .cal-week, .cal-fold .cal-week > * { transition: none; transform: none; filter: none; } }
+
+/* Month: a grid of dots, and the picked day's line below it */
+.cal-views { gap: 13px; }
+.cal-month { margin-top: 14px; animation: cal-in .34s ease both; }
+.cal-mwd, .cal-mrow { display: flex; }
+.cal-mwd span { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--muted); padding-bottom: 4px; }
+.cal-mrow > * { flex: 1; height: 50px; text-align: center; }
+.cal-mrow .n { width: 32px; height: 32px; margin: 0 auto; border-radius: 16px; display: grid; place-items: center; font-size: 15.5px;
+  transition: background .28s, color .28s, transform .36s cubic-bezier(.22, 1.5, .36, 1); }
+.cal-mrow .past .n { color: var(--muted); }
+.cal-mrow .past .dots { opacity: .45; }
+.cal-mrow .today .n { color: var(--accent); font-weight: 700; }
+.cal-mrow .sel .n { background: var(--accent); color: var(--on-accent); font-weight: 700; animation: cal-pop .36s cubic-bezier(.22, 1.5, .36, 1); }
+.cal-mrow .dots { display: flex; gap: 2px; justify-content: center; height: 5px; margin-top: 3px; }
+.cal-mrow .dots i { width: 5px; height: 5px; border-radius: 3px; }
+.cal-mday { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 6px; font-size: 19px; font-weight: 700; }
+.cal-mday button { min-height: 44px; font: inherit; }
+.cal-mday button.today { color: var(--accent); }
+.cal-mday span { font-size: 14px; font-weight: 500; color: var(--muted); }
+/* The day line swaps with a slide from the side you moved toward; its events follow one by one. */
+.cal-swap { --dx: 22px; animation: cal-swap .36s cubic-bezier(.2, .8, .2, 1) both; }
+.cal-swap.back { --dx: -22px; }
+.cal-swap .cal-day-in > * { animation: cal-rise .4s cubic-bezier(.22, 1.2, .36, 1) both; animation-delay: calc(60ms + var(--i, 0) * 40ms); }
+.cal-swap .cal-day-in > :nth-child(2) { --i: 1; } .cal-swap .cal-day-in > :nth-child(3) { --i: 2; }
+.cal-swap .cal-day-in > :nth-child(4) { --i: 3; } .cal-swap .cal-day-in > :nth-child(5) { --i: 4; }
+.cal-swap .cal-day-in > :nth-child(n + 6) { --i: 5; }
+@keyframes cal-swap { from { opacity: 0; transform: translateX(var(--dx)); } }
+@keyframes cal-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes cal-pop { from { transform: scale(.6); } }
+@keyframes cal-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cal-month, .cal-swap, .cal-swap .cal-day-in > *, .cal-mrow .sel .n { animation: none; } }

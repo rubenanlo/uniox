@@ -68,7 +68,7 @@ export function DayRiver({
   events: MobileEvent[];
   now: number;
   view: string;
-  setView: (v: 'day' | 'week' | 'list') => void;
+  setView: (v: ViewName) => void;
   onChanged: () => void;
   onDetails: (e: MobileEvent) => void;
   /** The island asked for a new event: open one in the next free gap. */
@@ -455,7 +455,7 @@ export function DayRiver({
   );
 }
 
-type ViewName = 'day' | 'week' | 'list';
+type ViewName = 'day' | 'week' | 'month' | 'list';
 
 /** The quiet top line: where you are, and the Day / Week / List words. */
 export function CalTop({
@@ -475,7 +475,7 @@ export function CalTop({
         {label}
       </button>
       <div className="cal-views">
-        {(['day', 'week', 'list'] as const).map((v) => (
+        {(['day', 'week', 'month', 'list'] as const).map((v) => (
           <button
             key={v}
             className={view === v ? 'on' : ''}
@@ -717,15 +717,9 @@ export function WeekFolds({
       />
 
       <div className="cal-days">
-        {days.map(({ d, all, timed, busy, clashing }) => {
+        {days.map(({ d, all, busy, clashing }) => {
           const open = openDay === d;
           const isToday = d === today;
-          const last = busy.reduce((m, e) => Math.max(m, e.endMs), 0);
-          const freeLabel = !busy.length
-            ? 'Free all day'
-            : last < d + DAY_END_H * HOUR
-              ? `Free from ${clock12(last)}`
-              : null;
           const pairs = Math.max(1, Math.round(clashing.length / 2));
           return (
             <div className={`cal-day${d < today ? ' past' : ''}`} key={d}>
@@ -751,61 +745,330 @@ export function WeekFolds({
               </button>
               <div className={`cal-fold${open ? ' open' : ''}`} inert={!open}>
                 <div>
-                  <div className="cal-day-in">
-                    {all
-                      .filter((e) => e.allDay)
-                      .map((e) => (
-                        <button key={e.id} className="cal-mini" onClick={() => onDetails(e)}>
-                          <span className="cal-rail">
-                            <span className="dot" style={{ ['--c' as string]: e.color }} />
-                            <span className="line" />
-                          </span>
-                          <span className="tx">
-                            <b>{e.title}</b>
-                            <span className="sub">All day</span>
-                          </span>
-                        </button>
-                      ))}
-                    {timed.map((e) => {
-                      const waiting = isWaiting(e, mine);
-                      return (
-                        <button
-                          key={e.id}
-                          className={`cal-mini${e.endMs <= now ? ' done' : ''}`}
-                          style={{ ['--c' as string]: e.free ? 'var(--faint)' : e.color }}
-                          onClick={() => onDetails(e)}
-                        >
-                          <span className="cal-rail">
-                            <span className={`dot${waiting ? ' hollow' : ''}`} />
-                            <span className="line" />
-                          </span>
-                          <span className="tx">
-                            <b>{e.title}</b>
-                            {clashIn(busy, e) && <span className="clash">clash</span>}
-                            <span className="sub">
-                              {clock12(e.startMs)} · {span(e.endMs - e.startMs)}
-                              {e.free ? ' · free time' : waiting ? ' · not answered yet' : ''}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                    <div className="cal-gap-h">
-                      <button className="cal-link flush" onClick={() => onOpenDay(d)}>
-                        {freeLabel ?? 'Open the day'}
-                      </button>
-                      {d >= today && (
-                        <button className="plan cal-link" onClick={() => onPlan(d)}>
-                          Plan something
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  <DayMini
+                    d={d}
+                    all={all}
+                    now={now}
+                    today={today}
+                    mine={mine}
+                    onDetails={onDetails}
+                    onOpenDay={onOpenDay}
+                    onPlan={onPlan}
+                  />
                 </div>
               </div>
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/** One day in short: its events on a small line, then what is free and "Plan something". */
+function DayMini({
+  d,
+  all,
+  now,
+  today,
+  mine,
+  onDetails,
+  onOpenDay,
+  onPlan,
+}: {
+  d: number;
+  all: MobileEvent[];
+  now: number;
+  today: number;
+  mine: Set<string>;
+  onDetails: (e: MobileEvent) => void;
+  onOpenDay: (d: number) => void;
+  onPlan: (d: number) => void;
+}) {
+  const timed = all.filter((e) => !e.allDay);
+  const busy = timed.filter((e) => !e.free);
+  const last = busy.reduce((m, e) => Math.max(m, e.endMs), 0);
+  const freeLabel = !busy.length
+    ? 'Free all day'
+    : last < d + DAY_END_H * HOUR
+      ? `Free from ${clock12(last)}`
+      : null;
+  return (
+    <div className="cal-day-in">
+      {all
+        .filter((e) => e.allDay)
+        .map((e) => (
+          <button key={e.id} className="cal-mini" onClick={() => onDetails(e)}>
+            <span className="cal-rail">
+              <span className="dot" style={{ ['--c' as string]: e.color }} />
+              <span className="line" />
+            </span>
+            <span className="tx">
+              <b>{e.title}</b>
+              <span className="sub">All day</span>
+            </span>
+          </button>
+        ))}
+      {timed.map((e) => {
+        const waiting = isWaiting(e, mine);
+        return (
+          <button
+            key={e.id}
+            className={`cal-mini${e.endMs <= now ? ' done' : ''}`}
+            style={{ ['--c' as string]: e.free ? 'var(--faint)' : e.color }}
+            onClick={() => onDetails(e)}
+          >
+            <span className="cal-rail">
+              <span className={`dot${waiting ? ' hollow' : ''}`} />
+              <span className="line" />
+            </span>
+            <span className="tx">
+              <b>{e.title}</b>
+              {clashIn(busy, e) && <span className="clash">clash</span>}
+              <span className="sub">
+                {clock12(e.startMs)} · {span(e.endMs - e.startMs)}
+                {e.free ? ' · free time' : waiting ? ' · not answered yet' : ''}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+      <div className="cal-gap-h">
+        <button className="cal-link flush" onClick={() => onOpenDay(d)}>
+          {freeLabel ?? 'Open the day'}
+        </button>
+        {d >= today && (
+          <button className="plan cal-link" onClick={() => onPlan(d)}>
+            Plan something
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MONTH = (ms: number, n = 0) => {
+  const x = new Date(ms);
+  return new Date(x.getFullYear(), x.getMonth() + n, 1).getTime();
+};
+
+/** Month as a grid of dots; the picked day's line sits below and follows your tap. */
+export function MonthDots({
+  day,
+  setDay,
+  events,
+  now,
+  view,
+  setView,
+  onChanged,
+  onDetails,
+  onOpenDay,
+  onOpenWeek,
+  onPlan,
+}: {
+  day: number;
+  setDay: (d: number) => void;
+  events: MobileEvent[];
+  now: number;
+  view: string;
+  setView: (v: ViewName) => void;
+  onChanged: () => void;
+  onDetails: (e: MobileEvent) => void;
+  onOpenDay: (d: number) => void;
+  onOpenWeek: (d: number) => void;
+  onPlan: (d: number) => void;
+}) {
+  const accounts = useStore((s) => s.accounts);
+  const mine = useMemo(() => new Set(accounts.map((a) => a.email.toLowerCase())), [accounts]);
+  const today = startOfDay(now);
+  const ms = MONTH(day);
+  const next = MONTH(day, 1);
+  const [needOpen, setNeedOpen] = useState(false);
+  const [pickOpen, setPickOpen] = useState(false);
+  /** Which way the day line slides in: forward for a later day, back for an earlier one. */
+  const [back, setBack] = useState(false);
+  const needRef = useRef<HTMLDivElement>(null);
+
+  const of = (d: number) =>
+    events
+      .filter((e) => e.startMs < addDays(d, 1) && e.endMs > d)
+      .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const busyOf = (d: number) => of(d).filter((e) => !e.allDay && !e.free);
+  const weeks: number[][] = [];
+  for (let w = startOfWeek(ms); w < next; w = addDays(w, 7))
+    weeks.push(Array.from({ length: 7 }, (_, i) => addDays(w, i)));
+  const inMonth = (d: number) => d >= ms && d < next;
+  const monthDays = weeks.flat().filter(inMonth);
+  const total = monthDays.reduce((n, d) => n + busyOf(d).length, 0);
+  const load = weeks.map((w) => w.reduce((n, d) => n + busyOf(d).length, 0));
+  const top = Math.max(...load);
+  const busiest = top > 0 ? weeks[load.indexOf(top)]![0]! : null;
+  const pending = monthDays.flatMap((d) =>
+    of(d).filter(
+      (e) => !e.allDay && isWaiting(e, mine) && e.endMs > now && startOfDay(e.startMs) === d,
+    ),
+  );
+  const clashOf = (e: MobileEvent) => clashIn(busyOf(startOfDay(e.startMs)), e);
+
+  const thisMonth = today >= ms && today < next;
+  const past = next <= today;
+  const name = new Date(ms).toLocaleDateString([], { month: 'long' });
+  const label =
+    new Date(ms).getFullYear() === new Date(today).getFullYear()
+      ? name
+      : `${name} ${new Date(ms).getFullYear()}`;
+  const weekName = (w: number) =>
+    w === startOfWeek(today)
+      ? 'This week'
+      : w === addDays(startOfWeek(today), 7)
+        ? 'Next week'
+        : w === addDays(startOfWeek(today), -7)
+          ? 'Last week'
+          : `The week of ${new Date(w).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  const pick = (d: number) => {
+    setBack(d < day);
+    setDay(d);
+  };
+
+  const sel = of(day);
+  const selBusy = sel.filter((e) => !e.allDay && !e.free);
+  const selClash = selBusy.filter((e) => clashIn(selBusy, e));
+  const pairs = Math.max(1, Math.round(selClash.length / 2));
+  return (
+    <div className="cal">
+      <CalTop label={label} onToday={() => pick(today)} view={view} setView={setView} />
+      <p className="cal-sent">
+        <button className="ib-w" aria-expanded={pickOpen} onClick={() => setPickOpen(!pickOpen)}>
+          {thisMonth ? name : label}
+        </button>{' '}
+        {past ? 'held' : 'holds'} {plural(total, 'meeting')}.
+        {busiest != null && weeks.length > 1 && (
+          <>
+            {' '}
+            <button className="ib-w" onClick={() => onOpenWeek(busiest)}>
+              {weekName(busiest)}
+            </button>{' '}
+            {addDays(busiest, 7) <= today ? 'was' : 'is'} the busiest.
+          </>
+        )}
+        {pending.length > 0 && (
+          <>
+            {' '}
+            <button
+              className="ib-w"
+              onClick={() => {
+                setNeedOpen(!needOpen);
+                if (!needOpen)
+                  setTimeout(
+                    () => needRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                    60,
+                  );
+              }}
+            >
+              {inviteWord(pending.length)}
+            </button>{' '}
+            {pending.length === 1 ? 'waits' : 'wait'} for you.
+          </>
+        )}
+      </p>
+
+      <div className={`cal-fold${pickOpen ? ' open' : ''}`} inert={!pickOpen}>
+        <div>
+          <div className="cal-week cal-weeks glass">
+            <button
+              className="nav"
+              aria-label="Earlier months"
+              onClick={() => pick(MONTH(day, -5))}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            {[-2, -1, 0, 1, 2].map((k) => {
+              const m = MONTH(day, k);
+              return (
+                <button
+                  key={m}
+                  className={`d${k === 0 ? ' sel' : ''}${m === MONTH(today) ? ' today' : ''}`}
+                  aria-pressed={k === 0}
+                  onClick={() => pick(m === MONTH(today) ? today : m)}
+                >
+                  <div className="wd">{new Date(m).getFullYear()}</div>
+                  <div className="n">{new Date(m).toLocaleDateString([], { month: 'short' })}</div>
+                </button>
+              );
+            })}
+            <button className="nav" aria-label="Later months" onClick={() => pick(MONTH(day, 5))}>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <Needs
+        pending={pending}
+        clashOf={clashOf}
+        open={needOpen}
+        setOpen={setNeedOpen}
+        innerRef={needRef}
+        onChanged={onChanged}
+        onDetails={onDetails}
+        showDay
+      />
+
+      <div className="cal-month" key={ms}>
+        <div className="cal-mwd" aria-hidden>
+          {weeks[0]!.map((d) => (
+            <span key={d}>{new Date(d).toLocaleDateString([], { weekday: 'narrow' })}</span>
+          ))}
+        </div>
+        {weeks.map((w) => (
+          <div className="cal-mrow" key={w[0]}>
+            {w.map((d) => {
+              if (!inMonth(d)) return <span key={d} />;
+              const b = busyOf(d);
+              return (
+                <button
+                  key={d}
+                  className={`${d === day ? 'sel' : ''}${d === today ? ' today' : ''}${d < today ? ' past' : ''}`}
+                  aria-pressed={d === day}
+                  aria-label={`${new Date(d).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}, ${plural(b.length, 'meeting')}`}
+                  onClick={() => pick(d)}
+                >
+                  <span className="n">{new Date(d).getDate()}</span>
+                  <span className="dots">
+                    {b.slice(0, 4).map((e) => (
+                      <i key={e.id} style={{ background: e.color }} />
+                    ))}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div className={`cal-swap${back ? ' back' : ''}`} key={day} aria-live="polite">
+        <h2 className="cal-mday">
+          <button className={day === today ? 'today' : ''} onClick={() => onOpenDay(day)}>
+            {day === today
+              ? 'Today'
+              : new Date(day).toLocaleDateString([], { weekday: 'long', day: 'numeric' })}
+          </button>
+          <span>
+            {selBusy.length
+              ? `${plural(selBusy.length, 'meeting')}${selClash.length ? ` · ${plural(pairs, 'clash').replace('clashs', 'clashes')}` : ''}`
+              : 'Free all day'}
+          </span>
+        </h2>
+        <DayMini
+          d={day}
+          all={sel}
+          now={now}
+          today={today}
+          mine={mine}
+          onDetails={onDetails}
+          onOpenDay={onOpenDay}
+          onPlan={onPlan}
+        />
       </div>
     </div>
   );
