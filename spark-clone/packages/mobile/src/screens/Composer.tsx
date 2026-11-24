@@ -1,13 +1,16 @@
 import type { Address } from '@app/shared';
-import { ArrowUp, CalendarClock, ChevronDown, Mic, Paperclip, Sparkles, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowUp, CalendarClock, ChevronDown, Mic, Paperclip, X } from 'lucide-react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { MobileMessage, MobileThread } from '../data/types';
+import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark, Spinner } from '../components/ui';
-import { displayName, firstName } from '../lib/format';
-import { back, useRoute } from '../lib/router';
+import { clearKeptDraft, keepDraft, takeKeptDraft } from '../lib/draftKeep';
+import { clock12, displayName, firstName } from '../lib/format';
+import { back, go, useRoute } from '../lib/router';
 import { describeSlots, freeSlots } from '../lib/slots';
 import { useStore } from '../lib/store';
 import { replyTo, reSubject } from './Thread';
+import './composer.css';
 
 function parseAddrs(s: string): Address[] {
   return s
@@ -25,12 +28,19 @@ export function Composer() {
   const replyId = q.get('reply') ?? q.get('forward');
   const forward = q.has('forward');
   const [ctx, setCtx] = useState<{ thread: MobileThread; messages: MobileMessage[] } | null>(null);
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
-  const [to, setTo] = useState<Address[]>([]);
-  const [cc, setCc] = useState<Address[]>([]);
+  // A draft set aside from the island (to look at the Inbox, Calendar or
+  // Search) comes back when the composer is opened again.
+  const [kept] = useState(() => takeKeptDraft(q.toString()));
+  const [accountId, setAccountId] = useState(kept?.accountId || (accounts[0]?.id ?? ''));
+  const [to, setTo] = useState<Address[]>(kept?.to ?? []);
+  const [cc, setCc] = useState<Address[]>(kept?.cc ?? []);
+  const [bcc, setBcc] = useState<Address[]>(kept?.bcc ?? []);
   const [toInput, setToInput] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState(q.get('body') ?? '');
+  const [ccInput, setCcInput] = useState('');
+  const [bccInput, setBccInput] = useState('');
+  const [ccOpen, setCcOpen] = useState(!!kept && kept.cc.length + kept.bcc.length > 0);
+  const [subject, setSubject] = useState(kept?.subject ?? '');
+  const [body, setBody] = useState(kept?.body ?? q.get('body') ?? '');
   const [busy, setBusy] = useState(false);
   const [aiOpen, setAiOpen] = useState(q.has('ai') || q.has('ask'));
   const [aiBusy, setAiBusy] = useState(false);
@@ -45,6 +55,7 @@ export function Composer() {
     void api.thread(replyId).then((d) => {
       if (!live) return;
       setCtx(d);
+      if (kept) return; // the kept draft already holds the prefill
       setAccountId(d.thread.accountId);
       const last = d.messages[d.messages.length - 1];
       if (forward) {
@@ -59,18 +70,19 @@ export function Composer() {
         setSubject(reSubject(d.thread.subject));
         const me = accounts.find((a) => a.id === d.thread.accountId)?.email;
         setTo(replyTo(last));
-        if (q.has('all') && last)
-          setCc(
-            [...last.to, ...last.cc].filter(
-              (a) => a.email !== me && !replyTo(last).some((r) => r.email === a.email),
-            ),
+        if (q.has('all') && last) {
+          const others = [...last.to, ...last.cc].filter(
+            (a) => a.email !== me && !replyTo(last).some((r) => r.email === a.email),
           );
+          setCc(others);
+          if (others.length) setCcOpen(true);
+        }
       }
     });
     return () => {
       live = false;
     };
-  }, [api, replyId, forward, accounts, q]);
+  }, [api, replyId, forward, accounts, q, kept]);
 
   const contextText = () => {
     const last = ctx?.messages[ctx.messages.length - 1];
@@ -115,6 +127,7 @@ export function Composer() {
   useEffect(() => {
     if (ran.current || (replyId && !ctx)) return;
     ran.current = true;
+    if (kept) return;
     const ask = q.get('ask');
     const slots = q.get('slots');
     // Deferred so the prefill from the thread lands first.
@@ -128,6 +141,27 @@ export function Composer() {
   }, [ctx]);
 
   const recipients = [...to, ...parseAddrs(toInput)];
+  const ccAll = [...cc, ...parseAddrs(ccInput)];
+  const bccAll = [...bcc, ...parseAddrs(bccInput)];
+
+  const close = () => {
+    clearKeptDraft();
+    back('inbox');
+  };
+  /** Set the draft aside and go look at another screen. */
+  const leaveFor = (path: string) => {
+    keepDraft({
+      query: q.toString(),
+      accountId,
+      to: recipients,
+      cc: ccAll,
+      bcc: bccAll,
+      subject,
+      body,
+    });
+    showToast({ text: 'Draft kept. Open Write to come back to it' });
+    go(path);
+  };
   const canSend = recipients.length > 0 && body.trim().length > 0 && !!accountId;
 
   const doSend = async () => {
@@ -136,7 +170,8 @@ export function Composer() {
       const r = await send({
         accountId,
         to: recipients,
-        cc,
+        cc: ccAll,
+        ...(bccAll.length ? { bcc: bccAll } : {}),
         subject,
         body: body.trim(),
         ...(ctx && !forward ? { threadId: ctx.thread.id } : {}),
@@ -144,7 +179,7 @@ export function Composer() {
       showToast({
         text: r === 'queued' ? 'No connection. It will send when you are back online' : 'Sent',
       });
-      back('inbox');
+      close();
     } catch (e) {
       showToast({ text: (e as Error).message });
     } finally {
@@ -155,14 +190,14 @@ export function Composer() {
   const account = accounts.find((a) => a.id === accountId);
   return (
     <div className="sheet-wrap">
-      <div className="scrim" onClick={() => back('inbox')} />
-      <div className="sheet full">
+      <div className="scrim" onClick={close} />
+      <div className="sheet full cmp">
         <div className="grab" />
         <div
           className="row-flex"
           style={{ justifyContent: 'space-between', padding: '6px 16px 8px' }}
         >
-          <button style={{ color: 'var(--accent)', fontSize: 17 }} onClick={() => back('inbox')}>
+          <button style={{ color: 'var(--accent)', fontSize: 17 }} onClick={close}>
             Cancel
           </button>
           <b className="ellipsis" style={{ fontSize: 17, maxWidth: '55%' }}>
@@ -178,58 +213,36 @@ export function Composer() {
           </button>
         </div>
         <div className="sheet-body" style={{ fontSize: 16 }}>
-          <div
-            className="row-flex"
-            style={{ padding: '9px 18px', borderTop: '1px solid var(--hair)', flexWrap: 'wrap' }}
-          >
-            <span className="muted">To:</span>
-            {to.map((a) => (
+          <AddrRow
+            label="To"
+            list={to}
+            setList={setTo}
+            input={toInput}
+            setInput={setToInput}
+            accent
+            trailing={
               <button
-                key={a.email}
-                className="chip"
-                style={{
-                  height: 28,
-                  fontSize: 14,
-                  background: 'var(--accent-soft)',
-                  border: 'none',
-                  color: 'var(--accent)',
-                }}
-                onClick={() => setTo(to.filter((x) => x !== a))}
+                className="cmp-cclink"
+                aria-expanded={ccOpen}
+                aria-controls="cmp-cc"
+                onClick={() => setCcOpen(!ccOpen)}
               >
-                {a.name || a.email}
+                {ccOpen ? 'Hide Cc/Bcc' : 'Cc/Bcc'}
               </button>
-            ))}
-            <input
-              className="grow"
-              style={{ minWidth: 120, height: 30 }}
-              value={toInput}
-              inputMode="email"
-              autoCapitalize="off"
-              onChange={(e) => setToInput(e.target.value)}
-              onBlur={() => {
-                setTo([...to, ...parseAddrs(toInput)]);
-                setToInput('');
-              }}
-            />
-          </div>
-          {cc.length > 0 && (
-            <div
-              className="row-flex"
-              style={{ padding: '9px 18px', borderTop: '1px solid var(--hair)', flexWrap: 'wrap' }}
-            >
-              <span className="muted">Cc:</span>
-              {cc.map((a) => (
-                <button
-                  key={a.email}
-                  className="chip"
-                  style={{ height: 28, fontSize: 14 }}
-                  onClick={() => setCc(cc.filter((x) => x !== a))}
-                >
-                  {a.name || a.email}
-                </button>
-              ))}
+            }
+          />
+          <div id="cmp-cc" className={`cmp-fold${ccOpen ? ' open' : ''}`} inert={!ccOpen}>
+            <div>
+              <AddrRow label="Cc" list={cc} setList={setCc} input={ccInput} setInput={setCcInput} />
+              <AddrRow
+                label="Bcc"
+                list={bcc}
+                setList={setBcc}
+                input={bccInput}
+                setInput={setBccInput}
+              />
             </div>
-          )}
+          </div>
           <label
             className="row-flex"
             style={{
@@ -361,34 +374,154 @@ export function Composer() {
           </div>
         )}
 
-        <div
-          className="row-flex muted"
-          style={{ gap: 22, padding: '10px 18px', borderTop: '1px solid var(--hair)' }}
-        >
+        <div className="cmp-bar">
           <button
+            className="cmp-tool"
             aria-label="Attach (coming soon)"
             onClick={() => showToast({ text: 'Attachments from the phone are coming next' })}
           >
-            <Paperclip size={20} />
-          </button>
-          <button aria-label="Insert free times" onClick={() => void insertTimes()}>
-            <CalendarClock size={20} />
+            <Paperclip size={18} />
           </button>
           <button
-            className="row-flex"
-            style={{
-              marginLeft: 'auto',
-              color: 'var(--accent)',
-              fontWeight: 600,
-              fontSize: 14,
-              gap: 5,
-            }}
+            className="cmp-tool"
+            aria-label="Insert free times"
+            onClick={() => void insertTimes()}
+          >
+            <CalendarClock size={18} />
+          </button>
+          <button
+            className="cmp-orb"
+            aria-label="Assistant"
+            aria-expanded={aiOpen}
             onClick={() => setAiOpen(!aiOpen)}
           >
-            <Sparkles size={17} /> AI
+            <ParticleOrb size={44} />
           </button>
         </div>
+        <ComposerIsland leaveFor={leaveFor} />
       </div>
+    </div>
+  );
+}
+
+/** One recipients line: label, picked addresses as chips, and a field for more. */
+function AddrRow({
+  label,
+  list,
+  setList,
+  input,
+  setInput,
+  accent,
+  trailing,
+}: {
+  label: string;
+  list: Address[];
+  setList: (l: Address[]) => void;
+  input: string;
+  setInput: (s: string) => void;
+  accent?: boolean;
+  trailing?: ReactNode;
+}) {
+  const commit = () => {
+    const more = parseAddrs(input);
+    if (more.length) setList([...list, ...more]);
+    setInput('');
+  };
+  return (
+    <div className="cmp-row">
+      <span className="muted cmp-lb">{label}:</span>
+      <div className="cmp-addrs">
+        {list.map((a) => (
+          <button
+            key={a.email}
+            className={`chip cmp-addr${accent ? ' accent' : ''}`}
+            aria-label={`Remove ${a.name || a.email}`}
+            onClick={() => setList(list.filter((x) => x !== a))}
+          >
+            {a.name || a.email}
+          </button>
+        ))}
+        <input
+          aria-label={label}
+          value={input}
+          inputMode="email"
+          autoCapitalize="off"
+          autoCorrect="off"
+          onChange={(e) => setInput(e.target.value)}
+          onBlur={commit}
+        />
+      </div>
+      {trailing}
+    </div>
+  );
+}
+
+/**
+ * The Inbox's bottom island, inside the composer: the same glass handle
+ * unfolds into the same sentence card, but its words lead out of the draft to
+ * the Inbox, the Calendar and Search. The draft is kept while you look.
+ */
+function ComposerIsland({ leaveFor }: { leaveFor: (path: string) => void }) {
+  const api = useStore((s) => s.api);
+  const unread = useStore((s) => s.threads.some((t) => t.unreadCount > 0 && t.priority));
+  const [open, setOpen] = useState(false);
+  const [next, setNext] = useState<{ title: string; startMs: number } | null>(null);
+  const drag = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const now = Date.now();
+    void api
+      .events(now, now + 86_400_000)
+      .then((ev) => setNext(ev.find((e) => !e.allDay && !e.free && e.startMs > now) ?? null))
+      .catch(() => setNext(null));
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [open, api]);
+  const tab = open ? 0 : -1;
+  return (
+    <div className="cmp-island">
+      <div className={`dock-catch ${open ? 'on' : ''}`} onClick={() => setOpen(false)} />
+      <nav
+        className={`dock ${open ? 'open' : ''}`}
+        aria-label="Leave the draft for"
+        aria-hidden={!open}
+        onPointerDown={(e) => (drag.current = e.clientY)}
+        onPointerMove={(e) => {
+          if (drag.current != null && e.clientY - drag.current > 26) {
+            drag.current = null;
+            setOpen(false);
+          }
+        }}
+        onPointerUp={() => (drag.current = null)}
+      >
+        <div className="dk-sent glass">
+          <p>
+            Your draft stays put. Peek at the{' '}
+            <button className="w" tabIndex={tab} onClick={() => leaveFor('inbox')}>
+              Inbox
+            </button>
+            , check the{' '}
+            <button className="w" tabIndex={tab} onClick={() => leaveFor('calendar')}>
+              Calendar
+            </button>
+            {next ? ` before ${next.title} at ${clock12(next.startMs)}` : ''}, or{' '}
+            <button className="w" tabIndex={tab} onClick={() => leaveFor('search')}>
+              search
+            </button>{' '}
+            for something to add.
+          </p>
+        </div>
+      </nav>
+      <button
+        className={`dock-handle glass ${open ? 'hide' : ''}`}
+        aria-label="Open navigation"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <i />
+        {unread && <span className="hd" />}
+      </button>
     </div>
   );
 }

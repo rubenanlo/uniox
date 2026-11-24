@@ -8,7 +8,7 @@ type Body =
   | { action: 'read'; threadId: string; read: boolean }
   | { action: 'pin'; threadId: string; pinned: boolean }
   | { action: 'snooze'; threadId: string; until: number }
-  | { action: 'send'; accountId: string; to: Addr[]; cc: Addr[]; subject: string; body: string; threadId?: string; inReplyToMessageId?: string }
+  | { action: 'send'; accountId: string; to: Addr[]; cc: Addr[]; bcc?: Addr[]; subject: string; body: string; threadId?: string; inReplyToMessageId?: string }
   | { action: 'rsvp'; eventId: string; answer: 'accepted' | 'tentative' | 'declined' }
   | { action: 'propose'; eventId: string; startMs: number; endMs: number; note?: string; label?: string }
   | { action: 'freebusy'; accountId: string; emails: string[]; fromMs: number; toMs: number }
@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
           from: { email: acct.email, name: acct.display_name || undefined },
           to: b.to,
           cc: b.cc,
+          bcc: b.bcc ?? [],
           subject: b.subject,
           body: sig ? `${b.body}\n\n${sig}` : b.body,
           inReplyTo,

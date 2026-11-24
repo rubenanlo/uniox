@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { MobileEvent, MobileThread } from "../data/types";
+import { ParticleOrb } from "../components/ParticleOrb";
 import { AiMark, Avatar } from "../components/ui";
 import {
   clock,
@@ -581,7 +582,7 @@ export function Home() {
           aria-label={fanned ? "Fold the brief" : "Brief me"}
           onClick={fanned ? foldBrief : openBrief}
         >
-          <AiMark size={22} />
+          <ParticleOrb size={28} />
           <span className="hz-lbs">
             <span className={`hz-lb lb-brief ${fanned ? "down" : "in"}`}>
               Brief me

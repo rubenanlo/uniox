@@ -94,6 +94,7 @@ export interface ComposeDraft {
   accountId: string;
   to: Address[];
   cc: Address[];
+  bcc?: Address[];
   subject: string;
   body: string;
   /** Gmail thread being answered, when replying. */

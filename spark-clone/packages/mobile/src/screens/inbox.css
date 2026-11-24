@@ -118,6 +118,8 @@
   background: conic-gradient(from 0deg, var(--aqua), var(--azure), var(--violet), var(--aqua)); animation: ib-spin 8s linear infinite; }
 @keyframes ib-spin { to { transform: rotate(1turn); } }
 .ib-idle .ib-orb::after { animation-play-state: paused; }
+/* The particle orb is the whole button: no glass plate or halo behind it */
+.ib-orb.po::after { display: none; }
 .ib-ptr { display: grid; place-items: center; overflow: hidden; color: var(--muted); transition: height .3s cubic-bezier(.34,1.4,.5,1); }
 
 /* Section titles: large, bold, ink, with a grey count and an optional action on the right. */

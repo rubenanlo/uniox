@@ -362,6 +362,8 @@ export function buildMime(opts: {
   from: Addr;
   to: Addr[];
   cc: Addr[];
+  /** Hidden recipients. Gmail delivers to them and strips the header from the sent mail. */
+  bcc?: Addr[];
   subject: string;
   body: string;
   inReplyTo?: string | null;
@@ -374,6 +376,7 @@ export function buildMime(opts: {
     `From: ${formatAddr(opts.from)}`,
     `To: ${opts.to.map(formatAddr).join(', ')}`,
     ...(opts.cc.length ? [`Cc: ${opts.cc.map(formatAddr).join(', ')}`] : []),
+    ...(opts.bcc?.length ? [`Bcc: ${opts.bcc.map(formatAddr).join(', ')}`] : []),
     `Subject: ${encodeWord(opts.subject)}`,
     'MIME-Version: 1.0',
     ...(opts.inReplyTo ? [`In-Reply-To: ${opts.inReplyTo}`, `References: ${[opts.references, opts.inReplyTo].filter(Boolean).join(' ')}`] : []),

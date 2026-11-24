@@ -1,0 +1,25 @@
+/* Composer (design A): folded Cc/Bcc, round tools, bottom island */
+.cmp-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 18px; border-top: 1px solid var(--hair); }
+.cmp-lb { flex: none; line-height: 30px; }
+/* Chips and the field wrap here, so the Cc/Bcc link never moves */
+.cmp-addrs { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.cmp-addrs input { flex: 1; min-width: 48px; height: 30px; }
+.cmp-addr { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 26px; }
+.cmp-addr { height: 28px; font-size: 14px; }
+.cmp-addr.accent { background: var(--accent-soft); border: none; color: var(--accent); }
+.cmp-cclink { flex: none; color: var(--accent); font-size: 14px; font-weight: 600; height: 30px; }
+/* Cc and Bcc slide open under the To line */
+.cmp-fold { display: grid; grid-template-rows: 0fr; opacity: 0;
+  transition: grid-template-rows .34s cubic-bezier(.2,.8,.2,1), opacity .26s ease; }
+.cmp-fold.open { grid-template-rows: 1fr; opacity: 1; }
+.cmp-fold > div { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) { .cmp-fold { transition: none; } }
+.cmp-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px 12px; }
+.cmp-tool { width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; flex: none;
+  color: var(--muted); background: var(--app); border: 1px solid var(--hair); }
+.cmp-orb { margin-left: auto; width: 44px; height: 44px; border-radius: 22px; flex: none; display: grid; place-items: center; }
+.cmp-orb:active { transform: scale(.94); }
+/* The Inbox's island, placed inside the composer sheet */
+.cmp-island .dock-handle { position: absolute; bottom: calc(18px + var(--safe-bottom)); }
+.cmp-island .dock-catch { position: absolute; border-radius: 30px 30px 0 0; }
+.cmp-island .dock { position: absolute; bottom: calc(14px + var(--safe-bottom)); }
