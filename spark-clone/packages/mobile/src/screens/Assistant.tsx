@@ -1,5 +1,6 @@
-import { ArrowUp, Mic, Sparkles } from 'lucide-react';
+import { ArrowUp, Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark } from '../components/ui';
 import '../components/ask.css';
 import type { AssistantTurn, MobileEvent } from '../data/types';
@@ -121,8 +122,8 @@ export function Assistant() {
       <div className="screen no-tabs fa" ref={ref}>
         <div className="fa-top">
           <span className="eyebrow">Assistant · {today}</span>
-          <span className="ib-orb glass" aria-hidden>
-            <Sparkles size={17} />
+          <span className="ib-orb po" aria-hidden>
+            <ParticleOrb size={40} />
           </span>
         </div>
         <p className="fa-sent">

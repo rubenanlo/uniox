@@ -23,6 +23,7 @@ import type { FirstRead, MobileMessage, MobileThread } from '../data/types';
 import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
 import { tomorrowMorning } from '../components/ThreadRow';
+import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
 import { clock12, displayName, firstName, listTime, shortDate, splitQuoted } from '../lib/format';
 import { cachedThread, cacheThread } from '../lib/offline';
@@ -274,10 +275,9 @@ export function ThreadScreen({ id }: { id: string }) {
           </button>
           <button
             aria-label="Reply with AI"
-            style={{ color: 'var(--accent)' }}
             onClick={() => go(`compose?reply=${encodeURIComponent(id)}&ai=1`)}
           >
-            <Sparkles size={21} />
+            <ParticleOrb size={32} />
           </button>
         </div>
         <button
@@ -865,8 +865,8 @@ function ConversationE({
           <button className="te-ic" aria-label="More" onClick={onMore}>
             <MoreHorizontal size={19} />
           </button>
-          <button className="ib-orb glass" aria-label="Assistant" onClick={() => setAsk(true)}>
-            <Sparkles size={17} />
+          <button className="ib-orb po" aria-label="Assistant" onClick={() => setAsk(true)}>
+            <ParticleOrb size={36} />
           </button>
         </div>
         <div className="te-head">

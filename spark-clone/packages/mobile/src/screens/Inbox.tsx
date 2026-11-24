@@ -1,3 +1,4 @@
+import { ParticleOrb } from '../components/ParticleOrb';
 import { Archive, Bell, Check, ChevronLeft, Newspaper, RefreshCw, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Address, Category, InviteInfo, MobileAccount, MobileThread } from '../data/types';
@@ -362,8 +363,8 @@ export function Inbox() {
                 month: 'long',
               })}
             </div>
-            <button className="ib-orb glass" aria-label="Assistant" onClick={() => setAsk(true)}>
-              <Sparkles size={18} />
+            <button className="ib-orb po" aria-label="Assistant" onClick={() => setAsk(true)}>
+              <ParticleOrb size={40} />
             </button>
           </div>
           {sentence}
