@@ -91,9 +91,9 @@ export function CalendarScreen() {
         <div
           style={{
             position: 'sticky',
-            top: 'calc(-1 * var(--safe-top))',
-            paddingTop: 'var(--safe-top)',
-            marginTop: 'calc(-1 * var(--safe-top))',
+            top: 'calc(-1 * var(--top-clear))',
+            paddingTop: 'var(--top-clear)',
+            marginTop: 'calc(-1 * var(--top-clear))',
             zIndex: 10,
             background: 'var(--app)',
           }}
