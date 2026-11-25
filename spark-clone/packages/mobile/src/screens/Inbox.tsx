@@ -46,9 +46,49 @@ function loadAccts(): Set<string> {
 
 const PER_SECTION = 10;
 export function Inbox() {
-  const { threads, accounts, loading, refresh, api, settings, act, showToast } = useStore();
   const route = useRoute();
   const bundle = route.query.get('bundle') as Category | null;
+  // Separate components: the main Inbox uses hooks the bundle list doesn't, so
+  // switching between them inside one component crashed React (blank screen).
+  return bundle ? <BundleList key={bundle} bundle={bundle} /> : <InboxMain />;
+}
+
+/** "See all" for one Can wait group: every Newsletter / Notification / Promotion. */
+function BundleList({ bundle }: { bundle: Category }) {
+  const { threads, accounts } = useStore();
+  const [accts] = useState<Set<string>>(loadAccts);
+  const color = (id: string) =>
+    accounts.length > 1 ? accounts.find((a) => a.id === id)?.color : undefined;
+  const list = threads
+    .filter((t) => t.category === bundle && (!accts.size || accts.has(t.accountId)))
+    .sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const meta = BUNDLES.find((b) => b.key === bundle);
+  return (
+    <>
+      <div className="screen">
+        <div className="navbar">
+          <button className="navbtn accent" onClick={() => go('inbox')}>
+            <ChevronLeft size={24} />
+            <span style={{ fontSize: 17 }}>Inbox</span>
+          </button>
+        </div>
+        <div className="pad">
+          <div className="bigtitle">{meta?.label ?? bundle}</div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          {list.map((t) => (
+            <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
+          ))}
+          {!list.length && <Empty title="Nothing here" />}
+        </div>
+      </div>
+      <TabBar on="inbox" />
+    </>
+  );
+}
+
+function InboxMain() {
+  const { threads, accounts, loading, refresh, api, settings, act, showToast } = useStore();
   const now = useNow();
   const [unreadOnly, setUnreadOnly] = useState(false);
   /** Accounts shown; empty means all of them. */
@@ -126,33 +166,6 @@ export function Inbox() {
     await api.syncNow().catch(() => undefined);
     await refresh();
   };
-
-  if (bundle) {
-    const list = visible.filter((t) => t.category === bundle);
-    const meta = BUNDLES.find((b) => b.key === bundle);
-    return (
-      <>
-        <div className="screen">
-          <div className="navbar">
-            <button className="navbtn accent" onClick={() => go('inbox')}>
-              <ChevronLeft size={24} />
-              <span style={{ fontSize: 17 }}>Inbox</span>
-            </button>
-          </div>
-          <div className="pad">
-            <div className="bigtitle">{meta?.label ?? bundle}</div>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            {list.map((t) => (
-              <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
-            ))}
-            {!list.length && <Empty title="Nothing here" />}
-          </div>
-        </div>
-        <TabBar on="inbox" />
-      </>
-    );
-  }
 
   const shown = unreadOnly ? visible.filter((t) => t.unreadCount > 0) : visible;
   const personal = shown.filter((t) => t.category === 'personal' || t.category === 'invites');
