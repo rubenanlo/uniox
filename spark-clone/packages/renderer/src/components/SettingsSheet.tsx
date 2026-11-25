@@ -1,3 +1,4 @@
+import { IDLE_HOME_OPTIONS } from '../lib/idleHome';
 import {
   DEFAULT_ISLAND_STYLE,
   DEFAULT_NOTIFY_SOUND,
@@ -231,6 +232,28 @@ function NotificationsRow() {
 }
 
 /** Make Uniox the system's mail app, so clicked mailto: links open its composer. */
+/** How long without activity before the app goes back to Home. */
+function IdleHomeRow() {
+  const minutes = useUi((s) => s.idleHomeMinutes);
+  const setMinutes = useUi((s) => s.setIdleHomeMinutes);
+  return (
+    <Row label="Back to Home when idle">
+      <Segmented
+        label="Back to Home when idle"
+        options={IDLE_HOME_OPTIONS.map((m) => ({
+          id: String(m),
+          label: m ? `${m} min` : 'Never',
+          hint: m
+            ? `After ${m} minutes with no typing, clicks or scrolling. Unsent replies keep you where you are.`
+            : 'Stay where you left off.',
+        }))}
+        value={String(minutes)}
+        onChange={(id) => setMinutes(Number(id))}
+      />
+    </Row>
+  );
+}
+
 function DefaultMailAppRow() {
   const [isDefault, setIsDefault] = useState<boolean | null>(null);
   const check = () => void api.query('mailto:is-default', undefined).then(setIsDefault);
@@ -974,6 +997,7 @@ function AppearanceTab() {
       </Group>
       <Group label="General">
         <NameRow />
+        <IdleHomeRow />
         <DefaultMailAppRow />
       </Group>
     </div>

@@ -23,6 +23,7 @@ interface UiPrefs {
   accountColors: Record<string, string>;
   accountLabels: Record<string, string>;
   accentColor: string | null;
+  idleHomeMinutes: number;
 }
 
 const pick = (s: ReturnType<typeof useUi.getState>): UiPrefs => ({
@@ -39,6 +40,7 @@ const pick = (s: ReturnType<typeof useUi.getState>): UiPrefs => ({
   accountColors: s.accountColors,
   accountLabels: s.accountLabels,
   accentColor: s.accentColor,
+  idleHomeMinutes: s.idleHomeMinutes,
 });
 
 /** Restore view preferences on launch and save them when they change. */

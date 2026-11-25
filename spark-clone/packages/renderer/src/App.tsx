@@ -41,6 +41,7 @@ import { useAiCards } from './state/aiCards';
 import { usePersistedUiPrefs } from './state/persist';
 import { useAccounts, useDelta, useSelectedThread, useThreads } from './state/queries';
 import { useUi } from './state/store';
+import { useIdleHome } from './lib/idleHome';
 import { useShallow } from 'zustand/react/shallow';
 
 /**
@@ -83,32 +84,6 @@ function useHomeBaseline() {
       window.removeEventListener('beforeunload', write);
     };
   }, []);
-}
-
-/**
- * Return to Home after a stretch of inactivity, so the app rests on the
- * briefing screen. Composing pauses the timer — we never yank someone out of a
- * half-written message.
- */
-function useIdleHome(idleMs = 30 * 60 * 1000) {
-  useEffect(() => {
-    let timer: number | undefined;
-    const arm = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const s = useUi.getState();
-        if (s.composer) return arm(); // still busy — check again later
-        if (s.view !== 'home') s.setView('home');
-      }, idleMs);
-    };
-    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'];
-    events.forEach((e) => window.addEventListener(e, arm, { passive: true }));
-    arm();
-    return () => {
-      window.clearTimeout(timer);
-      events.forEach((e) => window.removeEventListener(e, arm));
-    };
-  }, [idleMs]);
 }
 
 function ListPane({ threads }: { threads: ThreadSummary[] }) {

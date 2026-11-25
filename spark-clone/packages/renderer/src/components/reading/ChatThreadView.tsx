@@ -2,6 +2,7 @@ import type { MessageMeta, ThreadSummary } from '@app/shared';
 import { CalendarClock, Forward, Sparkles, SquareArrowOutUpRight } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useUi } from '../../state/store';
+import { registerIdleBlocker } from '../../lib/idleHome';
 import { registerChatReply } from '../../lib/chatReply';
 import { Composer } from '../composer/Composer';
 import { cn } from '../../lib/utils';
@@ -147,6 +148,14 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
     };
   });
   useEffect(() => registerChatReply(thread.id, (mode) => answerRef.current(mode)), [thread.id]);
+  // Text in the reply box (or a forward in progress) lives only here, so hold
+  // the idle return to Home until it's sent or cleared.
+  const unsentRef = useRef(false);
+  const unsent = !!chat.draft.trim() || forwarding;
+  useEffect(() => {
+    unsentRef.current = unsent;
+  }, [unsent]);
+  useEffect(() => registerIdleBlocker(() => unsentRef.current), []);
 
   // Inside the pane, ⌘. opens the chat's one AI menu: the reply rewrites (as on
   // the island) plus ⌘.'s email actions (summary, write a reply, translate).
