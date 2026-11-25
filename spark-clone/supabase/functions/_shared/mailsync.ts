@@ -26,6 +26,8 @@ export interface AccountRow {
 const INITIAL_THREADS = 150;
 const INITIAL_BATCH = 40;
 const PARALLEL = 5;
+/** Threads re-read per run when catching up on history, to stay under Gmail's per-minute quota. */
+const HISTORY_BATCH = 60;
 const CAL_PAST_DAYS = 14;
 const CAL_FUTURE_DAYS = 90;
 const CAL_EVERY_MS = 5 * 60_000;
@@ -56,6 +58,8 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
   let changed = new Set<string>();
   const arrived = new Set<string>();
   let backfilling = false;
+  /** Set when a long history backlog is cut short: the next run resumes here. */
+  let resumeFrom: string | null = null;
 
   if (!acct.history_id) {
     const list = await gfetch<{ threads?: { id: string }[] }>(
@@ -72,9 +76,11 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
   } else {
     try {
       let pageToken: string | undefined;
-      do {
+      let lastDone: string | null = null;
+      pages: do {
         const h = await gfetch<{
           history?: {
+            id: string;
             messagesAdded?: { message: { id: string; threadId: string; labelIds?: string[] } }[];
             messagesDeleted?: { message: { threadId: string } }[];
             labelsAdded?: { message: { threadId: string } }[];
@@ -86,6 +92,13 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
           `${GMAIL}/history?startHistoryId=${acct.history_id}${pageToken ? `&pageToken=${pageToken}` : ''}`,
         );
         for (const rec of h.history ?? []) {
+          // A long backlog (the account was offline or failing for hours) is
+          // read in batches across runs; otherwise every run would restart
+          // from the same point and hit the quota again.
+          if (changed.size >= HISTORY_BATCH && lastDone) {
+            resumeFrom = lastDone;
+            break pages;
+          }
           for (const a of rec.messagesAdded ?? []) {
             changed.add(a.message.threadId);
             const l = a.message.labelIds ?? [];
@@ -94,6 +107,7 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
           for (const x of [...(rec.messagesDeleted ?? []), ...(rec.labelsAdded ?? []), ...(rec.labelsRemoved ?? [])]) {
             changed.add(x.message.threadId);
           }
+          lastDone = rec.id;
         }
         pageToken = h.nextPageToken;
       } while (pageToken);
@@ -119,8 +133,10 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
       }),
     );
   }
-  if (!backfilling) await db.from('accounts').update({ history_id: profile.historyId }).eq('id', acct.id);
-  if (pushes.length) await notify(db, acct, pushes);
+  if (resumeFrom) await db.from('accounts').update({ history_id: resumeFrom }).eq('id', acct.id);
+  else if (!backfilling) await db.from('accounts').update({ history_id: profile.historyId }).eq('id', acct.id);
+  // No pushes for a catch-up batch: that mail is hours old.
+  if (pushes.length && !resumeFrom) await notify(db, acct, pushes);
   return pushes.length;
 }
 
