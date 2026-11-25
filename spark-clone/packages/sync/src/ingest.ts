@@ -224,6 +224,20 @@ export function runNewMessageHook(db: MailDb, opts: HookInput): HookOutcome {
     out.cancelledSnooze = true;
   }
 
+  // (a2) A reply to an archived ('done') thread brings it back to the inbox,
+  // like Gmail does. Without this the thread waited for the next full-sync
+  // reconcile (Gmail, up to 5 min after the toast) or never came back (plain
+  // IMAP). A queued local archive/move is left alone so it can't be undone by
+  // re-observing a message that hasn't moved server-side yet.
+  if (
+    incoming &&
+    !opts.isBackfill &&
+    db.getPlacement(opts.threadId) === 'done' &&
+    !db.hasPendingThreadMove(opts.threadId)
+  ) {
+    db.setPlacement(opts.threadId, 'inbox');
+  }
+
   // (b) a reply arriving suppresses the follow-up reminder
   if (incoming && db.raw.prepare(`SELECT 1 FROM reminders WHERE thread_id = ?`).get(opts.threadId)) {
     db.deleteReminder(opts.threadId);
