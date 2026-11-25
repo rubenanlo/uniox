@@ -3,6 +3,7 @@ import { ArrowUp, CalendarClock, ChevronDown, Mic, Paperclip, X } from 'lucide-r
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { MobileMessage, MobileThread } from '../data/types';
 import { ParticleOrb } from '../components/ParticleOrb';
+import { RichBody, type RichBodyHandle, textToHtml } from '../components/RichBody';
 import { AiMark, Spinner } from '../components/ui';
 import { clearKeptDraft, keepDraft, takeKeptDraft } from '../lib/draftKeep';
 import { clock12, displayName, firstName } from '../lib/format';
@@ -40,13 +41,17 @@ export function Composer() {
   const [bccInput, setBccInput] = useState('');
   const [ccOpen, setCcOpen] = useState(!!kept && kept.cc.length + kept.bcc.length > 0);
   const [subject, setSubject] = useState(kept?.subject ?? '');
+  // `body` is the plain-text twin (AI, send check, text/plain part); `html`
+  // is the formatted body, set only when there is formatting to keep.
   const [body, setBody] = useState(kept?.body ?? q.get('body') ?? '');
+  const [html, setHtml] = useState<string | undefined>(kept?.html);
+  const [initialHtml] = useState(() => kept?.html ?? (body ? textToHtml(body) : undefined));
   const [busy, setBusy] = useState(false);
   const [aiOpen, setAiOpen] = useState(q.has('ai') || q.has('ask'));
   const [aiBusy, setAiBusy] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [aiNote, setAiNote] = useState<string | null>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<RichBodyHandle>(null);
 
   // Load the thread being answered and prefill.
   useEffect(() => {
@@ -62,9 +67,8 @@ export function Composer() {
         setSubject(
           /^fwd?:/i.test(d.thread.subject) ? d.thread.subject : `Fwd: ${d.thread.subject}`,
         );
-        setBody(
-          (b) =>
-            `${b}\n\n---------- Forwarded message ----------\nFrom: ${displayName(last?.from)}\n\n${last?.text ?? last?.snippet ?? ''}`,
+        bodyRef.current?.appendText(
+          `---------- Forwarded message ----------\nFrom: ${displayName(last?.from)}\n\n${last?.text ?? last?.snippet ?? ''}`,
         );
       } else {
         setSubject(reSubject(d.thread.subject));
@@ -101,7 +105,7 @@ export function Composer() {
             '',
             `Write a short reply that does this: ${instr}. Sign off as me.\n\n${contextText()}`,
           );
-      setBody(draft);
+      bodyRef.current?.setText(draft);
       setAiNote(instr.toLowerCase());
       setInstruction('');
     } catch (e) {
@@ -116,9 +120,8 @@ export function Composer() {
     const list = slots ?? freeSlots(await api.events(now, now + 12 * 86_400_000));
     if (!list.length) return showToast({ text: 'No free slots in the next days' });
     const text = `${q.has('propose') ? 'Could we move this to one of these times instead?' : 'I can do any of these:'}\n${describeSlots(list)}`;
-    setBody((b) =>
-      b.trim() ? `${b.trim()}\n\n${text}` : `Hi ${firstName(to[0])},\n\n${text}\n\nBest,`,
-    );
+    if (body.trim()) bodyRef.current?.appendText(text);
+    else bodyRef.current?.setText(`Hi ${firstName(to[0])},\n\n${text}\n\nBest,`);
     setAiNote('added your free times');
   };
 
@@ -158,6 +161,7 @@ export function Composer() {
       bcc: bccAll,
       subject,
       body,
+      ...(html ? { html } : {}),
     });
     showToast({ text: 'Draft kept. Open Write to come back to it' });
     go(path);
@@ -174,6 +178,7 @@ export function Composer() {
         ...(bccAll.length ? { bcc: bccAll } : {}),
         subject,
         body: body.trim(),
+        ...(html ? { html } : {}),
         ...(ctx && !forward ? { threadId: ctx.thread.id } : {}),
       });
       showToast({
@@ -282,20 +287,13 @@ export function Composer() {
               onChange={(e) => setSubject(e.target.value)}
             />
           ) : null}
-          <textarea
+          <RichBody
             ref={bodyRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            initialHtml={initialHtml}
             placeholder="Write your message…"
-            style={{
-              display: 'block',
-              width: '100%',
-              minHeight: 260,
-              padding: '14px 18px',
-              borderTop: '1px solid var(--hair)',
-              lineHeight: 1.55,
-              resize: 'none',
-              fontSize: 16,
+            onChange={(t, h) => {
+              setBody(t);
+              setHtml(h);
             }}
           />
         </div>

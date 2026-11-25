@@ -23,3 +23,27 @@
 .cmp-island .dock-handle { position: absolute; bottom: calc(18px + var(--safe-bottom)); }
 .cmp-island .dock-catch { position: absolute; border-radius: 30px 30px 0 0; }
 .cmp-island .dock { position: absolute; bottom: calc(14px + var(--safe-bottom)); }
+/* Message body: rich text, formats only appear on a selection */
+.rb { display: block; position: relative; width: 100%; min-height: 260px; padding: 14px 18px; border-top: 1px solid var(--hair);
+  line-height: 1.55; font-size: 16px; outline: none; white-space: pre-wrap; overflow-wrap: anywhere;
+  -webkit-user-select: text; user-select: text; }
+.rb.empty::before { content: attr(data-placeholder); color: var(--faint); pointer-events: none; position: absolute; }
+.rb ul, .rb ol { padding-left: 1.4em; margin: 2px 0; }
+.rb ul { list-style: disc; } .rb ol { list-style: decimal; }
+.rb blockquote { margin: 4px 0; padding-left: 12px; border-left: 3px solid var(--accent); color: var(--muted); }
+.rb a { color: var(--accent); text-decoration: underline; }
+/* The format bar: rises above the keyboard while text is selected */
+.rb-bar { position: fixed; left: 50%; bottom: calc(76px + var(--safe-bottom)); z-index: 70;
+  display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 22px;
+  transform: translate(-50%, 14px) scale(.96); opacity: 0; pointer-events: none;
+  transition: transform .32s cubic-bezier(.2,.9,.25,1.15), opacity .2s ease, bottom .2s ease; }
+.rb-bar.on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.rb-bar > button { width: 40px; height: 36px; border-radius: 16px; display: grid; place-items: center; color: var(--ink); }
+.rb-bar > button.on { background: var(--accent-soft); color: var(--accent); }
+.rb-bar > button:active { transform: scale(.92); }
+.rb-link { display: flex; align-items: center; gap: 6px; padding: 0 2px 0 10px; width: min(300px, calc(100vw - 52px)); height: 36px; }
+.rb-link input { flex: 1; min-width: 0; font-size: 16px; }
+.rb-link button { width: 32px; height: 32px; border-radius: 16px; display: grid; place-items: center; color: var(--muted); flex: none; }
+.rb-link button.ok { background: var(--accent); color: var(--on-accent); }
+.rb-link button.ok:disabled { opacity: .4; }
+@media (prefers-reduced-motion: reduce) { .rb-bar { transition: opacity .15s ease; } }

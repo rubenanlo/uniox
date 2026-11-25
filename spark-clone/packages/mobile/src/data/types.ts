@@ -96,7 +96,10 @@ export interface ComposeDraft {
   cc: Address[];
   bcc?: Address[];
   subject: string;
+  /** Plain text of the message (the text/plain part). */
   body: string;
+  /** The formatted body as HTML (bold, lists, quotes, links), when there is any. */
+  html?: string;
   /** Gmail thread being answered, when replying. */
   threadId?: string;
   inReplyToMessageId?: string;
