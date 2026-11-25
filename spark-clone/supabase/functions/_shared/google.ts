@@ -316,28 +316,80 @@ export function parseIcs(ics: string): IcsInvite | null {
   return out.startMs ? out : null;
 }
 
-/** Converts an iCalendar date; TZID times are resolved with Intl. */
+/** Outlook/Exchange zone names seen in invites → IANA (from packages/shared/src/ical.ts). */
+const WINDOWS_ZONES: Record<string, string> = {
+  'Romance Standard Time': 'Europe/Paris',
+  'W. Europe Standard Time': 'Europe/Berlin',
+  'Central Europe Standard Time': 'Europe/Budapest',
+  'Central European Standard Time': 'Europe/Warsaw',
+  'GMT Standard Time': 'Europe/London',
+  'Greenwich Standard Time': 'Atlantic/Reykjavik',
+  'E. Europe Standard Time': 'Europe/Chisinau',
+  'FLE Standard Time': 'Europe/Kiev',
+  'GTB Standard Time': 'Europe/Bucharest',
+  'Russian Standard Time': 'Europe/Moscow',
+  'Eastern Standard Time': 'America/New_York',
+  'Central Standard Time': 'America/Chicago',
+  'Mountain Standard Time': 'America/Denver',
+  'Pacific Standard Time': 'America/Los_Angeles',
+  'SA Pacific Standard Time': 'America/Bogota',
+  'Pacific SA Standard Time': 'America/Santiago',
+  'E. South America Standard Time': 'America/Sao_Paulo',
+  'Argentina Standard Time': 'America/Buenos_Aires',
+  'India Standard Time': 'Asia/Kolkata',
+  'China Standard Time': 'Asia/Shanghai',
+  'Tokyo Standard Time': 'Asia/Tokyo',
+  'Singapore Standard Time': 'Asia/Singapore',
+  'Arabian Standard Time': 'Asia/Dubai',
+  'West Asia Standard Time': 'Asia/Tashkent',
+  'South Africa Standard Time': 'Africa/Johannesburg',
+  'E. Africa Standard Time': 'Africa/Nairobi',
+  'AUS Eastern Standard Time': 'Australia/Sydney',
+  UTC: 'UTC',
+};
+
+/** A formatter for the zone, or null when Intl does not know it. */
+function zoneFormatter(tz: string): Intl.DateTimeFormat | null {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts an iCalendar date; TZID times are resolved with Intl. Outlook's
+ * Windows zone names ("Romance Standard Time") are mapped to IANA first; an
+ * unknown zone falls back to UTC rather than throwing, since one odd invite
+ * must never stop an account's sync.
+ */
 export function icsDate(v: string, tzid?: string): number {
   const m = v.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
   if (!m) return 0;
   const [, y, mo, d, h = '0', mi = '0', s = '0', z] = m;
   const utc = Date.UTC(+y!, +mo! - 1, +d!, +h, +mi, +s);
   if (z || !tzid) return utc;
-  // Offset of tzid at that wall time.
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: tzid,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  const zone = tzid.replace(/^\//, '').replace(/^"|"$/g, '');
+  const fmt = zoneFormatter(zone) ?? (WINDOWS_ZONES[zone] ? zoneFormatter(WINDOWS_ZONES[zone]!) : null);
+  if (!fmt) return utc;
+  // Offset of the zone at that wall time (two passes settle DST edges).
+  const offset = (at: number) => {
+    const parts = Object.fromEntries(fmt.formatToParts(new Date(at)).map((p) => [p.type, p.value]));
+    return Date.UTC(+parts.year!, +parts.month! - 1, +parts.day!, +parts.hour!, +parts.minute!, +parts.second!) - at;
+  };
   try {
-    const parts = Object.fromEntries(fmt.formatToParts(new Date(utc)).map((p) => [p.type, p.value]));
-    const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
-    return utc - (asUtc - utc);
+    let ms = utc - offset(utc);
+    ms = utc - offset(ms);
+    return ms;
   } catch {
     return utc;
   }
