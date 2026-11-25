@@ -50,6 +50,7 @@ const JEFFREY = p('Jeffrey Sachs', 'jeffrey@unsdsn.org');
 const ALYSON = p('Alyson Marks', 'alyson@unsdsn.org');
 const SHANNON = p('Shannon Leigh', 'shannon@unsdsn.org');
 const ANA = p('Ana Torres', 'ana@unsdsn.org');
+const ABIGAIL = p('Abigail Stone', 'abigail@jic.org');
 
 function t(
   partial: Partial<MobileThread> & Pick<MobileThread, 'id' | 'subject' | 'lastFrom'>,
@@ -176,7 +177,11 @@ const messages: Record<string, MobileMessage[]> = {
       'I checked and your PR is not yet approved. Maybe you could reach out to Stephanie and see if there is anything else that she needs.',
       todayAt(10, 20),
     ),
-    msg('m2', 't1', ME, "Thanks, Gill! I'll reach out to Stephanie.", todayAt(10, 29), true),
+    {
+      ...msg('m2', 't1', ME, "Thanks, Gill! I'll reach out to Stephanie.", todayAt(10, 29), true),
+      to: [GILL],
+      cc: [ISABELA],
+    },
     msg(
       'm3',
       't1',
@@ -186,7 +191,13 @@ const messages: Record<string, MobileMessage[]> = {
       false,
       true,
     ),
-  ],
+  ].map((m) =>
+    m.id === 'm1'
+      ? { ...m, cc: [ISABELA] }
+      : m.id === 'm3'
+        ? { ...m, to: [GILL], cc: [ME, ABIGAIL] }
+        : m,
+  ),
   t2: [
     msg(
       'm4',
