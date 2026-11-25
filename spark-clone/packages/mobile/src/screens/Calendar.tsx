@@ -15,6 +15,12 @@ import { go, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 import { useNow } from '../lib/useNow';
 import { CalTop, DayRiver, MonthDots, WeekFolds } from './CalendarDay';
+import {
+  CalendarChoice,
+  type CalendarPick,
+  pickLabel,
+  useCalendarGroups,
+} from '../components/CalendarChoice';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -341,14 +347,18 @@ function NewEventSheet({
   const [time, setTime] = useState('10:00');
   const [mins, setMins] = useState(30);
   const [meet, setMeet] = useState(true);
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
+  const [where, setWhere] = useState<CalendarPick>({ accountId: accounts[0]?.id ?? '' });
+  const [picking, setPicking] = useState(false);
+  const groups = useCalendarGroups();
+  const choices = groups.reduce((n, g) => n + 1 + g.others.length, 0);
   const [busy, setBusy] = useState(false);
   const create = async () => {
     const start = new Date(`${date}T${time}`).getTime();
     setBusy(true);
     try {
       await api.createEvent({
-        accountId,
+        accountId: where.accountId,
+        calendarId: where.calendarId,
         title: title.trim() || 'New event',
         startMs: start,
         endMs: start + mins * 60_000,
@@ -424,22 +434,27 @@ function NewEventSheet({
             <Video size={18} /> Google Meet link
             <Toggle on={meet} onChange={setMeet} label="Add Google Meet" />
           </div>
-          {accounts.length > 1 && (
-            <label className="gi" style={{ position: 'relative' }}>
-              Calendar
-              <span className="v">{accounts.find((a) => a.id === accountId)?.email}</span>
-              <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
-                style={{ position: 'absolute', inset: 0, opacity: 0 }}
+          {choices > 1 && (
+            <>
+              <button
+                className="gi"
+                style={{ width: '100%' }}
+                aria-expanded={picking}
+                onClick={() => setPicking(!picking)}
               >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.email}
-                  </option>
-                ))}
-              </select>
-            </label>
+                Calendar
+                <span className="v">{pickLabel(groups, where)}</span>
+              </button>
+              {picking && (
+                <div style={{ padding: '0 14px 10px' }}>
+                  <CalendarChoice
+                    groups={groups}
+                    value={where}
+                    onChange={(p, done) => (setWhere(p), done && setPicking(false))}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

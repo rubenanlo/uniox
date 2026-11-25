@@ -12,7 +12,8 @@ type Body =
   | { action: 'rsvp'; eventId: string; answer: 'accepted' | 'tentative' | 'declined' }
   | { action: 'propose'; eventId: string; startMs: number; endMs: number; note?: string; label?: string }
   | { action: 'freebusy'; accountId: string; emails: string[]; fromMs: number; toMs: number }
-  | { action: 'createEvent'; accountId: string; title: string; startMs: number; endMs: number; addMeet: boolean };
+  | { action: 'calendars' }
+  | { action: 'createEvent'; accountId: string; calendarId?: string; title: string; startMs: number; endMs: number; addMeet: boolean };
 
 /** Mail and calendar writes for the phone. Every call acts on the caller's own data. */
 Deno.serve(async (req) => {
@@ -244,10 +245,36 @@ Deno.serve(async (req) => {
         return json({ me: acct.email.toLowerCase(), busy: out });
       }
 
+      case 'calendars': {
+        // Every calendar the caller can add events to, account by account. An account whose
+        // token fails is left out rather than failing the whole list.
+        const { data: accts } = await db.from('accounts').select('id, email').eq('user_id', userId);
+        const out: { accountId: string; id: string; name: string; color: string; primary: boolean }[] = [];
+        await Promise.all(
+          ((accts ?? []) as { id: string; email: string }[]).map(async (a) => {
+            try {
+              const token = await accessToken(db, a.id);
+              const r = await gfetch<{ items: { id: string; summary: string; summaryOverride?: string; backgroundColor?: string; primary?: boolean; hidden?: boolean }[] }>(
+                token,
+                `${CAL}/users/me/calendarList?minAccessRole=writer`,
+              );
+              for (const c of r.items) {
+                if (c.hidden) continue;
+                out.push({ accountId: a.id, id: c.id, name: c.summaryOverride || c.summary, color: c.backgroundColor ?? '#888', primary: !!c.primary });
+              }
+            } catch (e) {
+              console.error('calendarList', a.email, e);
+            }
+          }),
+        );
+        return json(out);
+      }
+
       case 'createEvent': {
         const acct = await account(b.accountId);
         const token = await accessToken(db, acct.id);
-        await gfetch(token, `${CAL}/calendars/primary/events?conferenceDataVersion=1`, {
+        const cal = encodeURIComponent(b.calendarId || 'primary');
+        await gfetch(token, `${CAL}/calendars/${cal}/events?conferenceDataVersion=1`, {
           method: 'POST',
           body: JSON.stringify({
             summary: b.title,

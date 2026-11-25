@@ -248,6 +248,7 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
     async rsvp(eventId, _accountId, ans) {
       await fn('mail', { action: 'rsvp', eventId, answer: ans });
     },
+    calendars: () => fn('mail', { action: 'calendars' }),
     async createEvent(input) {
       await fn('mail', { action: 'createEvent', ...input });
     },

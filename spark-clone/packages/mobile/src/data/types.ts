@@ -2,6 +2,16 @@ import type { Address, Category } from '@app/shared';
 
 export type { Address, Category };
 
+/** A calendar you can add events to, inside one connected account. */
+export interface MobileCalendar {
+  accountId: string;
+  /** Google calendar id; 'primary' style ids come back as the account's address. */
+  id: string;
+  name: string;
+  color: string;
+  primary: boolean;
+}
+
 /** A connected Google account. Tokens never reach the phone; they live server-side. */
 export interface MobileAccount {
   id: string;
