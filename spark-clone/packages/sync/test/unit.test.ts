@@ -221,6 +221,26 @@ describe('new-message-on-thread hook', () => {
     expect(quiet.notify).toBe(false);
   });
 
+  it('brings an archived thread back to the inbox when a reply arrives', () => {
+    const db = setupDb();
+    const r = ingestEnvelope(db, 'acc1', 'f-inbox', env(1))!;
+    db.setPlacement(r.threadId, 'done');
+
+    // Backfill and non-inbox copies (our own archive moves) leave it archived.
+    runNewMessageHook(db, hookArgs(r.threadId, { isBackfill: true }));
+    runNewMessageHook(db, hookArgs(r.threadId, { folderRole: 'archive' }));
+    expect(db.getPlacement(r.threadId)).toBe('done');
+
+    // A queued archive that hasn't reached the server yet is not undone.
+    db.enqueueTask({ type: 'move-thread', accountId: 'acc1', threadId: r.threadId, toRole: 'archive' });
+    runNewMessageHook(db, hookArgs(r.threadId));
+    expect(db.getPlacement(r.threadId)).toBe('done');
+    db.raw.prepare(`UPDATE tasks SET status = 'done'`).run();
+
+    runNewMessageHook(db, hookArgs(r.threadId));
+    expect(db.getPlacement(r.threadId)).toBe('inbox');
+  });
+
   it('does NOT cancel snooze/reminder for non-inbox ingests (moved/sent copies)', () => {
     const db = setupDb();
     db.upsertFolder({ id: 'f-snoozed', accountId: 'acc1', path: 'SparkClone/Snoozed', role: 'snoozed', delimiter: '/' });

@@ -999,6 +999,11 @@ export class MailDb {
     ).map((r) => ({ id: r.id as string, folderId: r.folder_id as string, uid: r.uid as number }));
   }
 
+  /** True while an archive/snooze/set-aside/move for this thread is queued or running. */
+  hasPendingThreadMove(threadId: string): boolean {
+    return !!this.stmt(`SELECT 1 WHERE ? IN (${PENDING_THREAD_MOVES})`).get(threadId);
+  }
+
   getPlacement(threadId: string): Placement | null {
     const r = this.stmt(`SELECT placement FROM threads WHERE id = ?`).get(threadId) as
       | Row
