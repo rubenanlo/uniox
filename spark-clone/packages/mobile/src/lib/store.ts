@@ -10,6 +10,7 @@ import {
   type SharedSettings,
 } from '../data/types';
 import { cachedInbox, cacheInbox, enqueue, flushOutbox, isNetworkError, outbox } from './offline';
+import { PendingActions, withThread, without } from './pending';
 
 function pickApi(): UnioxApi {
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
@@ -47,6 +48,7 @@ interface State {
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+const pending = new PendingActions();
 
 export const useStore = create<State>((set, get) => ({
   api: pickApi(),
@@ -95,8 +97,12 @@ export const useStore = create<State>((set, get) => ({
   async refresh() {
     const { api } = get();
     set({ loading: true });
+    const startedAt = Date.now();
     try {
-      const [accounts, threads] = await Promise.all([api.accounts(), api.threads({ limit: 300 })]);
+      const [accounts, fetched] = await Promise.all([api.accounts(), api.threads({ limit: 300 })]);
+      // Actions still on their way to the server stay applied on top.
+      const threads = pending.applyTo(fetched);
+      pending.prune(startedAt);
       set({ accounts, threads, error: null });
       cacheInbox(threads);
     } catch (e) {
@@ -107,36 +113,35 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async act(thread, action, label) {
-    const { api, threads } = get();
-    const before = threads;
+    const { api } = get();
     // Optimistic: archive/trash/snooze drop the row, read/pin update it.
-    const next =
+    const patch =
       action.kind === 'archive' || action.kind === 'trash' || action.kind === 'snooze'
-        ? threads.filter((t) => t.id !== thread.id)
-        : threads.map((t) =>
-            t.id !== thread.id
-              ? t
-              : action.kind === 'read'
-                ? { ...t, unreadCount: action.read ? 0 : Math.max(1, t.unreadCount) }
-                : { ...t, pinned: action.kind === 'pin' ? action.pinned : t.pinned },
-          );
-    set({ threads: next });
+        ? without(thread.id)
+        : action.kind === 'read'
+          ? withThread({ ...thread, unreadCount: action.read ? 0 : Math.max(1, thread.unreadCount) })
+          : action.kind === 'pin'
+            ? withThread({ ...thread, pinned: action.pinned })
+            : withThread(thread);
+    const op = pending.begin(thread.id, patch);
+    set({ threads: patch(get().threads) });
     try {
       await api.act(thread.id, action);
+      pending.settle(op);
+      void get().refresh();
       if (label) {
         get().showToast({
           text: label,
           undo:
             action.kind === 'archive' || action.kind === 'snooze'
-              ? () => {
-                  set({ threads: before });
-                  void api.act(thread.id, { kind: 'inbox' });
-                }
+              ? () => void get().act(thread, { kind: 'inbox' })
               : undefined,
         });
       }
     } catch (e) {
-      set({ threads: before });
+      // Put back only this thread; other actions made meanwhile stand.
+      pending.drop(op);
+      set({ threads: withThread(thread)(get().threads) });
       get().showToast({ text: (e as Error).message || 'Could not update' });
     }
   },
