@@ -94,11 +94,37 @@
 .cal-new { margin: 6px 0 4px; padding: 14px; border-radius: 18px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .cal-new .cap { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
-.cal-new .cap input { font: inherit; color: inherit; letter-spacing: inherit; min-height: 32px; }
 .cal-new .title { width: 100%; height: 44px; margin-top: 6px; font-size: 18px; font-weight: 600; border-bottom: 1px solid var(--hair); }
-.cal-new .len { display: flex; gap: 8px; margin-top: 12px; }
-.cal-new .len button { height: 44px; padding: 0 14px; border-radius: 22px; font-size: 14px; font-weight: 600; color: var(--muted); border: 1px solid var(--hair); }
-.cal-new .len button.on { background: var(--ink); color: var(--app); border-color: transparent; }
+/* When: "From 3:00 PM for 1 h, until 4:00 PM." Each word unfolds its choices. */
+.cal-when { margin: 12px 0 2px; font-size: 17px; line-height: 1.5; color: var(--muted); }
+.cal-when .ib-w { min-height: 32px; font-weight: 700; }
+.cal-when .ib-w.warn { background-image: linear-gradient(90deg, var(--danger), #ffb86b); }
+.cal-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 0 4px; }
+.cal-slots button { min-height: 40px; padding: 0 4px; border-radius: 12px; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  border: 1px solid var(--hair); white-space: nowrap; transition: background .2s, color .2s; }
+.cal-slots button.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.cal-slots button.over { color: var(--muted); border-style: dashed; }
+.cal-slots button.over.on { color: var(--on-accent); }
+.cal-slots .other, .cal-slots .fill { grid-column: span 2; color: var(--accent); }
+.cal-slots .other.on, .cal-slots .fill.on { color: var(--on-accent); }
+.cal-fold .cal-slots > * { opacity: 0; transform: translateY(6px); transition: opacity .14s ease, transform .14s ease; }
+.cal-fold.open .cal-slots > * { opacity: 1; transform: none;
+  transition: opacity .26s ease calc(60ms + var(--i, 0) * 18ms), transform .36s cubic-bezier(.22, 1.3, .36, 1) calc(60ms + var(--i, 0) * 18ms); }
+.cal-slots > :nth-child(n + 2) { --i: 1; } .cal-slots > :nth-child(n + 5) { --i: 2; } .cal-slots > :nth-child(n + 9) { --i: 3; }
+.cal-slots > :nth-child(n + 13) { --i: 4; } .cal-slots > :nth-child(n + 17) { --i: 5; } .cal-slots > :nth-child(n + 21) { --i: 6; }
+.cal-other { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; color: var(--muted); }
+.cal-other input { font: inherit; font-weight: 600; color: var(--ink); min-height: 36px; }
+/* Where the slot sits in the free time; a tap on the bar moves it there. */
+.cal-slotbar { position: relative; height: 22px; margin-top: 10px; cursor: pointer; }
+.cal-slotbar::before { content: ''; position: absolute; left: 0; right: 0; top: 10px; height: 2px; border-radius: 1px; background: var(--hair); }
+.cal-slotbar .free { position: absolute; top: 9px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.cal-slotbar .pick { position: absolute; top: 4px; height: 14px; min-width: 6px; border-radius: 7px;
+  background: linear-gradient(90deg, var(--aqua), var(--azure), var(--violet));
+  transition: left .36s cubic-bezier(.22, 1.2, .36, 1), width .36s cubic-bezier(.22, 1.2, .36, 1); }
+.cal-slotbar .pick.warn { background: linear-gradient(90deg, var(--danger), #ffb86b); }
+.cal-slotends { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.cal-over { margin: 6px 0 0; font-size: 13px; color: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .cal-slotbar .pick, .cal-fold .cal-slots > * { transition: none; transform: none; } }
 .cal-new .foot { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
 .cal-new .foot .meet { min-height: 44px; font-size: 14px; color: var(--muted); text-align: left; }
 .cal-new .foot .meet.on { color: var(--ink); }
@@ -161,3 +187,5 @@
 @keyframes cal-pop { from { transform: scale(.6); } }
 @keyframes cal-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cal-month, .cal-swap, .cal-swap .cal-day-in > *, .cal-mrow .sel .n { animation: none; } }
+.cal-day-in .cal-gap-h .plan[aria-expanded='true'] { opacity: .45; }
+.cal-when .ib-w, .cal-when .nw { white-space: nowrap; }
