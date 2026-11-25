@@ -432,6 +432,17 @@ export const mockApi: UnioxApi = {
     });
     return delay({ me: 'me@example.com', busy });
   },
+  calendars: () =>
+    delay([
+      ...ACCOUNTS.map((a) => ({
+        accountId: a.id,
+        id: a.email,
+        name: a.email,
+        color: a.color,
+        primary: true,
+      })),
+      { accountId: 'a2', id: 'family@group', name: 'Family', color: '#e8833a', primary: false },
+    ]),
   async createEvent(input) {
     created.push(
       ev(

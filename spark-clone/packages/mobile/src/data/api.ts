@@ -3,6 +3,7 @@ import type {
   ComposeDraft,
   FirstRead,
   MobileAccount,
+  MobileCalendar,
   MobileEvent,
   MobileMessage,
   MobileThread,
@@ -58,8 +59,12 @@ export interface UnioxApi {
     fromMs: number,
     toMs: number,
   ): Promise<{ me: string; busy: Record<string, { startMs: number; endMs: number }[] | null> }>;
+  /** The calendars of each account you can write to (e.g. a "Family" calendar next to the main one). */
+  calendars(): Promise<MobileCalendar[]>;
   createEvent(input: {
     accountId: string;
+    /** Which calendar of the account; the account's main calendar when left out. */
+    calendarId?: string;
     title: string;
     startMs: number;
     endMs: number;

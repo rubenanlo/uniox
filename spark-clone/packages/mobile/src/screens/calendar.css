@@ -189,3 +189,12 @@
 @media (prefers-reduced-motion: reduce) { .cal-month, .cal-swap, .cal-swap .cal-day-in > *, .cal-mrow .sel .n { animation: none; } }
 .cal-day-in .cal-gap-h .plan[aria-expanded='true'] { opacity: .45; }
 .cal-when .ib-w, .cal-when .nw { white-space: nowrap; }
+/* Which calendar: accounts by name, an account with more calendars under its own heading. */
+.cal-cals { padding: 8px 0 4px; }
+.cal-cals-h { margin: 8px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cal-cals-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-cals button { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 13px; border-radius: 12px;
+  font-size: 14px; font-weight: 600; color: var(--ink); border: 1px solid var(--hair); transition: background .2s, color .2s; }
+.cal-cals button i { width: 8px; height: 8px; border-radius: 4px; flex: none; }
+.cal-cals button.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.cal-cals button.on i { box-shadow: 0 0 0 2px var(--on-accent); }

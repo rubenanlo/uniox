@@ -2,6 +2,12 @@ import { ChevronDown, ChevronLeft, ChevronRight, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TILES } from '../components/InviteCard';
 import { ProposeTime } from '../components/ProposeTime';
+import {
+  CalendarChoice,
+  type CalendarPick,
+  pickLabel,
+  useCalendarGroups,
+} from '../components/CalendarChoice';
 import type { MobileEvent, RsvpAnswer } from '../data/types';
 import {
   addDays,
@@ -1249,9 +1255,11 @@ function NewEventInline({
   const [mins, setMins] = useState(() =>
     endMs !== null && endMs - startMs < 30 * MIN ? Math.round((endMs - startMs) / MIN) : 30,
   );
-  const [picking, setPicking] = useState<'start' | 'len' | 'other' | null>(null);
+  const [picking, setPicking] = useState<'start' | 'len' | 'other' | 'cal' | null>(null);
   const [meet, setMeet] = useState(true);
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
+  const [where, setWhere] = useState<CalendarPick>({ accountId: accounts[0]?.id ?? '' });
+  const groups = useCalendarGroups();
+  const choices = groups.reduce((n, g) => n + 1 + g.others.length, 0);
   const [busy, setBusy] = useState(false);
 
   // The window the bar and the start times cover: the gap, or the evening when it is open-ended.
@@ -1277,7 +1285,7 @@ function NewEventInline({
   const lo = Math.min(startMs, start);
   const hi = Math.max(winEnd, end);
   const pct = (t: number) => `${((t - lo) / (hi - lo)) * 100}%`;
-  const toggle = (k: 'start' | 'len') => setPicking(picking === k ? null : k);
+  const toggle = (k: 'start' | 'len' | 'cal') => setPicking(picking === k ? null : k);
   const pickOnBar = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const t = lo + ((e.clientX - r.left) / r.width) * (hi - lo) - (mins * MIN) / 2;
@@ -1289,7 +1297,8 @@ function NewEventInline({
     setBusy(true);
     try {
       await api.createEvent({
-        accountId,
+        accountId: where.accountId,
+        calendarId: where.calendarId,
         title: title.trim() || 'New event',
         startMs: start,
         endMs: end,
@@ -1335,7 +1344,23 @@ function NewEventInline({
         >
           {span(mins * MIN)}
         </button>
-        , until <span className="nw">{clock12(end)}</span>.
+        , until <span className="nw">{clock12(end)}</span>
+        {choices > 1 ? (
+          <>
+            , in{' '}
+            <button
+              className="ib-w"
+              aria-pressed={picking === 'cal'}
+              aria-label={`In ${pickLabel(groups, where)}. Change calendar`}
+              onClick={() => toggle('cal')}
+            >
+              {pickLabel(groups, where)}
+            </button>
+            .
+          </>
+        ) : (
+          '.'
+        )}
       </p>
       <div
         className={`cal-fold${picking === 'start' || picking === 'other' ? ' open' : ''}`}
@@ -1414,6 +1439,18 @@ function NewEventInline({
           </div>
         </div>
       </div>
+      <div className={`cal-fold${picking === 'cal' ? ' open' : ''}`} inert={picking !== 'cal'}>
+        <div>
+          <CalendarChoice
+            groups={groups}
+            value={where}
+            onChange={(p) => {
+              setWhere(p);
+              setPicking(null);
+            }}
+          />
+        </div>
+      </div>
       <div
         className="cal-slotbar"
         role="presentation"
@@ -1445,19 +1482,6 @@ function NewEventInline({
             ? 'This is outside the free time, over what is already booked.'
             : `Runs ${span(over)} into what comes next.`}
         </p>
-      )}
-      {accounts.length > 1 && (
-        <select
-          aria-label="Calendar"
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.email}
-            </option>
-          ))}
-        </select>
       )}
       <div className="foot">
         <button
