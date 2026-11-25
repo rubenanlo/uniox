@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
       }
 
       case 'calendars': {
-        // Every calendar the caller can add events to, account by account. An account whose
+        // Every calendar the caller owns, account by account. An account whose
         // token fails is left out rather than failing the whole list.
         const { data: accts } = await db.from('accounts').select('id, email').eq('user_id', userId);
         const out: { accountId: string; id: string; name: string; color: string; primary: boolean }[] = [];
@@ -256,7 +256,9 @@ Deno.serve(async (req) => {
               const token = await accessToken(db, a.id);
               const r = await gfetch<{ items: { id: string; summary: string; summaryOverride?: string; backgroundColor?: string; primary?: boolean; hidden?: boolean }[] }>(
                 token,
-                `${CAL}/users/me/calendarList?minAccessRole=writer`,
+                // Only calendars the user owns (their main one, Family…): colleagues' calendars they can
+                // edit and shared ones like office holidays are not places to put their own events.
+                `${CAL}/users/me/calendarList?minAccessRole=owner`,
               );
               for (const c of r.items) {
                 if (c.hidden) continue;
