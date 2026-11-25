@@ -60,6 +60,8 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
   let backfilling = false;
   /** Set when a long history backlog is cut short: the next run resumes here. */
   let resumeFrom: string | null = null;
+  /** History records in order, with the threads each one touched (history path only). */
+  const recs: { id: string; threads: string[] }[] = [];
 
   if (!acct.history_id) {
     const list = await gfetch<{ threads?: { id: string }[] }>(
@@ -99,14 +101,18 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
             resumeFrom = lastDone;
             break pages;
           }
+          const touched = new Set<string>();
           for (const a of rec.messagesAdded ?? []) {
+            touched.add(a.message.threadId);
             changed.add(a.message.threadId);
             const l = a.message.labelIds ?? [];
             if (l.includes('INBOX') && l.includes('UNREAD') && !l.includes('SENT')) arrived.add(a.message.id);
           }
           for (const x of [...(rec.messagesDeleted ?? []), ...(rec.labelsAdded ?? []), ...(rec.labelsRemoved ?? [])]) {
+            touched.add(x.message.threadId);
             changed.add(x.message.threadId);
           }
+          recs.push({ id: rec.id, threads: [...touched] });
           lastDone = rec.id;
         }
         pageToken = h.nextPageToken;
@@ -123,15 +129,36 @@ async function syncMail(db: SupabaseClient, token: string, acct: AccountRow): Pr
 
   const contacts = await knownContacts(db, acct.user_id);
   const pushes: { thread: ThreadUpsert; msg: ParsedMessage }[] = [];
-  const ids = [...changed];
-  for (let i = 0; i < ids.length; i += PARALLEL) {
-    await Promise.all(
-      ids.slice(i, i + PARALLEL).map(async (gid) => {
-        const res = await syncThread(db, token, acct, gid, contacts);
-        if (!res) return;
-        for (const m of res.messages) if (arrived.has(m.id)) pushes.push({ thread: res.thread, msg: m });
-      }),
-    );
+  const syncOne = async (gid: string) => {
+    const res = await syncThread(db, token, acct, gid, contacts);
+    if (!res) return;
+    for (const m of res.messages) if (arrived.has(m.id)) pushes.push({ thread: res.thread, msg: m });
+  };
+  if (acct.history_id) {
+    // Walk history in order and remember the last record fully applied, so
+    // a quota error mid-run keeps the progress made instead of starting over.
+    const done = new Set<string>();
+    let applied: string | null = null;
+    try {
+      for (const rec of recs) {
+        const todo = rec.threads.filter((t) => !done.has(t));
+        for (let i = 0; i < todo.length; i += PARALLEL) {
+          await Promise.all(todo.slice(i, i + PARALLEL).map(syncOne));
+        }
+        todo.forEach((t) => done.add(t));
+        applied = rec.id;
+      }
+    } catch (e) {
+      const quota = e instanceof GoogleError && (e.status === 403 || e.status === 429);
+      if (!quota || !applied) throw e;
+      resumeFrom = applied;
+    }
+    if (resumeFrom) console.log('history catch-up', acct.email, { records: recs.length, threads: done.size, resumeFrom });
+  } else {
+    const ids = [...changed];
+    for (let i = 0; i < ids.length; i += PARALLEL) {
+      await Promise.all(ids.slice(i, i + PARALLEL).map(syncOne));
+    }
   }
   if (resumeFrom) await db.from('accounts').update({ history_id: resumeFrom }).eq('id', acct.id);
   else if (!backfilling) await db.from('accounts').update({ history_id: profile.historyId }).eq('id', acct.id);
