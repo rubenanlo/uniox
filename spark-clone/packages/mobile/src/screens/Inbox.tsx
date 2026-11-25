@@ -14,6 +14,11 @@ import { useStore } from '../lib/store';
 import { useNow } from '../lib/useNow';
 import './inbox.css';
 
+/** Rounded-square ring around each priority face, drawn clockwise from the
+ *  top centre so the waiting arc grows like the old circular one did. */
+const SQUARE_RING =
+  'M35 1.5H48.5A20 20 0 0 1 68.5 21.5V48.5A20 20 0 0 1 48.5 68.5H21.5A20 20 0 0 1 1.5 48.5V21.5A20 20 0 0 1 21.5 1.5Z';
+
 const BUNDLES: {
   key: Category;
   label: string;
@@ -419,7 +424,6 @@ function InboxMain() {
               {people.map((p) => {
                 const h = (now - p.newest) / 3_600_000;
                 const frac = Math.min(1, Math.max(0.04, h / 10));
-                const C = 2 * Math.PI * 33;
                 const count = !p.waiting
                   ? 0
                   : p.items.length > 1
@@ -441,23 +445,15 @@ function InboxMain() {
                             <stop offset="1" stopColor="var(--violet)" />
                           </linearGradient>
                         </defs>
-                        <circle
-                          cx="35"
-                          cy="35"
-                          r="33"
-                          fill="none"
-                          stroke="var(--hair)"
-                          strokeWidth="3"
-                        />
-                        <circle
-                          cx="35"
-                          cy="35"
-                          r="33"
+                        <path d={SQUARE_RING} fill="none" stroke="var(--hair)" strokeWidth="3" />
+                        <path
+                          d={SQUARE_RING}
+                          pathLength={100}
                           fill="none"
                           stroke={p.waiting ? 'url(#ibg)' : 'none'}
                           strokeWidth="3"
                           strokeLinecap="round"
-                          strokeDasharray={`${C * frac} ${C}`}
+                          strokeDasharray={`${100 * frac} 100`}
                         />
                       </svg>
                       <Avatar who={p.who} size={58} />
