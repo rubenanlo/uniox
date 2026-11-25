@@ -94,7 +94,6 @@ export function CalendarScreen() {
             onChanged={load}
             onDetails={(e) => go(`calendar?view=week&event=${encodeURIComponent(e.id)}`, true)}
             onOpenDay={(d) => (setDay(d), go('calendar', true))}
-            onPlan={(d) => (setDay(d), go('calendar?new=1', true))}
           />
         ) : view === 'month' ? (
           <MonthDots
@@ -108,7 +107,6 @@ export function CalendarScreen() {
             onDetails={(e) => go(`calendar?view=month&event=${encodeURIComponent(e.id)}`, true)}
             onOpenDay={(d) => (setDay(d), go('calendar', true))}
             onOpenWeek={(d) => (setDay(d), go('calendar?view=week', true))}
-            onPlan={(d) => (setDay(d), go('calendar?new=1', true))}
           />
         ) : (
           <>

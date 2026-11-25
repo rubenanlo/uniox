@@ -44,6 +44,16 @@ const clashIn = (busy: MobileEvent[], a: MobileEvent) =>
 const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
 const inviteWord = (n: number) => `${COUNT[n] ?? n} invite${n === 1 ? '' : 's'}`;
 const quarter = (ms: number) => Math.ceil(ms / (15 * MIN)) * 15 * MIN;
+/** The first free time of a day worth planning in, from 9 AM (or now) on; open-ended when it runs to evening. */
+const firstFree = (d: number, busy: MobileEvent[], now: number): Gap => {
+  let t = Math.max(d + 9 * HOUR, d === startOfDay(now) ? quarter(now) : 0);
+  for (const e of [...busy].sort((a, b) => a.startMs - b.startMs)) {
+    if (e.endMs <= t) continue;
+    if (e.startMs - t >= MIN_GAP) return { key: `g${t}`, startMs: t, endMs: e.startMs };
+    t = Math.max(t, e.endMs);
+  }
+  return { key: `g${t}`, startMs: t, endMs: null };
+};
 
 /**
  * The Calendar's day view. A sentence sums the day up and its words act: the
@@ -80,8 +90,14 @@ export function DayRiver({
   const [weekOpen, setWeekOpen] = useState(false);
   const [needOpen, setNeedOpen] = useState(true);
   // What is unfolded belongs to one day: another day starts folded.
-  const [opened, setOpened] = useState<{ day: number; id: string | null }>({ day, id: null });
-  const [drafted, setDrafted] = useState<{ day: number; gap: Gap | null }>({ day, gap: null });
+  const [opened, setOpened] = useState<{ day: number; id: string | null }>({
+    day,
+    id: null,
+  });
+  const [drafted, setDrafted] = useState<{ day: number; gap: Gap | null }>({
+    day,
+    gap: null,
+  });
   const openId = opened.day === day ? opened.id : null;
   const setOpenId = (id: string | null) => setOpened({ day, id });
   const needRef = useRef<HTMLDivElement>(null);
@@ -125,7 +141,10 @@ export function DayRiver({
         if (cursor && e.startMs - cursor >= MIN_GAP) {
           // Now sits before the gap when the gap is still ahead of it.
           if (now <= cursor) placeNow(e.startMs);
-          out.push({ kind: 'gap', gap: { key: `g${cursor}`, startMs: cursor, endMs: e.startMs } });
+          out.push({
+            kind: 'gap',
+            gap: { key: `g${cursor}`, startMs: cursor, endMs: e.startMs },
+          });
         }
         cursor = Math.max(cursor, e.endMs);
       }
@@ -135,9 +154,15 @@ export function DayRiver({
     if (!nowPlaced) out.push({ kind: 'now' });
     if (!cursor) {
       const start = isToday ? Math.max(quarter(now), day + 9 * HOUR) : day + 10 * HOUR;
-      out.push({ kind: 'gap', gap: { key: 'all', startMs: start, endMs: null } });
+      out.push({
+        kind: 'gap',
+        gap: { key: 'all', startMs: start, endMs: null },
+      });
     } else if (cursor < dayEnd) {
-      out.push({ kind: 'gap', gap: { key: `g${cursor}`, startMs: cursor, endMs: null } });
+      out.push({
+        kind: 'gap',
+        gap: { key: `g${cursor}`, startMs: cursor, endMs: null },
+      });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +223,10 @@ export function DayRiver({
   return (
     <div className="cal" ref={root}>
       <CalTop
-        label={new Date(day).toLocaleDateString([], { month: 'long', day: 'numeric' })}
+        label={new Date(day).toLocaleDateString([], {
+          month: 'long',
+          day: 'numeric',
+        })}
         onToday={() => setDay(today)}
         view={view}
         setView={setView}
@@ -361,6 +389,7 @@ export function DayRiver({
                           {open && (
                             <NewEventInline
                               startMs={start}
+                              endMs={g.endMs}
                               onClose={() => setDraft(null)}
                               onCreated={onChanged}
                             />
@@ -562,7 +591,6 @@ export function WeekFolds({
   onChanged,
   onDetails,
   onOpenDay,
-  onPlan,
 }: {
   day: number;
   setDay: (d: number) => void;
@@ -573,8 +601,6 @@ export function WeekFolds({
   onChanged: () => void;
   onDetails: (e: MobileEvent) => void;
   onOpenDay: (d: number) => void;
-  /** Start a new event on that day. */
-  onPlan: (d: number) => void;
 }) {
   const accounts = useStore((s) => s.accounts);
   const mine = useMemo(() => new Set(accounts.map((a) => a.email.toLowerCase())), [accounts]);
@@ -592,7 +618,13 @@ export function WeekFolds({
       .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
     const timed = all.filter((e) => !e.allDay);
     const busy = timed.filter((e) => !e.free);
-    return { d, all, timed, busy, clashing: busy.filter((e) => clashIn(busy, e)) };
+    return {
+      d,
+      all,
+      timed,
+      busy,
+      clashing: busy.filter((e) => clashIn(busy, e)),
+    };
   });
   const inWeek = today >= ws && today < addDays(ws, 7);
   // Today starts open; another week starts with every day folded.
@@ -643,7 +675,11 @@ export function WeekFolds({
                 setNeedOpen(!needOpen);
                 if (!needOpen)
                   setTimeout(
-                    () => needRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                    () =>
+                      needRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      }),
                     60,
                   );
               }}
@@ -729,7 +765,11 @@ export function WeekFolds({
                 onClick={() => setOpened({ ws, d: open ? null : d })}
               >
                 <span className={`nm${isToday ? ' today' : ''}`}>
-                  {isToday ? 'Today' : new Date(d).toLocaleDateString([], { weekday: 'long' })}{' '}
+                  {isToday
+                    ? 'Today'
+                    : new Date(d).toLocaleDateString([], {
+                        weekday: 'long',
+                      })}{' '}
                   <span>{new Date(d).getDate()}</span>
                 </span>
                 <span className="dots">
@@ -753,7 +793,7 @@ export function WeekFolds({
                     mine={mine}
                     onDetails={onDetails}
                     onOpenDay={onOpenDay}
-                    onPlan={onPlan}
+                    onChanged={onChanged}
                   />
                 </div>
               </div>
@@ -774,7 +814,7 @@ function DayMini({
   mine,
   onDetails,
   onOpenDay,
-  onPlan,
+  onChanged,
 }: {
   d: number;
   all: MobileEvent[];
@@ -783,16 +823,26 @@ function DayMini({
   mine: Set<string>;
   onDetails: (e: MobileEvent) => void;
   onOpenDay: (d: number) => void;
-  onPlan: (d: number) => void;
+  /** An event was added: the view reloads and stays where it is. */
+  onChanged: () => void;
 }) {
+  const [planning, setPlanning] = useState(false);
   const timed = all.filter((e) => !e.allDay);
   const busy = timed.filter((e) => !e.free);
   const last = busy.reduce((m, e) => Math.max(m, e.endMs), 0);
+  // Ahead, the label names the free time "Plan something" opens in, so the two agree.
+  const first = firstFree(d, busy, now);
   const freeLabel = !busy.length
     ? 'Free all day'
-    : last < d + DAY_END_H * HOUR
-      ? `Free from ${clock12(last)}`
-      : null;
+    : d >= today && first.endMs !== null
+      ? `Free ${clock12(first.startMs)} – ${clock12(first.endMs)}`
+      : d >= today
+        ? first.startMs < d + DAY_END_H * HOUR
+          ? `Free from ${clock12(first.startMs)}`
+          : null
+        : last < d + DAY_END_H * HOUR
+          ? `Free from ${clock12(last)}`
+          : null;
   return (
     <div className="cal-day-in">
       {all
@@ -838,11 +888,29 @@ function DayMini({
           {freeLabel ?? 'Open the day'}
         </button>
         {d >= today && (
-          <button className="plan cal-link" onClick={() => onPlan(d)}>
+          <button
+            className="plan cal-link"
+            aria-expanded={planning}
+            onClick={() => setPlanning(!planning)}
+          >
             Plan something
           </button>
         )}
       </div>
+      {d >= today && (
+        <div className={`cal-fold${planning ? ' open' : ''}`} inert={!planning}>
+          <div>
+            {planning && (
+              <NewEventInline
+                startMs={first.startMs}
+                endMs={first.endMs}
+                onClose={() => setPlanning(false)}
+                onCreated={onChanged}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -864,7 +932,6 @@ export function MonthDots({
   onDetails,
   onOpenDay,
   onOpenWeek,
-  onPlan,
 }: {
   day: number;
   setDay: (d: number) => void;
@@ -876,7 +943,6 @@ export function MonthDots({
   onDetails: (e: MobileEvent) => void;
   onOpenDay: (d: number) => void;
   onOpenWeek: (d: number) => void;
-  onPlan: (d: number) => void;
 }) {
   const accounts = useStore((s) => s.accounts);
   const mine = useMemo(() => new Set(accounts.map((a) => a.email.toLowerCase())), [accounts]);
@@ -960,7 +1026,11 @@ export function MonthDots({
                 setNeedOpen(!needOpen);
                 if (!needOpen)
                   setTimeout(
-                    () => needRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                    () =>
+                      needRef.current?.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start',
+                      }),
                     60,
                   );
               }}
@@ -1051,7 +1121,10 @@ export function MonthDots({
           <button className={day === today ? 'today' : ''} onClick={() => onOpenDay(day)}>
             {day === today
               ? 'Today'
-              : new Date(day).toLocaleDateString([], { weekday: 'long', day: 'numeric' })}
+              : new Date(day).toLocaleDateString([], {
+                  weekday: 'long',
+                  day: 'numeric',
+                })}
           </button>
           <span>
             {selBusy.length
@@ -1067,7 +1140,7 @@ export function MonthDots({
           mine={mine}
           onDetails={onDetails}
           onOpenDay={onOpenDay}
-          onPlan={onPlan}
+          onChanged={onChanged}
         />
       </div>
     </div>
@@ -1156,42 +1229,73 @@ function InviteAnswer({
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** A new event, written right in the free gap it will fill. */
+/** A new event, written right in the free gap it will fill. Its start and length are words in a
+ *  sentence: tapping one unfolds the choices, and a bar shows where the slot sits in the gap. */
 function NewEventInline({
   startMs,
+  endMs,
   onClose,
   onCreated,
 }: {
   startMs: number;
+  /** Where the free gap ends; null when it runs to the end of the day. */
+  endMs: number | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const { api, accounts, showToast } = useStore();
   const [title, setTitle] = useState('');
-  const d0 = new Date(startMs);
-  const [time, setTime] = useState(`${pad(d0.getHours())}:${pad(d0.getMinutes())}`);
-  const [mins, setMins] = useState(30);
+  const [start, setStart] = useState(startMs);
+  const [mins, setMins] = useState(() =>
+    endMs !== null && endMs - startMs < 30 * MIN ? Math.round((endMs - startMs) / MIN) : 30,
+  );
+  const [picking, setPicking] = useState<'start' | 'len' | 'other' | null>(null);
   const [meet, setMeet] = useState(true);
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
   const [busy, setBusy] = useState(false);
-  const start = () => {
-    const [h, m] = time.split(':').map(Number);
-    const d = new Date(startMs);
-    d.setHours(h ?? d.getHours(), m ?? 0, 0, 0);
-    return d.getTime();
+
+  // The window the bar and the start times cover: the gap, or the evening when it is open-ended.
+  const day0 = startOfDay(startMs);
+  const winEnd =
+    endMs ?? Math.min(addDays(day0, 1), Math.max(startMs + 3 * HOUR, day0 + DAY_END_H * HOUR));
+  const starts: number[] = [startMs];
+  for (
+    let t = Math.floor(startMs / (30 * MIN)) * 30 * MIN + 30 * MIN;
+    t <= winEnd - 15 * MIN;
+    t += 30 * MIN
+  )
+    starts.push(t);
+  const left = endMs === null ? null : Math.round((endMs - start) / MIN);
+  const lengths = [15, 30, 45, 60, 90, 120];
+  const fill =
+    left !== null && left > 15 && !lengths.includes(left) && left <= 8 * 60 ? left : null;
+  const end = start + mins * MIN;
+  const over = endMs !== null && end > endMs ? end - endMs : 0;
+  // Picked outside the free time with "Other time": it lands on what is booked.
+  const outside = start < startMs || (endMs !== null && start >= endMs);
+  // The bar stretches to show a slot picked outside the gap.
+  const lo = Math.min(startMs, start);
+  const hi = Math.max(winEnd, end);
+  const pct = (t: number) => `${((t - lo) / (hi - lo)) * 100}%`;
+  const toggle = (k: 'start' | 'len') => setPicking(picking === k ? null : k);
+  const pickOnBar = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const t = lo + ((e.clientX - r.left) / r.width) * (hi - lo) - (mins * MIN) / 2;
+    const q = Math.round(t / (15 * MIN)) * 15 * MIN;
+    setStart(Math.max(startMs, Math.min(q, winEnd - 15 * MIN)));
   };
+
   const create = async () => {
-    const s = start();
     setBusy(true);
     try {
       await api.createEvent({
         accountId,
         title: title.trim() || 'New event',
-        startMs: s,
-        endMs: s + mins * MIN,
+        startMs: start,
+        endMs: end,
         addMeet: meet,
       });
-      showToast({ text: `Added for ${clock12(s)}` });
+      showToast({ text: `Added for ${clock12(start)}` });
       onCreated();
       onClose();
     } catch (e) {
@@ -1200,17 +1304,10 @@ function NewEventInline({
       setBusy(false);
     }
   };
+  const d = new Date(start);
   return (
     <div className="cal-new">
-      <div className="cap">
-        New event at
-        <input
-          type="time"
-          aria-label="Starts at"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-        />
-      </div>
+      <div className="cap">New event</div>
       <input
         className="title"
         aria-label="Title"
@@ -1219,18 +1316,136 @@ function NewEventInline({
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && void create()}
       />
-      <div className="len" role="group" aria-label="Length">
-        {[30, 60, 90].map((m) => (
-          <button
-            key={m}
-            className={mins === m ? 'on' : ''}
-            aria-pressed={mins === m}
-            onClick={() => setMins(m)}
-          >
-            {span(m * MIN)}
-          </button>
-        ))}
+      <p className="cal-when">
+        From{' '}
+        <button
+          className="ib-w"
+          aria-pressed={picking === 'start' || picking === 'other'}
+          aria-label={`Starts at ${clock12(start)}. Change`}
+          onClick={() => toggle('start')}
+        >
+          {clock12(start)}
+        </button>{' '}
+        for{' '}
+        <button
+          className={`ib-w${over ? ' warn' : ''}`}
+          aria-pressed={picking === 'len'}
+          aria-label={`Lasts ${span(mins * MIN)}. Change`}
+          onClick={() => toggle('len')}
+        >
+          {span(mins * MIN)}
+        </button>
+        , until <span className="nw">{clock12(end)}</span>.
+      </p>
+      <div
+        className={`cal-fold${picking === 'start' || picking === 'other' ? ' open' : ''}`}
+        inert={picking !== 'start' && picking !== 'other'}
+      >
+        <div>
+          <div className="cal-slots" role="group" aria-label="Start time">
+            {starts.map((t) => (
+              <button
+                key={t}
+                className={t === start ? 'on' : ''}
+                aria-pressed={t === start}
+                onClick={() => {
+                  setStart(t);
+                  setPicking(null);
+                }}
+              >
+                {clock12(t)}
+              </button>
+            ))}
+            <button
+              className={`other${picking === 'other' || !starts.includes(start) ? ' on' : ''}`}
+              aria-pressed={picking === 'other'}
+              onClick={() => setPicking(picking === 'other' ? 'start' : 'other')}
+            >
+              Other time
+            </button>
+          </div>
+          {picking === 'other' && (
+            <label className="cal-other">
+              Starts at
+              <input
+                type="time"
+                aria-label="Other start time"
+                value={`${pad(d.getHours())}:${pad(d.getMinutes())}`}
+                onChange={(e) => {
+                  const [h, m] = e.target.value.split(':').map(Number);
+                  if (h === undefined || Number.isNaN(h)) return;
+                  const n = new Date(startMs);
+                  n.setHours(h, m ?? 0, 0, 0);
+                  setStart(n.getTime());
+                }}
+              />
+            </label>
+          )}
+        </div>
       </div>
+      <div className={`cal-fold${picking === 'len' ? ' open' : ''}`} inert={picking !== 'len'}>
+        <div>
+          <div className="cal-slots" role="group" aria-label="Length">
+            {lengths.map((m) => (
+              <button
+                key={m}
+                className={`${mins === m ? 'on' : ''}${left !== null && m > left ? ' over' : ''}`}
+                aria-pressed={mins === m}
+                onClick={() => {
+                  setMins(m);
+                  setPicking(null);
+                }}
+              >
+                {span(m * MIN)}
+              </button>
+            ))}
+            {fill !== null && endMs !== null && (
+              <button
+                className={`fill${mins === fill ? ' on' : ''}`}
+                aria-pressed={mins === fill}
+                onClick={() => {
+                  setMins(fill);
+                  setPicking(null);
+                }}
+              >
+                Until {clock12(endMs)}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div
+        className="cal-slotbar"
+        role="presentation"
+        onClick={pickOnBar}
+        title="Tap to move the slot"
+      >
+        <span
+          className="free"
+          style={{
+            left: pct(startMs),
+            width: `calc(${pct(winEnd)} - ${pct(startMs)})`,
+          }}
+        />
+        <span
+          className={`pick${over || outside ? ' warn' : ''}`}
+          style={{
+            left: pct(start),
+            width: `calc(${pct(end)} - ${pct(start)})`,
+          }}
+        />
+      </div>
+      <div className="cal-slotends">
+        <span>{clock12(lo)}</span>
+        <span>{clock12(hi)}</span>
+      </div>
+      {(over > 0 || outside) && (
+        <p className="cal-over">
+          {outside
+            ? 'This is outside the free time, over what is already booked.'
+            : `Runs ${span(over)} into what comes next.`}
+        </p>
+      )}
       {accounts.length > 1 && (
         <select
           aria-label="Calendar"
