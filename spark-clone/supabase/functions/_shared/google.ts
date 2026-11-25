@@ -365,7 +365,15 @@ export function buildMime(opts: {
   /** Hidden recipients. Gmail delivers to them and strips the header from the sent mail. */
   bcc?: Addr[];
   subject: string;
+  /** Plain text; also the text/plain part. */
   body: string;
+  /**
+   * The formatted body (bold, lists, links…) from the phone composer. When
+   * given it becomes the text/html part; otherwise the plain body is wrapped.
+   */
+  html?: string | null;
+  /** Plain text added under the body in both parts. */
+  signature?: string | null;
   inReplyTo?: string | null;
   references?: string | null;
   /** An iTIP part (REPLY / COUNTER) calendar apps act on. */
@@ -382,7 +390,10 @@ export function buildMime(opts: {
     ...(opts.inReplyTo ? [`In-Reply-To: ${opts.inReplyTo}`, `References: ${[opts.references, opts.inReplyTo].filter(Boolean).join(' ')}`] : []),
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ];
-  const html = `<div dir="auto">${escapeHtml(opts.body).replace(/\n/g, '<br>')}</div>`;
+  const textToHtml = (t: string) => escapeHtml(t).replace(/\n/g, '<br>');
+  const sig = opts.signature?.trim() ? opts.signature.trim() : '';
+  const text = sig ? `${opts.body}\n\n${sig}` : opts.body;
+  const html = `<div dir="auto">${opts.html?.trim() ? stripActiveContent(opts.html) : textToHtml(opts.body)}${sig ? `<br><br>${textToHtml(sig)}` : ''}</div>`;
   const b64 = (s: string) => utf8ToB64(s).replace(/.{76}/g, '$&\r\n');
   return [
     ...head,
@@ -391,7 +402,7 @@ export function buildMime(opts: {
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
-    b64(opts.body),
+    b64(text),
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',

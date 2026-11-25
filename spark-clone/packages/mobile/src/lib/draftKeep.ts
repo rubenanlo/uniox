@@ -14,6 +14,8 @@ export interface KeptDraft {
   bcc: Address[];
   subject: string;
   body: string;
+  /** The formatted body, so bold, lists and links survive the round trip. */
+  html?: string;
 }
 
 const KEY = 'uniox.keptDraft';
