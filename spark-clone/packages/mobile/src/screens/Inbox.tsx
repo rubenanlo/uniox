@@ -398,6 +398,10 @@ export function Inbox() {
 
         {people.length > 0 && (
           <>
+            {/* Sticky people row: pins just under the status-bar band, which
+                .ib-cap fills with solid app colour so nothing blurs behind it. */}
+            <div className="ib-cap" aria-hidden />
+            <div className="ib-pin">
             <div className="ib-faces">
               {people.map((p) => {
                 const h = (now - p.newest) / 3_600_000;
@@ -461,6 +465,7 @@ export function Inbox() {
                   </button>
                 );
               })}
+            </div>
             </div>
             {(sel || priority.length > 0) && (
               <>

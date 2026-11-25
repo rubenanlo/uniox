@@ -35,6 +35,12 @@
   background: var(--accent); color: var(--on-accent); }
 
 /* Priority faces */
+/* The row sticks below the status-bar band instead of sliding under it. Sticky
+   offsets count from inside .screen's padding (= --top-clear), so top: 0 lands
+   it --top-clear below the screen edge. .ib-cap paints that band solid so
+   scrolled mail never shows blurred under the status bar. */
+.ib-cap { position: fixed; top: 0; left: 0; right: 0; height: var(--top-clear); background: var(--app); z-index: 7; pointer-events: none; }
+.ib-pin { position: sticky; top: 0; z-index: 6; background: var(--app); padding-bottom: 6px; }
 .ib-faces { display: flex; gap: 14px; overflow-x: auto; padding: 14px 20px 4px; scrollbar-width: none; }
 .ib-faces::-webkit-scrollbar { display: none; }
 .ib-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; flex: none; transition: opacity .3s; }
