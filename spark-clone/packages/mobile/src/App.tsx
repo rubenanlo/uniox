@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Spinner, Toast } from './components/ui';
+import { useIdleHome } from './lib/idleHome';
 import { go, useRoute } from './lib/router';
 import { useStore } from './lib/store';
 import { useTheme } from './lib/theme';
@@ -18,6 +19,7 @@ export function App() {
   const { ready, me, settings, online, queued, boot } = useStore();
   const route = useRoute();
   useTheme(settings);
+  useIdleHome(ready && !!me);
   useEffect(() => {
     void boot();
   }, [boot]);

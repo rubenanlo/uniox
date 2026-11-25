@@ -8,6 +8,9 @@ import type {
   ThreadSummary,
 } from '@app/shared';
 
+/** Default for Settings → General → Back to Home when idle. */
+export const DEFAULT_IDLE_HOME_MINUTES = 10;
+
 export type ListLayout = 'focused' | 'cards' | 'simple';
 /** Row spacing: compressed = flush rows with hairline dividers; expanded = spaced cards. */
 export type ListDensity = 'compressed' | 'expanded';
@@ -110,6 +113,8 @@ interface UiState {
   selectionAuto: boolean;
   /** Display name for the Home greeting; null until the user tells us. */
   userName: string | null;
+  /** Minutes without activity before the app returns to Home; 0 = never (Settings → General). */
+  idleHomeMinutes: number;
   /** Inbox's Priority section: collapsed shows new-since-last-open, expanded shows all. */
   priorityExpanded: boolean;
   /**
@@ -137,6 +142,7 @@ interface UiState {
   selectThread(id: string | null, auto?: boolean): void;
   setPriorityExpanded(expanded: boolean): void;
   setUserName(name: string | null): void;
+  setIdleHomeMinutes(minutes: number): void;
   hoverThread(id: string | null): void;
   setSearchQuery(q: string): void;
   focusSearch(): void;
@@ -203,6 +209,7 @@ export const useUi = create<UiState>((set) => ({
   picker: null,
   selectionAuto: false,
   userName: null,
+  idleHomeMinutes: DEFAULT_IDLE_HOME_MINUTES,
   priorityExpanded: false,
   visibleThreads: [],
   visibleRows: [],
@@ -236,6 +243,7 @@ export const useUi = create<UiState>((set) => ({
     set({ selectedThreadId, selectionAuto: auto, ...NO_MULTI }),
   setPriorityExpanded: (priorityExpanded) => set({ priorityExpanded }),
   setUserName: (userName) => set({ userName }),
+  setIdleHomeMinutes: (idleHomeMinutes) => set({ idleHomeMinutes }),
   hoverThread: (hoveredThreadId) => set({ hoveredThreadId }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   focusSearch: () => set((s) => ({ searchFocusTick: s.searchFocusTick + 1 })),
