@@ -1,4 +1,5 @@
 import type { Address, MessageBodyPayload, MessageMeta, OutgoingDraft } from '@app/shared';
+import type { Editor } from '@tiptap/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../../lib/api';
@@ -11,6 +12,7 @@ import {
   quoteBlock,
   replyRecipients,
   textToHtml,
+  formattedReplyText,
   type ReplyIdeas,
 } from '../../lib/quickReply';
 import {
@@ -114,7 +116,10 @@ export function useChatThread(
   const [writing, setWriting] = useState(false);
   const [replyAll, setReplyAll] = useState<boolean | null>(null);
   const configured = useAssistant((s) => s.configured);
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  // The reply box is a rich editor (links, lists, bold…): fieldRef is its
+  // editable element (for focus), editorRef the editor (for the HTML).
+  const fieldRef = useRef<HTMLElement | null>(null);
+  const editorRef = useRef<Editor | null>(null);
 
   const applyThread = useCallback(({ msgs, bodies: b }: LoadedThread) => {
     setMessages(msgs);
@@ -260,6 +265,16 @@ export function useChatThread(
     return missing.length ? `${typed}\n\n${missing.join('\n')}` : typed;
   };
 
+  /** The reply as sent, in HTML: the box's formatting kept, picked times added after it. */
+  const replyHtml = (typedText?: string): string => {
+    const text = replyText(typedText);
+    const ed = editorRef.current;
+    const typed = draft.trim();
+    if (typedText !== undefined || !ed || ed.isEmpty || !typed) return textToHtml(text);
+    const extra = text.startsWith(typed) ? text.slice(typed.length).trim() : '';
+    return ed.getHTML().replace(/(<p><\/p>)+$/, '') + (extra ? textToHtml(extra) : '');
+  };
+
   const queue = (kind: ChatOutgoing['kind'], out: OutgoingDraft, text: string, label: string) => {
     const id = crypto.randomUUID();
     const { cancel } = deferSend(out, () =>
@@ -298,14 +313,15 @@ export function useChatThread(
     if (!text) return fieldRef.current?.focus();
     if (!recipients.to.length) return void toast('Nobody to reply to on this email');
     const sig = signatures[accountId] ?? '';
+    const body = replyHtml(typedText);
     const draftOut: OutgoingDraft = {
       accountId,
       to: recipients.to,
       cc: recipients.cc,
       bcc: [],
       subject: prefixedSubject('Re', latest.subject),
-      html: `<div>${textToHtml(text)}</div>${signatureBlock(sig)}${quoteBlock(latest, latestBody ?? { html: null, text: latest.snippet })}`,
-      text: text + (sig ? `\n\n-- \n${signatureText(sig)}` : ''),
+      html: `<div>${body}</div>${signatureBlock(sig)}${quoteBlock(latest, latestBody ?? { html: null, text: latest.snippet })}`,
+      text: formattedReplyText(body) + (sig ? `\n\n-- \n${signatureText(sig)}` : ''),
       inReplyToMessageId: latest.id,
       attachments: [],
     };
@@ -427,7 +443,9 @@ export function useChatThread(
     files,
     toLabel,
     fieldRef,
+    editorRef,
     replyText,
+    replyHtml,
     send,
     queue,
     undo,

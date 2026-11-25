@@ -1,8 +1,6 @@
 import { EditorContent, useEditor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Placeholder from '@tiptap/extension-placeholder';
+import { FormatButtons, LinkPrompt, mailEditorExtensions, useLinkEditor } from './mailEditor';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Bold,
@@ -16,9 +14,7 @@ import {
   Paperclip,
   SquareArrowOutUpRight,
   Send,
-  TextQuote,
   Trash2,
-  Underline as UnderlineIcon,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -282,17 +278,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
   const fileRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      // The style must live inline on each <a>: recipients' clients (Gmail
-      // especially) strip <style> blocks, so this is the only way the link
-      // reads as a link everywhere. It also styles links inside the editor.
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: { style: 'color:#2563eb;text-decoration:underline' },
-      }),
-      Placeholder.configure({ placeholder: 'Write your message…' }),
-    ],
+    extensions: mailEditorExtensions('Write your message…'),
     content: restore?.bodyHtml ?? '',
     autofocus: restore ? 'end' : state.mode === 'new' ? false : true,
   });
@@ -318,11 +304,11 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
   // the editor once on open, before the signature is appended.
   const initialBodyApplied = useRef(false);
   useEffect(() => {
-    if (!editor || initialBodyApplied.current || !state.initialBody) return;
+    if (!editor || initialBodyApplied.current || !(state.initialBodyHtml || state.initialBody)) return;
     initialBodyApplied.current = true;
-    editor.commands.setContent(textToHtml(state.initialBody));
+    editor.commands.setContent(state.initialBodyHtml ?? textToHtml(state.initialBody ?? ''));
     editor.commands.focus('end');
-  }, [editor, state.initialBody]);
+  }, [editor, state.initialBody, state.initialBodyHtml]);
 
   // Editing a stored draft: load its saved body into the editor.
   useEffect(() => {
@@ -651,34 +637,9 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
   );
 
   // Link editor (Spark-style): link the selected text, ⇧⌘K or toolbar button.
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkExisting, setLinkExisting] = useState(false);
-
-  const openLinkEditor = useCallback(() => {
-    if (!editor) return;
-    const existing = editor.getAttributes('link')['href'] as string | undefined;
-    if (editor.state.selection.empty && !existing) {
-      toast('Select the text to link first');
-      editor.commands.focus();
-      return;
-    }
-    setLinkUrl(existing ?? '');
-    setLinkExisting(!!existing);
-    setLinkOpen(true);
-  }, [editor]);
-
-  const applyLink = useCallback(
-    (url: string) => {
-      setLinkOpen(false);
-      if (!editor) return;
-      const trimmed = url.trim();
-      const chain = editor.chain().focus().extendMarkRange('link');
-      if (!trimmed) chain.unsetLink().run();
-      else chain.setLink({ href: /^[a-z][\w+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}` }).run();
-    },
-    [editor],
-  );
+  const link = useLinkEditor(editor);
+  const linkOpen = link.open;
+  const openLinkEditor = link.openEditor;
 
   // Composer-scoped keys: ⌘↩ send, Esc close, ⇧⌘K link, ⌘1–6 field focus.
   useEffect(() => {
@@ -694,7 +655,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
           e.stopImmediatePropagation();
           return;
         }
-        if (linkOpen) setLinkOpen(false);
+        if (linkOpen) link.close();
         else if (confirmClose) setConfirmClose(false);
         else requestClose();
         return;
@@ -733,7 +694,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [send, requestClose, confirmClose, editor, linkOpen, openLinkEditor, popOut, windowed]);
+  }, [send, requestClose, confirmClose, editor, linkOpen, link, openLinkEditor, popOut, windowed]);
 
   const fieldCls =
     'w-full bg-transparent text-[12.5px] py-1.5 focus:outline-none placeholder:text-ink-faint';
@@ -908,30 +869,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
               the common formats; the editor's ⌘B/⌘I/⌘U shortcuts still work. */}
           {editor && (
             <BubbleMenu editor={editor} options={{ placement: 'top' }}>
-              <div className="border-hairline bg-surface flex items-center gap-0.5 rounded-xl border p-1 shadow-2xl">
-                {(
-                  [
-                    { Icon: Bold, label: 'Bold — ⌘B', active: 'bold', run: () => editor.chain().focus().toggleBold().run() },
-                    { Icon: Italic, label: 'Italic — ⌘I', active: 'italic', run: () => editor.chain().focus().toggleItalic().run() },
-                    { Icon: UnderlineIcon, label: 'Underline — ⌘U', active: 'underline', run: () => editor.chain().focus().toggleUnderline().run() },
-                    { Icon: TextQuote, label: 'Quote', active: 'blockquote', run: () => editor.chain().focus().toggleBlockquote().run() },
-                    { Icon: Link2, label: 'Link — ⇧⌘K', active: 'link', run: openLinkEditor },
-                  ] as const
-                ).map(({ Icon, label, active, run }) => (
-                  <button
-                    key={label}
-                    onClick={run}
-                    title={label}
-                    aria-label={label}
-                    className={cn(
-                      'rounded-lg p-1.5',
-                      editor.isActive(active) ? 'bg-sunken text-ink' : 'text-ink-muted hover:text-ink',
-                    )}
-                  >
-                    <Icon size={13} />
-                  </button>
-                ))}
-              </div>
+              <FormatButtons editor={editor} onLink={openLinkEditor} />
             </BubbleMenu>
           )}
           <EditorContent editor={editor} />
@@ -976,40 +914,7 @@ export function Composer({ state, windowed = false }: { state: ComposerState; wi
           </div>
         )}
 
-        {linkOpen && (
-          <div className="border-hairline bg-surface absolute right-3 bottom-12 z-50 flex w-80 items-center gap-1.5 rounded-xl border p-2 shadow-2xl">
-            <Link2 size={13} className="text-ink-muted shrink-0" />
-            <input
-              autoFocus
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  applyLink(linkUrl);
-                }
-              }}
-              placeholder="https://example.com"
-              aria-label="Link URL"
-              className="placeholder:text-ink-faint min-w-0 flex-1 bg-transparent text-[12px] focus:outline-none"
-            />
-            {linkExisting && (
-              <button
-                onClick={() => applyLink('')}
-                className="text-ink-muted hover:text-danger shrink-0 text-[11.5px]"
-              >
-                Remove
-              </button>
-            )}
-            <button
-              onClick={() => applyLink(linkUrl)}
-              className="bg-accent shrink-0 rounded-md px-2 py-1 text-[11.5px] font-semibold text-white hover:opacity-90"
-            >
-              Apply
-            </button>
-          </div>
-        )}
+        <LinkPrompt link={link} className="absolute right-3 bottom-12" />
 
         <footer className="border-hairline flex items-center gap-1 border-t px-3 py-2">
           <button

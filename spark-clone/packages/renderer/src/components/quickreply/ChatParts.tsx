@@ -1,7 +1,9 @@
 import type { Address, InviteInfo, MessageBodyPayload, MessageMeta } from '@app/shared';
 import { ArrowUp, CalendarCheck, Forward, Loader2, Sparkles, X } from 'lucide-react';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { cardAttachments, htmlNeedsRender, inviteAnswerLine, looksLikeMarkup } from '../../lib/quickReply';
+import { createPortal } from 'react-dom';
+import { EditorContent, Extension, useEditor } from '@tiptap/react';
+import { cardAttachments, htmlNeedsRender, inviteAnswerLine, looksLikeMarkup, textToHtml } from '../../lib/quickReply';
 import { markupSource, messageVisibleText } from '../../lib/quickReplyAi';
 import { cn, hueOf, initials } from '../../lib/utils';
 import { Keycaps } from '../ui/Keycap';
@@ -11,6 +13,7 @@ import { InviteChatCard } from './InviteChatCard';
 import { ForwardCard } from './ForwardCard';
 import { RenderedEmail } from './RenderedEmail';
 import { AddressField } from '../composer/Composer';
+import { FormatButtons, LinkPrompt, mailEditorExtensions, useLinkEditor } from '../composer/mailEditor';
 import { firstName, listNames, nameOf, type ChatThread } from './useChatThread';
 
 /**
@@ -379,17 +382,97 @@ export function ReplyField({
     if (ccOpen) ccRef.current?.focus();
   }, [ccOpen]);
 
-  // Grow the field with its text, up to ~6 lines.
+  // The box is the composer's editor (same formatting and shortcuts: ⌘B/⌘I/⌘U,
+  // ⇧⌘8/⇧⌘7 lists, "- " / "1. " at a line start, ⇧⌘K link), so a reply goes
+  // out as real HTML. `draft` mirrors its text for the assistant and checks.
+  const keys = useRef({ send: () => {}, link: () => {} });
+  const placeholder = writing ? 'Writing…' : `Reply to ${firstName(chat.recipients.to[0] ?? latest?.from) || 'them'}…`;
+  const synced = useRef(draft);
+  const editor = useEditor({
+    extensions: [
+      ...mailEditorExtensions(({ editor: ed }) => ed.view.dom.getAttribute('data-reply-placeholder') ?? ''),
+      Extension.create({
+        name: 'replyKeys',
+        priority: 1000,
+        addKeyboardShortcuts: () => ({
+          'Mod-Enter': () => (keys.current.send(), true),
+          'Mod-Shift-k': () => (keys.current.link(), true),
+        }),
+      }),
+    ],
+    content: textToHtml(draft),
+    editorProps: {
+      attributes: {
+        'aria-label': 'Reply',
+        class: 'outline-none select-text',
+      },
+    },
+    onUpdate: ({ editor: ed }) => {
+      const text = ed.isEmpty ? '' : ed.getText({ blockSeparator: '\n\n' });
+      synced.current = text;
+      setDraft(text);
+    },
+  });
+  const link = useLinkEditor(editor);
   useEffect(() => {
-    const el = fieldRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
-  }, [draft, fieldRef]);
+    keys.current = { send: () => chat.send(), link: link.openEditor };
+  });
+
+  // Hand the editor to the chat (HTML on send, focus from r / Undo / AI).
+  const { editorRef } = chat;
+  useEffect(() => {
+    editorRef.current = editor;
+    fieldRef.current = editor?.view.dom ?? null;
+    return () => {
+      if (editorRef.current === editor) editorRef.current = null;
+    };
+  }, [editor, editorRef, fieldRef]);
+
+  // The placeholder names who you reply to (or says the assistant is writing).
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dom.setAttribute('data-reply-placeholder', placeholder);
+    editor.view.dispatch(editor.state.tr.setMeta('placeholder', placeholder));
+  }, [editor, placeholder]);
+
+  // Text set from outside (assistant draft, undo, sent → cleared) replaces the box.
+  useEffect(() => {
+    if (!editor || draft === synced.current) return;
+    synced.current = draft;
+    editor.commands.setContent(textToHtml(draft), { emitUpdate: false });
+    if (draft) editor.commands.focus('end');
+  }, [draft, editor]);
 
   useEffect(() => {
-    if (autoFocus) fieldRef.current?.focus();
-  }, [autoFocus, fieldRef]);
+    editor?.setEditable(!writing);
+  }, [editor, writing]);
+
+  useEffect(() => {
+    if (autoFocus) editor?.commands.focus('end');
+  }, [autoFocus, editor]);
+
+  // Right-click on selected text: the format menu (no bar the rest of the time).
+  const [fmtAt, setFmtAt] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!fmtAt) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.target instanceof Element && e.target.closest('[data-format-menu]')) return;
+      if (e instanceof KeyboardEvent) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setFmtAt(null);
+    };
+    window.addEventListener('mousedown', close, true);
+    window.addEventListener('keydown', close, true);
+    window.addEventListener('blur', close);
+    return () => {
+      window.removeEventListener('mousedown', close, true);
+      window.removeEventListener('keydown', close, true);
+      window.removeEventListener('blur', close);
+    };
+  }, [fmtAt]);
 
   return (
     <div
@@ -465,21 +548,17 @@ export function ReplyField({
         </div>
       )}
       <div className="flex items-end gap-2.5">
-        <textarea
-          ref={fieldRef}
-          rows={1}
-          value={draft}
-          disabled={writing}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              chat.send();
-            }
+        <div
+          className="reply-editor max-h-[140px] min-w-0 flex-1 overflow-y-auto py-1.5 text-[14.5px] leading-[1.5]"
+          onClick={() => editor?.commands.focus()}
+          onContextMenu={(e) => {
+            if (!editor || editor.state.selection.empty) return;
+            e.preventDefault();
+            setFmtAt({ x: e.clientX, y: e.clientY });
           }}
-          placeholder={writing ? 'Writing…' : `Reply to ${firstName(chat.recipients.to[0] ?? latest?.from) || 'them'}…`}
-          className="placeholder:text-ink-faint max-h-[140px] min-w-0 flex-1 resize-none bg-transparent py-1.5 text-[14.5px] leading-[1.5] outline-none select-text"
-        />
+        >
+          <EditorContent editor={editor} />
+        </div>
         <span className="text-ink-faint mb-2 flex shrink-0 items-center gap-1 text-[11.5px]">
           <Keycaps keys={['⌘', '↩']} /> send
         </span>
@@ -492,6 +571,20 @@ export function ReplyField({
           {writing ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={17} strokeWidth={2.2} />}
         </button>
       </div>
+      <LinkPrompt link={link} className="absolute right-3 bottom-[calc(100%+6px)]" />
+      {fmtAt &&
+        editor &&
+        createPortal(
+          <div
+            data-format-menu
+            data-owns-escape
+            className="fixed z-[100]"
+            style={{ left: Math.min(fmtAt.x, window.innerWidth - 260), top: Math.max(8, fmtAt.y - 46) }}
+          >
+            <FormatButtons editor={editor} onLink={link.openEditor} lists onDone={() => setFmtAt(null)} />
+          </div>,
+          document.body,
+        )}
       <div className="text-ink-faint mt-1 flex items-center gap-3 text-[11.5px]">
         {tools}
         {others.length > 1 ? (
