@@ -1444,9 +1444,9 @@ function NewEventInline({
           <CalendarChoice
             groups={groups}
             value={where}
-            onChange={(p) => {
+            onChange={(p, done) => {
               setWhere(p);
-              setPicking(null);
+              if (done) setPicking(null);
             }}
           />
         </div>

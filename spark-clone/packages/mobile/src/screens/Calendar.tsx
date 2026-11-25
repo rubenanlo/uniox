@@ -450,7 +450,7 @@ function NewEventSheet({
                   <CalendarChoice
                     groups={groups}
                     value={where}
-                    onChange={(p) => (setWhere(p), setPicking(false))}
+                    onChange={(p, done) => (setWhere(p), done && setPicking(false))}
                   />
                 </div>
               )}

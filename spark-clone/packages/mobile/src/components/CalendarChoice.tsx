@@ -37,8 +37,6 @@ export function useCalendarGroups() {
   });
 }
 
-type Group = ReturnType<typeof useCalendarGroups>[number];
-
 /** The words for a pick: "Personal", or "Family · Personal" for another calendar of the account. */
 export function pickLabel(groups: ReturnType<typeof useCalendarGroups>, pick: CalendarPick) {
   const g = groups.find((x) => x.account.id === pick.accountId);
@@ -47,7 +45,10 @@ export function pickLabel(groups: ReturnType<typeof useCalendarGroups>, pick: Ca
   return c ? `${c.name} · ${g.name}` : g.name;
 }
 
-/** Accounts as small headings, each with its calendars as chips. One tap picks both. */
+/**
+ * Accounts as chips. An account's other calendars (e.g. Family) appear only once that
+ * account is picked, as a second row under it. `done` is false while that row is offered.
+ */
 export function CalendarChoice({
   groups,
   value,
@@ -55,42 +56,40 @@ export function CalendarChoice({
 }: {
   groups: ReturnType<typeof useCalendarGroups>;
   value: CalendarPick;
-  onChange: (p: CalendarPick) => void;
+  onChange: (p: CalendarPick, done: boolean) => void;
 }) {
-  const chip = (g: Group, id: string | undefined, label: string, color: string) => {
-    const on = value.accountId === g.account.id && (value.calendarId ?? '') === (id ?? '');
-    return (
-      <button
-        key={`${g.account.id}/${id ?? 'main'}`}
-        className={on ? 'on' : ''}
-        aria-pressed={on}
-        aria-label={id ? `${label}, in ${g.name}` : label}
-        onClick={() => onChange({ accountId: g.account.id, calendarId: id })}
-      >
-        <i style={{ background: color }} />
-        {label}
-      </button>
-    );
-  };
-  // Accounts with one calendar share a row; an account with more gets its own heading.
-  const single = groups.filter((g) => !g.others.length);
-  const multi = groups.filter((g) => g.others.length);
+  const chip = (key: string, on: boolean, label: string, color: string, pick: () => void) => (
+    <button key={key} className={on ? 'on' : ''} aria-pressed={on} onClick={pick}>
+      <i style={{ background: color }} />
+      {label}
+    </button>
+  );
+  const sel = groups.find((g) => g.account.id === value.accountId);
   return (
     <div className="cal-cals" role="group" aria-label="Calendar">
-      {single.length > 0 && (
-        <div className="cal-cals-row">
-          {single.map((g) => chip(g, undefined, g.name, g.account.color))}
+      <div className="cal-cals-row">
+        {groups.map((g) =>
+          chip(g.account.id, g === sel, g.name, g.account.color, () =>
+            onChange({ accountId: g.account.id }, !g.others.length),
+          ),
+        )}
+      </div>
+      <div className={`cal-fold${sel && sel.others.length ? ' open' : ''}`}>
+        <div>
+          {sel && sel.others.length > 0 && (
+            <div className="cal-cals-sub" role="group" aria-label={`Calendars in ${sel.name}`}>
+              {chip('main', !value.calendarId, 'Main', sel.account.color, () =>
+                onChange({ accountId: sel.account.id }, true),
+              )}
+              {sel.others.map((c) =>
+                chip(c.id, value.calendarId === c.id, c.name, c.color, () =>
+                  onChange({ accountId: sel.account.id, calendarId: c.id }, true),
+                ),
+              )}
+            </div>
+          )}
         </div>
-      )}
-      {multi.map((g) => (
-        <div key={g.account.id}>
-          <div className="cal-cals-h">{g.name}</div>
-          <div className="cal-cals-row">
-            {chip(g, undefined, 'Main', g.account.color)}
-            {g.others.map((c) => chip(g, c.id, c.name, c.color))}
-          </div>
-        </div>
-      ))}
+      </div>
     </div>
   );
 }
