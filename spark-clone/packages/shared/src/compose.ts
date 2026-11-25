@@ -16,6 +16,8 @@ export interface ComposerState {
   bcc?: { name?: string; email: string }[];
   /** Plain-text body drafted by the assistant, seeded into the editor on open. */
   initialBody?: string;
+  /** The same body already formatted (links, lists, bold…), e.g. from the chat reply box. Wins over initialBody. */
+  initialBodyHtml?: string;
   /** A half-written draft carried over from another composer (pop-out). */
   restore?: ComposerRestore;
   /**

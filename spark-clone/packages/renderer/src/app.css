@@ -370,6 +370,47 @@ body {
   }
 }
 
+/* The chat reply box: the composer's editor, styled to sit in a chat field. */
+.reply-editor {
+  user-select: text;
+  cursor: text;
+}
+.reply-editor .ProseMirror {
+  outline: none;
+  word-break: break-word;
+}
+.reply-editor .ProseMirror p {
+  margin: 0;
+}
+.reply-editor .ProseMirror > :not(:first-child) {
+  margin-top: 0.6em;
+}
+.reply-editor .ProseMirror ul,
+.reply-editor .ProseMirror ol {
+  padding-left: 1.5em;
+}
+.reply-editor .ProseMirror ul {
+  list-style: disc;
+}
+.reply-editor .ProseMirror ol {
+  list-style: decimal;
+}
+.reply-editor .ProseMirror li + li {
+  margin-top: 0.15em;
+}
+.reply-editor .ProseMirror blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--color-hairline);
+  color: var(--color-ink-muted);
+}
+.reply-editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--color-ink-faint);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 /* TipTap editor */
 .composer-editor {
   user-select: text;

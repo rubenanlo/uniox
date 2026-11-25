@@ -132,7 +132,7 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
       replyTo: latest,
       subject: latest.subject,
       docked: true,
-      ...(text ? { initialBody: text } : {}),
+      ...(text ? { initialBody: text, initialBodyHtml: chat.replyHtml() } : {}),
     });
     if (text) chat.setDraft('');
   };

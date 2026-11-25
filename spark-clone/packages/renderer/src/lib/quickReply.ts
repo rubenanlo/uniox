@@ -102,6 +102,33 @@ export function textToHtml(text: string): string {
     .join('');
 }
 
+/**
+ * The plain-text part for a formatted reply: lists keep their "- " / "1. "
+ * markers and links show their address after the text, so nothing is lost
+ * for clients that read the text part.
+ */
+export function formattedReplyText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('a[href]').forEach((a) => {
+    const href = a.getAttribute('href') ?? '';
+    const text = (a.textContent ?? '').trim();
+    if (href && href !== text && href.replace(/^(mailto:|https?:\/\/)/, '') !== text) a.append(` (${href})`);
+  });
+  doc.querySelectorAll('ol').forEach((ol) =>
+    [...ol.children].forEach((li, i) => li.prepend(`${i + 1}. `)),
+  );
+  doc.querySelectorAll('ul > li').forEach((li) => li.prepend('- '));
+  doc.querySelectorAll('blockquote p').forEach((p) => p.prepend('> '));
+  doc.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+  doc.querySelectorAll('p').forEach((p) => p.append(p.closest('li') ? '' : '\n\n'));
+  doc.querySelectorAll('li').forEach((li) => li.append('\n'));
+  doc.querySelectorAll('ul, ol').forEach((l) => l.append('\n'));
+  return (doc.body?.textContent ?? '')
+    .replace(/[ \t\u00a0]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /** The quoted original under a reply, as the composer writes it. */
 export function quoteBlock(message: MessageMeta, body: { html: string | null; text: string | null }): string {
   const who = message.from?.name || message.from?.email || 'someone';

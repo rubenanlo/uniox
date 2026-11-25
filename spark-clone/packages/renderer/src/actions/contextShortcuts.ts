@@ -70,6 +70,10 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
       { label: 'Scroll the conversation', keys: [['↑'], ['↓'], ['Space']] },
       { label: 'Assistant menu', keys: [['⌘', '.']] },
       { label: 'Send', keys: [['⌘', '↩']] },
+      { label: 'Insert link (selected text becomes the link)', keys: [['⇧', '⌘', 'K']] },
+      { label: 'Bold / Italic / Underline', keys: [['⌘', 'B'], ['⌘', 'I'], ['⌘', 'U']] },
+      { label: 'Bullet / numbered list', keys: [['⇧', '⌘', '8'], ['⇧', '⌘', '7']] },
+      { label: 'Format menu: select text, then right-click', keys: [['right-click']] },
     ],
   },
   {
@@ -81,6 +85,7 @@ export const CONTEXT_SHORTCUTS: { section: string; rows: ContextShortcut[] }[] =
       { label: 'Insert link', keys: [['⇧', '⌘', 'K']] },
       { label: 'Add times when everyone in To is free', keys: [['⇧', '⌘', 'A']] },
       { label: 'Bold / Italic / Underline', keys: [['⌘', 'B'], ['⌘', 'I'], ['⌘', 'U']] },
+      { label: 'Bullet / numbered list', keys: [['⇧', '⌘', '8'], ['⇧', '⌘', '7']] },
       { label: 'Go to To / Cc / Bcc', keys: [['⌘', '1'], ['⌘', '2'], ['⌘', '3']] },
       { label: 'Go to Subject / Body / From', keys: [['⌘', '4'], ['⌘', '5'], ['⌘', '6']] },
       { label: 'Pick a suggested address', keys: [['↑'], ['↓'], ['↩']] },

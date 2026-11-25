@@ -163,6 +163,7 @@ export function ReplyWidget({
   const openInComposer = () => {
     if (!latest) return;
     const text = chat.replyText();
+    const html = text ? chat.replyHtml() : '';
     void api.command('quick-reply:open-in-app', {
       threadId,
       accountId,
@@ -171,7 +172,7 @@ export function ReplyWidget({
         accountId,
         replyTo: latest,
         subject: latest.subject,
-        ...(text ? { initialBody: text } : {}),
+        ...(text ? { initialBody: text, initialBodyHtml: html } : {}),
       },
     });
   };
@@ -180,7 +181,7 @@ export function ReplyWidget({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      const typing = t.tagName === 'TEXTAREA' || t.tagName === 'INPUT';
+      const typing = t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable;
       const k = e.key.toLowerCase();
       if (e.key === 'Escape') {
         e.preventDefault();
