@@ -15,11 +15,13 @@ import {
   ReplyAll,
   Sparkles,
   Trash2,
+  UserMinus,
+  UserPlus,
   Zap,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useEdgeBackAndPull } from '../lib/gestures';
-import type { FirstRead, MobileMessage, MobileThread } from '../data/types';
+import type { Address, FirstRead, MobileMessage, MobileThread } from '../data/types';
 import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
 import { tomorrowMorning } from '../components/ThreadRow';
@@ -27,6 +29,14 @@ import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
 import { clock12, displayName, firstName, listTime, shortDate, splitQuoted } from '../lib/format';
 import { cachedThread, cacheThread } from '../lib/offline';
+import {
+  type RecipientChange,
+  myEmails,
+  nameList,
+  recipientChange,
+  replyAllCc,
+  threadCast,
+} from '../lib/recipients';
 import { back, go } from '../lib/router';
 import { useStore } from '../lib/store';
 import './thread.css';
@@ -83,10 +93,8 @@ export function ThreadScreen({ id }: { id: string }) {
   }
   const { thread, messages } = data;
   const last = messages[messages.length - 1];
-  const others = [
-    ...new Set(messages.filter((m) => !m.fromMe && m.from).map((m) => firstName(m.from))),
-  ];
   const account = accounts.find((a) => a.id === thread.accountId);
+  const mine = myEmails(messages, account?.email);
 
   const archive = () => {
     void act(thread, { kind: 'archive' }, 'Archived');
@@ -153,11 +161,12 @@ export function ThreadScreen({ id }: { id: string }) {
   ) : null;
 
   if (layout === 'chat') {
-    const sendQuick = async (body: string) => {
+    const sendQuick = async (body: string, all: boolean) => {
+      const to = replyTo(last);
       const r = await send({
         accountId: thread.accountId,
-        to: replyTo(last),
-        cc: [],
+        to,
+        cc: all ? replyAllCc(last, to, mine) : [],
         subject: reSubject(thread.subject),
         body,
         threadId: thread.id,
@@ -172,6 +181,7 @@ export function ThreadScreen({ id }: { id: string }) {
         <ConversationE
           thread={thread}
           messages={messages}
+          mine={mine}
           accountName={
             account && accounts.length > 1 ? (account.displayName.split(' ')[0] ?? '') : ''
           }
@@ -189,7 +199,7 @@ export function ThreadScreen({ id }: { id: string }) {
               `compose?reply=${encodeURIComponent(id)}&slots=${encodeURIComponent(JSON.stringify([s]))}`,
             )
           }
-          reply={<QuickReply thread={thread} last={last} onSend={sendQuick} />}
+          reply={<QuickReply thread={thread} last={last} mine={mine} onSend={sendQuick} />}
         />
         {actionsSheet}
       </>
@@ -688,20 +698,27 @@ function AiFirstRead({
 function QuickReply({
   thread,
   last,
+  mine,
   onSend,
 }: {
   thread: MobileThread;
   last: MobileMessage | undefined;
-  onSend: (body: string) => Promise<void>;
+  mine: Set<string>;
+  onSend: (body: string, all: boolean) => Promise<void>;
 }) {
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
+  // The box answers the last sender only, like Reply; the toggle adds
+  // everyone else on the last message as Cc, like Reply all.
+  const [all, setAll] = useState(false);
   const to = replyTo(last);
+  const extra = replyAllCc(last, to, mine);
+  const toAll = all && extra.length > 0;
   const submit = async () => {
     if (!body.trim()) return;
     setBusy(true);
     try {
-      await onSend(body.trim());
+      await onSend(body.trim(), toAll);
       setBody('');
     } finally {
       setBusy(false);
@@ -710,9 +727,23 @@ function QuickReply({
   return (
     <div className="te-reply">
       <div className="row-flex" style={{ alignItems: 'flex-end', gap: 8 }}>
+        {extra.length > 0 && (
+          <button
+            className={`te-all${toAll ? ' on' : ''}`}
+            aria-label="Reply all"
+            aria-pressed={toAll}
+            onClick={() => setAll((v) => !v)}
+          >
+            <ReplyAll size={17} />
+          </button>
+        )}
         <textarea
           rows={Math.min(5, Math.max(1, body.split('\n').length))}
-          placeholder={`Reply to ${firstName(to[0]) || 'everyone'}…`}
+          placeholder={
+            toAll
+              ? `Reply to all ${extra.length + to.length}…`
+              : `Reply to ${firstName(to[0]) || 'everyone'}…`
+          }
           value={body}
           onChange={(e) => setBody(e.target.value)}
           style={{ padding: '8px 0' }}
@@ -758,7 +789,9 @@ function QuickReply({
         </button>
         <button
           onClick={() =>
-            go(`compose?reply=${encodeURIComponent(thread.id)}&body=${encodeURIComponent(body)}`)
+            go(
+              `compose?reply=${encodeURIComponent(thread.id)}${toAll ? '&all=1' : ''}&body=${encodeURIComponent(body)}`,
+            )
           }
         >
           Composer
@@ -784,6 +817,7 @@ function waitingHours(messages: MobileMessage[]): number | null {
 function ConversationE({
   thread,
   messages,
+  mine,
   accountName,
   ai,
   aiLoading,
@@ -797,6 +831,7 @@ function ConversationE({
 }: {
   thread: MobileThread;
   messages: MobileMessage[];
+  mine: Set<string>;
   accountName: string;
   ai: FirstRead | null | undefined;
   aiLoading: boolean;
@@ -904,6 +939,7 @@ function ConversationE({
             </p>
           </div>
         </div>
+        <ThreadCast messages={messages} mine={mine} />
         {ai !== undefined && (aiLoading || ai?.summary) && (
           <div className="te-gist glass pop">
             <div className="lb">
@@ -943,6 +979,7 @@ function ConversationE({
           )}
           {shown.map((m, i) => {
             const prev = shown[i - 1];
+            const change = recipientChange(messages[foldN + i - 1], m, mine);
             const newDay =
               !prev || new Date(prev.date).toDateString() !== new Date(m.date).toDateString();
             return (
@@ -958,6 +995,7 @@ function ConversationE({
                     <i />
                   </div>
                 )}
+                {change && <ChangeNote c={change} />}
                 <ChatMessage m={m} threadId={thread.id} open={isOpen(m)} onToggle={() => flip(m)} />
               </div>
             );
@@ -985,4 +1023,76 @@ function dayWord(ms: number): string {
   if (d === new Date().toDateString()) return 'Today';
   if (d === new Date(Date.now() - 86_400_000).toDateString()) return 'Yesterday';
   return shortDate(ms);
+}
+
+const personWord = (a: Address | null, me: boolean) =>
+  me ? 'you' : firstName(a) || displayName(a);
+
+/**
+ * Everyone on the thread as a row of faces under the subject; tapping it
+ * lists each person with their place (To, Cc) on the newest message.
+ */
+function ThreadCast({ messages, mine }: { messages: MobileMessage[]; mine: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const cast = threadCast(messages, mine);
+  if (cast.length < 2) return null;
+  const others = cast.filter((c) => !c.me).map((c) => personWord(c.addr, false));
+  const hasMe = cast.some((c) => c.me);
+  const names = hasMe ? [...others, 'you'] : others;
+  const label =
+    names.length <= 4
+      ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+      : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  const roleWord = { from: 'From', to: 'To', cc: 'Cc' } as const;
+  return (
+    <div className="te-cast">
+      <button className="te-cast-row" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="te-faces">
+          {cast.slice(0, 5).map((c) => (
+            <span key={c.addr.email}>
+              <Avatar who={c.addr} size={24} />
+            </span>
+          ))}
+        </span>
+        <span className="te-cast-lb">{label}</span>
+        <ChevronDown size={15} className={`te-cast-chev${open ? ' up' : ''}`} />
+      </button>
+      {open && (
+        <div className="te-cast-list pop">
+          {cast.map((c) => (
+            <div key={c.addr.email} className="te-cast-item">
+              <Avatar who={c.addr} size={22} />
+              <div className="who">
+                <b>{c.me ? 'You' : displayName(c.addr)}</b>
+                <span>{c.addr.email}</span>
+              </div>
+              <span className="role">{c.role ? roleWord[c.role] : 'Earlier'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Lorena added Tomás to Cc", a quiet line where a reply changed who is on it. */
+function ChangeNote({ c }: { c: RecipientChange }) {
+  const by = c.byMe ? 'You' : firstName(c.by) || displayName(c.by);
+  const names = (xs: { addr: Address; me: boolean }[]) =>
+    nameList(xs.map((x) => personWord(x.addr, x.me)));
+  const toTo = c.added.filter((a) => a.role === 'to');
+  const toCc = c.added.filter((a) => a.role === 'cc');
+  const parts: string[] = [];
+  if (toTo.length) parts.push(`added ${names(toTo)}`);
+  if (toCc.length) parts.push(`added ${names(toCc)} to Cc`);
+  if (c.removed.length) parts.push(`removed ${names(c.removed)}`);
+  const Icon = c.added.length ? UserPlus : UserMinus;
+  return (
+    <div className="te-change">
+      <Icon size={13} aria-hidden />
+      <span>
+        <b>{by}</b> {parts.join(' and ')}
+      </span>
+    </div>
+  );
 }
