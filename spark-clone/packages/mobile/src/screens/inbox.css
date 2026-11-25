@@ -35,6 +35,12 @@
   background: var(--accent); color: var(--on-accent); }
 
 /* Priority faces */
+/* The row sticks below the status-bar band instead of sliding under it. Sticky
+   offsets count from inside .screen's padding (= --top-clear), so top: 0 lands
+   it --top-clear below the screen edge. .ib-cap paints that band solid so
+   scrolled mail never shows blurred under the status bar. */
+.ib-cap { position: fixed; top: 0; left: 0; right: 0; height: var(--top-clear); background: var(--app); z-index: 7; pointer-events: none; }
+.ib-pin { position: sticky; top: 0; z-index: 6; background: var(--app); padding-bottom: 6px; }
 .ib-faces { display: flex; gap: 14px; overflow-x: auto; padding: 14px 20px 4px; scrollbar-width: none; }
 .ib-faces::-webkit-scrollbar { display: none; }
 .ib-face { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; flex: none; transition: opacity .3s; }
@@ -46,8 +52,9 @@
 .ib-face[aria-pressed="true"] > b { color: var(--ink); }
 .ib-face[aria-pressed="true"] > span:not(.ib-ring) { color: var(--muted); }
 .ib-ring { position: relative; width: 70px; height: 70px; display: grid; place-items: center; }
-.ib-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
-.ib-ring .c { position: absolute; top: 0; right: 0; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--app);
+.ib-ring svg { position: absolute; inset: 0; }
+.ib-ring .av { border-radius: 16px; }
+.ib-ring .c { position: absolute; top: -4px; right: -4px; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--app);
   font-size: 11.5px; font-weight: 700; display: grid; place-items: center; }
 .ib-face b { font-size: 13px; max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ib-face span { font-size: 11.5px; color: var(--muted); }
