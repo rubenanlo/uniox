@@ -20,6 +20,7 @@ import {
 } from '../quickreply/ChatParts';
 import { nameOf, useChatThread } from '../quickreply/useChatThread';
 import { PriorityMark } from './PriorityBolt';
+import { RecipientList, RecipientWords, hasRecipientLine, recipientsOverflow } from './ChatRecipients';
 import {
   DraftItem,
   ThreadHeader,
@@ -51,28 +52,38 @@ const dayLabel = (ms: number) => {
 const timeLabel = (ms: number) =>
   new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-/** The small sender · time line above a bubble. */
-function BubbleMeta({ message, mine }: { message: MessageMeta; mine: boolean }) {
+/** The small sender · time line above a bubble, with who else it went to. */
+function BubbleMeta({
+  message,
+  mine,
+  own,
+  open,
+  onToggle,
+}: {
+  message: MessageMeta;
+  mine: boolean;
+  own: Set<string>;
+  open: boolean;
+  onToggle: () => void;
+}) {
   return (
     <span
       className={cn(
-        'text-ink-faint flex items-center gap-1.5 px-1 text-[11.5px]',
+        'text-ink-faint flex min-w-0 items-center gap-1.5 px-1 text-[11.5px]',
         mine && 'justify-end',
       )}
     >
       {!message.seen && !mine && (
-        <span className="bg-accent h-1.5 w-1.5 rounded-full" aria-label="Unread" />
+        <span className="bg-accent h-1.5 w-1.5 shrink-0 rounded-full" aria-label="Unread" />
       )}
-      <span className={cn('text-ink-muted', !message.seen && !mine && 'text-ink font-semibold')}>
+      <span className={cn('text-ink-muted shrink-0', !message.seen && !mine && 'text-ink font-semibold')}>
         {mine ? 'You' : nameOf(message.from)}
       </span>
       {!mine && <PriorityMark email={message.from?.email} />}
       <span>·</span>
-      <span className="tabular-nums">{timeLabel(message.date)}</span>
-      {mine && message.to.length > 0 && (
-        <span className="truncate">
-          to {message.to.map((a) => a.name?.split(' ')[0] || a.email).join(', ')}
-        </span>
+      <span className="shrink-0 tabular-nums">{timeLabel(message.date)}</span>
+      {hasRecipientLine(message, mine) && (
+        <RecipientWords message={message} own={own} open={open} onToggle={onToggle} />
       )}
     </span>
   );
@@ -91,6 +102,15 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
     chat;
   const [menu, setMenu] = useState(false);
   const [showOlder, setShowOlder] = useState(false);
+  // Messages whose full To/Cc list is unfolded under the name.
+  const [peopleOpen, setPeopleOpen] = useState<Set<string>>(() => new Set());
+  const togglePeople = (id: string) =>
+    setPeopleOpen((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const openComposer = useUi((s) => s.openComposer);
@@ -247,7 +267,20 @@ export function ChatThreadView({ thread }: { thread: ThreadSummary }) {
                           body={bodies[m.id]}
                           mine={mine}
                           narrow
-                          meta={<BubbleMeta message={m} mine={mine} />}
+                          meta={
+                            <div className="flex min-w-0 flex-col">
+                              <BubbleMeta
+                                message={m}
+                                mine={mine}
+                                own={own}
+                                open={peopleOpen.has(m.id)}
+                                onToggle={() => togglePeople(m.id)}
+                              />
+                              {recipientsOverflow(m) && (
+                                <RecipientList message={m} own={own} open={peopleOpen.has(m.id)} />
+                              )}
+                            </div>
+                          }
                         />
                       </div>
                     )}

@@ -510,43 +510,57 @@ export function ReplyField({
           ))}
         </div>
       )}
-      {ccOpen && (
-        <div className="border-hairline mb-1 flex items-center gap-2 border-b pb-1">
-          <span className="text-ink-faint shrink-0 text-[11.5px]">Cc</span>
+      {/* The Cc line unfolds (0fr → 1fr rows, so no measuring) and slides down into place; inert while folded. */}
+      <div
+        inert={!ccOpen}
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-[240ms] ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+          ccOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
           <div
-            className="min-w-0 flex-1"
-            onKeyDown={(e) => {
-              // Esc on an empty Cc line closes it and goes back to the reply.
-              if (e.key === 'Escape' && !ccText.trim()) {
-                e.preventDefault();
-                e.stopPropagation();
+            className={cn(
+              'border-hairline mb-1 flex items-center gap-2 border-b pb-1 transition-transform duration-[240ms] ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+              ccOpen ? 'translate-y-0' : '-translate-y-1.5',
+            )}
+          >
+            <span className="text-ink-faint shrink-0 text-[11.5px]">Cc</span>
+            <div
+              className="min-w-0 flex-1"
+              onKeyDown={(e) => {
+                // Esc on an empty Cc line closes it and goes back to the reply.
+                if (e.key === 'Escape' && !ccText.trim()) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCcOpen(false);
+                  fieldRef.current?.focus();
+                }
+              }}
+            >
+              <AddressField
+                inputRef={ccRef}
+                value={ccText}
+                onChange={setCcText}
+                ariaLabel="Cc"
+                placeholder="Add someone in Cc"
+                className="placeholder:text-ink-faint w-full bg-transparent py-1 text-[13px] outline-none"
+              />
+            </div>
+            <button
+              aria-label="Remove Cc"
+              onClick={() => {
+                setCcText('');
                 setCcOpen(false);
                 fieldRef.current?.focus();
-              }
-            }}
-          >
-            <AddressField
-              inputRef={ccRef}
-              value={ccText}
-              onChange={setCcText}
-              ariaLabel="Cc"
-              placeholder="Add someone in Cc"
-              className="placeholder:text-ink-faint w-full bg-transparent py-1 text-[13px] outline-none"
-            />
+              }}
+              className="text-ink-faint hover:text-ink shrink-0"
+            >
+              <X size={12} />
+            </button>
           </div>
-          <button
-            aria-label="Remove Cc"
-            onClick={() => {
-              setCcText('');
-              setCcOpen(false);
-              fieldRef.current?.focus();
-            }}
-            className="text-ink-faint hover:text-ink shrink-0"
-          >
-            <X size={12} />
-          </button>
         </div>
-      )}
+      </div>
       <div className="flex items-end gap-2.5">
         <div
           className="reply-editor max-h-[140px] min-w-0 flex-1 overflow-y-auto py-1.5 text-[14.5px] leading-[1.5]"
