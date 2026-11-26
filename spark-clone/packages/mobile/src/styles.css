@@ -240,6 +240,8 @@ a { color: var(--accent); text-decoration: none; }
 .trow-read { left: 0; background: var(--accent); color: var(--on-accent); align-items: center; padding-left: 24px; }
 .trow-read span.pop { transform: scale(1.12); }
 .row { display: flex; gap: 12px; padding: 12px 18px; align-items: flex-start; position: relative; background: var(--app); touch-action: pan-y; }
+.row-av { display: flex; flex: none; padding: 2.5px; border-radius: 15px; border: 1.5px solid transparent; margin: -4px 0 0 -4px; }
+.row-av .av { border-radius: 11px; }
 .trow + .trow .row::before, .row + .row::before { content: ''; position: absolute; top: 0; left: 70px; right: 0; border-top: 1px solid var(--hair); }
 .row .meta { flex: 1; min-width: 0; }
 .row .top { display: flex; align-items: baseline; gap: 6px; }

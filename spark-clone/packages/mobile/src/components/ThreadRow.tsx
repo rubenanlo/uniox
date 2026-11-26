@@ -232,7 +232,13 @@ export function ThreadRow({
           <GistBody thread={thread} gist={gist} accountColor={accountColor} />
         ) : (
           <>
-            <Avatar who={thread.lastFrom} />
+            {/* Rounded-square face; the account shows as a thin ring in its colour. */}
+            <span
+              className="row-av"
+              style={accountColor ? { borderColor: accountColor } : undefined}
+            >
+              <Avatar who={thread.lastFrom} />
+            </span>
             <div className="meta">
               <div className="top">
                 {unread && <span className="unread-dot" />}
@@ -243,12 +249,6 @@ export function ThreadRow({
                   <span className="faint" style={{ fontSize: 13 }}>
                     {thread.messageCount}
                   </span>
-                )}
-                {accountColor && (
-                  <span
-                    className="swatch"
-                    style={{ background: accountColor, width: 7, height: 7 }}
-                  />
                 )}
                 <span className="time">
                   {thread.pinned && <Pin size={12} color="var(--priority)" />}
