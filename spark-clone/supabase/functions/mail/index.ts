@@ -13,7 +13,7 @@ type Body =
   | { action: 'propose'; eventId: string; startMs: number; endMs: number; note?: string; label?: string }
   | { action: 'freebusy'; accountId: string; emails: string[]; fromMs: number; toMs: number }
   | { action: 'calendars' }
-  | { action: 'createEvent'; accountId: string; calendarId?: string; title: string; startMs: number; endMs: number; addMeet: boolean };
+  | { action: 'createEvent'; accountId: string; calendarId?: string; title: string; startMs: number; endMs: number; addMeet: boolean; attendees?: { email: string; name?: string }[] };
 
 /** Mail and calendar writes for the phone. Every call acts on the caller's own data. */
 Deno.serve(async (req) => {
@@ -276,10 +276,17 @@ Deno.serve(async (req) => {
         const acct = await account(b.accountId);
         const token = await accessToken(db, acct.id);
         const cal = encodeURIComponent(b.calendarId || 'primary');
-        await gfetch(token, `${CAL}/calendars/${cal}/events?conferenceDataVersion=1`, {
+        const guests = (b.attendees ?? [])
+          .filter((a) => /.+@.+\..+/.test(a.email) && a.email.toLowerCase() !== acct.email.toLowerCase())
+          .slice(0, 50)
+          .map((a) => ({ email: a.email, ...(a.name ? { displayName: a.name } : {}) }));
+        // With guests, Google emails them the invite (sendUpdates=all), like sending from Calendar.
+        const send = guests.length ? '&sendUpdates=all' : '';
+        await gfetch(token, `${CAL}/calendars/${cal}/events?conferenceDataVersion=1${send}`, {
           method: 'POST',
           body: JSON.stringify({
             summary: b.title,
+            ...(guests.length ? { attendees: guests } : {}),
             start: { dateTime: new Date(b.startMs).toISOString() },
             end: { dateTime: new Date(b.endMs).toISOString() },
             ...(b.addMeet ? { conferenceData: { createRequest: { requestId: crypto.randomUUID(), conferenceSolutionKey: { type: 'hangoutsMeet' } } } } : {}),

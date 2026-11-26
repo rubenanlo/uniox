@@ -69,6 +69,8 @@ export interface UnioxApi {
     startMs: number;
     endMs: number;
     addMeet: boolean;
+    /** Guests to invite; Google emails them the invite. */
+    attendees?: { email: string; name?: string }[];
   }): Promise<void>;
 
   search(query: string): Promise<SearchResults>;
