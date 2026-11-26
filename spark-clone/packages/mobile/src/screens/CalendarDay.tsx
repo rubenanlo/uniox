@@ -2,13 +2,14 @@ import { ChevronDown, ChevronLeft, ChevronRight, Video } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TILES } from '../components/InviteCard';
 import { ProposeTime } from '../components/ProposeTime';
+import { GuestLanes, GuestPicker, guestNames, useGuestBusy } from '../components/InvitePeople';
 import {
   CalendarChoice,
   type CalendarPick,
   pickLabel,
   useCalendarGroups,
 } from '../components/CalendarChoice';
-import type { MobileEvent, RsvpAnswer } from '../data/types';
+import type { Address, MobileEvent, RsvpAnswer } from '../data/types';
 import {
   addDays,
   clock12,
@@ -1255,7 +1256,8 @@ function NewEventInline({
   const [mins, setMins] = useState(() =>
     endMs !== null && endMs - startMs < 30 * MIN ? Math.round((endMs - startMs) / MIN) : 30,
   );
-  const [picking, setPicking] = useState<'start' | 'len' | 'other' | 'cal' | null>(null);
+  const [picking, setPicking] = useState<'start' | 'len' | 'other' | 'cal' | 'who' | null>(null);
+  const [guests, setGuests] = useState<Address[]>([]);
   const [meet, setMeet] = useState(true);
   const [where, setWhere] = useState<CalendarPick>({ accountId: accounts[0]?.id ?? '' });
   const groups = useCalendarGroups();
@@ -1285,7 +1287,9 @@ function NewEventInline({
   const lo = Math.min(startMs, start);
   const hi = Math.max(winEnd, end);
   const pct = (t: number) => `${((t - lo) / (hi - lo)) * 100}%`;
-  const toggle = (k: 'start' | 'len' | 'cal') => setPicking(picking === k ? null : k);
+  const toggle = (k: 'start' | 'len' | 'cal' | 'who') => setPicking(picking === k ? null : k);
+  // Everyone's busy times for the whole day, so moving the slot needs no new fetch.
+  const guestBusy = useGuestBusy(where.accountId, guests, day0, addDays(day0, 1));
   const pickOnBar = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const t = lo + ((e.clientX - r.left) / r.width) * (hi - lo) - (mins * MIN) / 2;
@@ -1303,8 +1307,13 @@ function NewEventInline({
         startMs: start,
         endMs: end,
         addMeet: meet,
+        ...(guests.length ? { attendees: guests } : {}),
       });
-      showToast({ text: `Added for ${clock12(start)}` });
+      showToast({
+        text: guests.length
+          ? `Invite sent to ${guestNames(guests)} for ${clock12(start)}`
+          : `Added for ${clock12(start)}`,
+      });
       onCreated();
       onClose();
     } catch (e) {
@@ -1344,7 +1353,15 @@ function NewEventInline({
         >
           {span(mins * MIN)}
         </button>
-        , until <span className="nw">{clock12(end)}</span>
+        , until <span className="nw">{clock12(end)}</span>, with{' '}
+        <button
+          className="ib-w"
+          aria-pressed={picking === 'who'}
+          aria-label={guests.length ? `With ${guestNames(guests)}. Change guests` : 'Invite people'}
+          onClick={() => toggle('who')}
+        >
+          {guests.length ? guestNames(guests) : 'no one yet'}
+        </button>
         {choices > 1 ? (
           <>
             , in{' '}
@@ -1439,6 +1456,11 @@ function NewEventInline({
           </div>
         </div>
       </div>
+      <div className={`cal-fold${picking === 'who' ? ' open' : ''}`} inert={picking !== 'who'}>
+        <div>
+          <GuestPicker guests={guests} onChange={setGuests} />
+        </div>
+      </div>
       <div className={`cal-fold${picking === 'cal' ? ' open' : ''}`} inert={picking !== 'cal'}>
         <div>
           <CalendarChoice
@@ -1476,6 +1498,9 @@ function NewEventInline({
         <span>{clock12(lo)}</span>
         <span>{clock12(hi)}</span>
       </div>
+      {guests.length > 0 && (
+        <GuestLanes guests={guests} busy={guestBusy} lo={lo} hi={hi} start={start} end={end} />
+      )}
       {(over > 0 || outside) && (
         <p className="cal-over">
           {outside
@@ -1496,7 +1521,7 @@ function NewEventInline({
           Cancel
         </button>
         <button className="btn primary" disabled={busy} onClick={() => void create()}>
-          Add
+          {guests.length ? 'Send invite' : 'Add'}
         </button>
       </div>
     </div>

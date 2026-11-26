@@ -198,3 +198,37 @@
 .cal-cals button i { width: 8px; height: 8px; border-radius: 4px; flex: none; }
 /* The sentence already names the pick, so the picked chip is only marked, not filled. */
 .cal-cals button.on { color: var(--accent); border-color: transparent; }
+
+/* Plan something: guests ("with Anna and Tara") and their availability lanes (design A). */
+.cal-guests { padding: 8px 0 4px; }
+.cal-guests .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cal-guest { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 10px 0 4px; border-radius: 17px; font-size: 14px; }
+.cal-guests .face, .cal-people .face { width: 24px; height: 24px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 700; color: #fff; flex: none; }
+.cal-guests input { flex: 1; min-width: 120px; min-height: 36px; font: inherit; font-size: 15px; color: var(--ink); background: none; }
+.cal-people { margin-top: 6px; border-radius: 14px; border: 1px solid var(--hair); overflow: hidden; }
+.cal-people button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 12px; text-align: left; font-size: 15px; color: var(--ink); }
+.cal-people button + button { border-top: 1px solid var(--hair); }
+.cal-people .who { display: flex; flex-direction: column; min-width: 0; }
+.cal-people .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-people .who .muted { font-size: 12.5px; }
+.cal-lanes { margin-top: 10px; }
+.cal-lane-rows { position: relative; display: flex; flex-direction: column; gap: 7px; }
+.cal-lane-row { display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: center; }
+.cal-lane-lb { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-lanes .lane { display: block; position: relative; height: 14px; border-radius: 7px; background: var(--hair); overflow: hidden; }
+.cal-lanes .lane .busy { position: absolute; top: 0; bottom: 0; border-radius: 7px; background: color-mix(in srgb, var(--muted) 55%, transparent); }
+.cal-lanes .lane.hidden { background: none; border: 1px dashed var(--hair); box-sizing: border-box; display: flex; align-items: center;
+  padding-left: 8px; font-size: 10.5px; color: var(--muted); }
+.cal-lanes.loading .lane { opacity: .5; }
+.cal-lanes .bandwrap { position: absolute; left: 52px; right: 0; top: -4px; bottom: -4px; pointer-events: none; }
+.cal-lanes .band { position: absolute; top: 0; bottom: 0; min-width: 6px; border-radius: 8px; border: 1.5px solid var(--hair);
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  transition: left .36s cubic-bezier(.22, 1.2, .36, 1), width .36s cubic-bezier(.22, 1.2, .36, 1), border-color .2s, background .2s; }
+.cal-lanes .band.ok { border-color: var(--aqua); background: color-mix(in srgb, var(--aqua) 18%, transparent); }
+.cal-lanes .band.warn { border-color: #f0a050; background: color-mix(in srgb, #f0a050 18%, transparent); }
+.cal-lanes-say { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
+.cal-lanes-say.ok { color: color-mix(in srgb, var(--aqua) 72%, var(--ink)); }
+.cal-lanes-say.warn { color: color-mix(in srgb, #e8892f 78%, var(--ink)); }
+@media (prefers-reduced-motion: reduce) { .cal-lanes .band { transition: none; } }
+.cal-new .foot .btn { white-space: nowrap; }
