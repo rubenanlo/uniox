@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { dedupeMirroredEvents } from '@app/shared';
 import type { ThreadAction, UnioxApi } from './api';
+import { bodyText } from '../lib/bodyText';
 import {
   DEFAULT_SETTINGS,
   type MobileAccount,
@@ -92,7 +93,7 @@ export const toMessage = (r: MessageRow): MobileMessage => ({
   date: Number(r.date),
   snippet: r.snippet,
   html: r.html,
-  text: r.body_text,
+  text: bodyText(r.body_text, r.html),
   fromMe: r.from_me,
   unread: r.unread,
   attachments: r.attachments ?? [],
