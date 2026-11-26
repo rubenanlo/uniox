@@ -476,3 +476,8 @@
   border-color: color-mix(in oklch, var(--accent) 45%, transparent);
   background: var(--accent-soft);
 }
+
+/* Designed emails (newsletters, notices) keep the sender's layout */
+.te-mail {
+  min-width: 0;
+}
