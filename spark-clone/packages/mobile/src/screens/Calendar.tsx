@@ -1,5 +1,5 @@
 import { Bell, Check, HelpCircle, MapPin, Text, Users, Video, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MobileEvent, RsvpAnswer } from '../data/types';
 import { AiMark, AvatarStack, CloseButton, Sheet, TabBar, Toggle } from '../components/ui';
 import {
@@ -11,6 +11,7 @@ import {
   startOfWeek,
   timeRange,
 } from '../lib/format';
+import { useSwipeStep } from '../lib/gestures';
 import { go, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 import { useNow } from '../lib/useNow';
@@ -59,12 +60,29 @@ export function CalendarScreen() {
   useEffect(load, [load, threads]);
 
   const setView = (v: View) => go(`calendar?view=${v}`, true);
+
+  // Swipe sideways mid-screen: next/previous month, week or day. The top bar
+  // (view words) stays; everything under it slides. The left edge still goes back.
+  const screenRef = useRef<HTMLDivElement>(null);
+  useSwipeStep(
+    screenRef,
+    () => Array.from(screenRef.current?.querySelectorAll<HTMLElement>('.cal > :not(.cal-top)') ?? []),
+    view === 'list' || openId || creating
+      ? null
+      : (dir) => {
+          if (view === 'month') {
+            const x = new Date(day);
+            const m = new Date(x.getFullYear(), x.getMonth() + dir, 1).getTime();
+            const t = startOfDay(now);
+            const tm = new Date(new Date(t).getFullYear(), new Date(t).getMonth(), 1).getTime();
+            setDay(m === tm ? t : m);
+          } else setDay(addDays(day, view === 'week' ? 7 * dir : dir));
+        },
+  );
   const open = events.find((e) => e.id === openId);
   return (
     <>
-      <div
-        className="screen"
-      >
+      <div className="screen" ref={screenRef}>
         {view === 'day' ? (
           <DayRiver
             day={day}

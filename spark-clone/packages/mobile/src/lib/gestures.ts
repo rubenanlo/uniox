@@ -163,3 +163,112 @@ export function useEdgeBack(
     };
   }, []);
 }
+
+const STEP_GO = 64;
+
+/**
+ * Swipe sideways from anywhere away from the left edge to step to the next
+ * (swipe left) or previous (swipe right) page of a paged view, like the next
+ * month in the calendar. `follow()` names the elements that ride under the
+ * finger and slides across on release. The left edge stays with useEdgeBack.
+ * `onStep` returns false when there is nowhere to step to.
+ */
+export function useSwipeStep(
+  ref: RefObject<HTMLElement | null>,
+  follow: () => HTMLElement[],
+  onStep: ((dir: 1 | -1) => void) | null,
+): void {
+  const cb = useRef({ follow, onStep });
+  useEffect(() => {
+    cb.current = { follow, onStep };
+  });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let g: { x: number; y: number; t: number; on: boolean; d: number } | null = null;
+    const ease = 'cubic-bezier(.22,1,.36,1)';
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t || e.touches.length > 1 || !cb.current.onStep) return;
+      if (t.clientX <= EDGE || t.clientX >= window.innerWidth - 12) return;
+      const tgt = e.target as HTMLElement | null;
+      if (tgt?.closest('input, textarea, select, [contenteditable="true"], [data-no-swipe]')) return;
+      g = { x: t.clientX, y: t.clientY, t: e.timeStamp, on: false, d: 0 };
+    };
+    const move = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!g || !t) return;
+      const dx = t.clientX - g.x;
+      const dy = t.clientY - g.y;
+      if (!g.on) {
+        if (Math.hypot(dx, dy) < 10) return;
+        if (Math.abs(dx) > Math.abs(dy) * 1.2) g.on = true;
+        else {
+          g = null;
+          return;
+        }
+      }
+      e.preventDefault();
+      g.d = dx;
+      for (const p of cb.current.follow()) {
+        p.style.transition = 'none';
+        p.style.transform = `translateX(${dx * 0.9}px)`;
+        p.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 500));
+      }
+    };
+    const end = (e: TouchEvent) => {
+      if (!g) return;
+      const { on, d, t } = g;
+      g = null;
+      if (!on) return;
+      const ps = cb.current.follow();
+      const fast = Math.abs(d) > 30 && Math.abs(d) / Math.max(1, e.timeStamp - t) > 0.5;
+      const step = cb.current.onStep;
+      if (!step || (Math.abs(d) < STEP_GO && !fast)) {
+        for (const p of ps) {
+          p.style.transition = `transform .3s ${ease}, opacity .3s`;
+          p.style.transform = '';
+          p.style.opacity = '';
+        }
+        return;
+      }
+      const dir: 1 | -1 = d < 0 ? 1 : -1;
+      const w = window.innerWidth;
+      for (const p of ps) {
+        p.style.transition = `transform .16s ease-in, opacity .16s ease-in`;
+        p.style.transform = `translateX(${-dir * w * 0.45}px)`;
+        p.style.opacity = '0';
+      }
+      setTimeout(() => {
+        step(dir);
+        // The next page comes in from the side the finger came from.
+        requestAnimationFrame(() => {
+          const qs = cb.current.follow();
+          for (const q of qs) {
+            q.style.transition = 'none';
+            q.style.transform = `translateX(${dir * w * 0.35}px)`;
+            q.style.opacity = '0';
+          }
+          requestAnimationFrame(() => {
+            for (const q of qs) {
+              q.style.transition = `transform .34s ${ease}, opacity .26s`;
+              q.style.transform = '';
+              q.style.opacity = '';
+            }
+          });
+        });
+      }, 150);
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+    return () => {
+      el.removeEventListener('touchstart', start);
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+    };
+  }, [ref]);
+}
