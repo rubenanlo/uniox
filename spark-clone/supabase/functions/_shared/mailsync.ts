@@ -424,8 +424,13 @@ export async function syncCalendar(db: SupabaseClient, token: string, acct: Acco
   const rows: Record<string, unknown>[] = [];
   // Only calendars the user owns (their main one, Family…) plus public holiday calendars.
   // Colleagues' calendars they can see and other shared ones are other people's.
+  // A colleague's calendar can come back as "owner" when they gave you full rights to it;
+  // its id is their address, while your own extra calendars (Family…) have group ids.
   const holiday = (id: string) => id.endsWith('#holiday@group.v.calendar.google.com');
-  const mine = cals.items.filter((c) => c.primary || (c.selected && (c.accessRole === 'owner' || holiday(c.id))));
+  const someoneElse = (id: string) => !id.endsWith('calendar.google.com') && id.toLowerCase() !== acct.email.toLowerCase();
+  const mine = cals.items.filter(
+    (c) => c.primary || (c.selected && (holiday(c.id) || (c.accessRole === 'owner' && !someoneElse(c.id)))),
+  );
   for (const cal of mine) {
     let pageToken: string | undefined;
     do {
