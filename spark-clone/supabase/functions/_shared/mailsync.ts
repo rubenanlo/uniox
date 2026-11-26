@@ -422,7 +422,10 @@ export async function syncCalendar(db: SupabaseClient, token: string, acct: Acco
   const timeMin = new Date(Date.now() - CAL_PAST_DAYS * 86_400_000).toISOString();
   const timeMax = new Date(Date.now() + CAL_FUTURE_DAYS * 86_400_000).toISOString();
   const rows: Record<string, unknown>[] = [];
-  for (const cal of cals.items.filter((c) => c.selected || c.primary)) {
+  // Only calendars the user owns (their main one, Family…). Colleagues' calendars they can
+  // see, subscribed holiday calendars and other shared ones are other people's.
+  const mine = cals.items.filter((c) => c.primary || (c.accessRole === 'owner' && c.selected));
+  for (const cal of mine) {
     let pageToken: string | undefined;
     do {
       const res = await gfetch<{ items: GEvent[]; nextPageToken?: string }>(
