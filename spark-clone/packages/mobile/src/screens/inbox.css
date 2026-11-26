@@ -133,4 +133,8 @@
 .ib-sect { display: flex; align-items: center; gap: 10px; padding: 26px 18px 8px; }
 .ib-sect h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.025em; color: var(--ink); }
 .ib-sect-n { font-size: 15px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ib-sect-ic { flex: none; margin-left: -4px; color: var(--muted); }
+.ib-sect-ic.pin { color: var(--priority); }
+.ib-sect-ic.needs { color: var(--accent); }
+.ib-sect-ic.prio { color: var(--violet); }
 .ib-sect-act { margin-left: auto; padding: 6px 0 6px 12px; font-size: 13px; font-weight: 600; color: var(--accent); }
