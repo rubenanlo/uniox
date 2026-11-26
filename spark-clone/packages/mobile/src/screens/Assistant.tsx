@@ -4,9 +4,8 @@ import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark } from '../components/ui';
 import '../components/ask.css';
 import type { AssistantTurn, MobileEvent } from '../data/types';
-import { useEdgeBackAndPull } from '../lib/gestures';
 import { clock12, greeting } from '../lib/format';
-import { back, useRoute } from '../lib/router';
+import { useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
 
 const CHIPS: [label: string, question: string][] = [
@@ -44,11 +43,6 @@ export function Assistant() {
   const [next, setNext] = useState<MobileEvent | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useEdgeBackAndPull(
-    ref,
-    () => back('home'),
-    async () => {},
-  );
 
   useEffect(() => {
     const now = Date.now();

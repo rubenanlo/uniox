@@ -20,7 +20,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useEdgeBackAndPull } from '../lib/gestures';
+import { usePullRefresh } from '../lib/gestures';
 import type { Address, FirstRead, MobileMessage, MobileThread } from '../data/types';
 import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
@@ -844,7 +844,7 @@ function ConversationE({
   reply: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { pull, refreshing } = useEdgeBackAndPull(ref, () => back('inbox'), onRefresh);
+  const { pull, refreshing } = usePullRefresh(ref, onRefresh);
   const [unfold, setUnfold] = useState(false);
   const [ask, setAsk] = useState(false);
   const lastOther = [...messages].reverse().find((m) => !m.fromMe && m.from);

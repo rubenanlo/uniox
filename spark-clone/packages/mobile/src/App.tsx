@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Spinner, Toast } from './components/ui';
+import { useEdgeBack } from './lib/gestures';
 import { useIdleHome } from './lib/idleHome';
 import { go, useRoute } from './lib/router';
 import { useStore } from './lib/store';
@@ -15,11 +16,22 @@ import { Settings } from './screens/Settings';
 import { ThreadScreen } from './screens/Thread';
 import { Welcome } from './screens/Welcome';
 
+/** Screens the left-edge swipe leaves alone: Home is the root, the composer has its own drag. */
+const NO_EDGE_BACK = new Set(['', 'home', 'welcome', 'auth', 'compose']);
+
+/** Where back lands when the app opened straight onto this screen. */
+function backFallback(at: string): string {
+  if (at.startsWith('thread/')) return 'inbox';
+  if (at.startsWith('settings/')) return 'settings';
+  return 'home';
+}
+
 export function App() {
   const { ready, me, settings, online, queued, boot } = useStore();
   const route = useRoute();
   useTheme(settings);
   useIdleHome(ready && !!me);
+  useEdgeBack((at) => NO_EDGE_BACK.has(at), backFallback);
   useEffect(() => {
     void boot();
   }, [boot]);

@@ -1,5 +1,5 @@
 import { Bell, Check, HelpCircle, MapPin, Text, Users, Video, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MobileEvent, RsvpAnswer } from '../data/types';
 import { AiMark, AvatarStack, CloseButton, Sheet, TabBar, Toggle } from '../components/ui';
 import {
@@ -33,7 +33,6 @@ export function CalendarScreen() {
   const [events, setEvents] = useState<MobileEvent[]>([]);
   const openId = route.query.get('event');
   const creating = route.query.has('new');
-  const touch = useRef<number | null>(null);
   // The island's "add an event" lands in the day's next free gap; the sheet
   // is the fallback when there is none, and in the week and list views.
   const [newSheet, setNewSheet] = useState(false);
@@ -65,16 +64,6 @@ export function CalendarScreen() {
     <>
       <div
         className="screen"
-        onTouchStart={(e) => (touch.current = e.touches[0]?.clientX ?? null)}
-        onTouchEnd={(e) => {
-          const x0 = touch.current;
-          const x1 = e.changedTouches[0]?.clientX;
-          touch.current = null;
-          if (x0 == null || x1 == null) return;
-          // From the left edge the swipe goes back Home, as in the Inbox.
-          // Days, weeks and months change only through the sentence's pickers.
-          if (x0 < 28 && x1 - x0 > 90) go('home');
-        }}
       >
         {view === 'day' ? (
           <DayRiver

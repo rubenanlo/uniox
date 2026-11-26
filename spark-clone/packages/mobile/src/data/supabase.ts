@@ -157,7 +157,7 @@ export function supabaseApi(url: string, anonKey: string): UnioxApi {
           token_hash: decodeURIComponent(m[1]!),
           type: 'magiclink',
         });
-        history.replaceState(null, '', `${location.pathname}#/home`);
+        history.replaceState({ uniox: 0 }, '', `${location.pathname}#/home`);
         if (error) throw error;
       }
       const { data } = await sb.auth.getSession();

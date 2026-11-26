@@ -7,7 +7,7 @@ import { ThreadRow } from '../components/ThreadRow';
 import { AskSheet } from '../components/AskSheet';
 import { Avatar, Empty, Spinner, TabBar } from '../components/ui';
 import { displayName, firstName, listTime } from '../lib/format';
-import { useEdgeBackAndPull } from '../lib/gestures';
+import { usePullRefresh } from '../lib/gestures';
 import { useGists } from '../lib/gists';
 import { go, useRoute } from '../lib/router';
 import { useStore } from '../lib/store';
@@ -282,7 +282,7 @@ function InboxMain() {
 
   const [ask, setAsk] = useState(false);
   const screenRef = useRef<HTMLDivElement>(null);
-  const { pull, refreshing } = useEdgeBackAndPull(screenRef, () => go('home'), pullRefresh);
+  const { pull, refreshing } = usePullRefresh(screenRef, pullRefresh);
 
   const archiveAll = (b: (typeof lists)[number]) => {
     for (const t of b.items) void act(t, { kind: 'archive' });
