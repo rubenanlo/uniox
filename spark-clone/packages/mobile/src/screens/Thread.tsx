@@ -24,6 +24,8 @@ import { usePullRefresh } from '../lib/gestures';
 import type { Address, FirstRead, MobileMessage, MobileThread } from '../data/types';
 import { AskSheet } from '../components/AskSheet';
 import { InviteCard } from '../components/InviteCard';
+import { MailFrame } from '../components/MailFrame';
+import { isDesignedEmail } from '../lib/designedEmail';
 import { tomorrowMorning } from '../components/ThreadRow';
 import { ParticleOrb } from '../components/ParticleOrb';
 import { AiMark, Avatar, Sheet, Spinner } from '../components/ui';
@@ -331,7 +333,8 @@ function safeHtml(html: string): string {
 }
 
 function Body({ m }: { m: MobileMessage }) {
-  const html = useMemo(() => (m.html ? safeHtml(m.html) : null), [m.html]);
+  const designed = useMemo(() => isDesignedEmail(m.html), [m.html]);
+  const html = useMemo(() => (m.html && !designed ? safeHtml(m.html) : null), [m.html, designed]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     ref.current?.querySelectorAll('a').forEach((a) => {
@@ -339,6 +342,7 @@ function Body({ m }: { m: MobileMessage }) {
       a.rel = 'noreferrer';
     });
   }, [html]);
+  if (designed && m.html) return <MailFrame html={m.html} />;
   if (html)
     return <div ref={ref} className="mail-html" dangerouslySetInnerHTML={{ __html: html }} />;
   return <div className="mail-text">{m.text ?? m.snippet}</div>;
@@ -457,9 +461,20 @@ function CardsStack({ messages, threadId }: { messages: MobileMessage[]; threadI
   );
 }
 
+/** "Can't see this email? View it in your browser" lines above a designed email. */
+const VIEW_ONLINE =
+  /ne s.affiche pas|version (?:en ligne|web)|navigateur|view (?:it |this )?(?:email )?(?:in|on) (?:your |a )?(?:web )?browser|trouble viewing|web version|online version|no se (?:ve|visualiza)|ver (?:en|el) (?:tu )?navegador/i;
+
 /** Text of a bubble when it is folded to one line. */
 function preview(m: MobileMessage): string {
-  return (splitQuoted(m.text ?? m.snippet).main || m.snippet || '').replace(/\s+/g, ' ').trim();
+  let text = splitQuoted(m.text ?? m.snippet).main || m.snippet || '';
+  if (isDesignedEmail(m.html)) {
+    // Drop the "view in browser" sentence near the top of the layout.
+    const parts = text.split(/(?<=[.!?])\s+|\n+/);
+    const i = parts.slice(0, 4).findIndex((p) => VIEW_ONLINE.test(p));
+    if (i >= 0) text = [...parts.slice(0, i), ...parts.slice(i + 1)].join(' ');
+  }
+  return text.replace(/\s+/g, ' ').trim() || m.snippet;
 }
 
 /**
@@ -483,6 +498,8 @@ function ChatMessage({
   const text = main || quoted;
   const fold = main ? quoted : '';
   const isFwd = /forwarded|transféré/i.test(fold.split('\n', 1)[0] ?? '');
+  // Newsletters and notices keep their own layout instead of a text bubble.
+  const designed = useMemo(() => !m.fromMe && isDesignedEmail(m.html), [m.fromMe, m.html]);
   const [showQuoted, setShowQuoted] = useState(false);
   // Fold/open glides: remember the bubble's size before the switch, then
   // animate from it to the new size once React has swapped the content.
@@ -497,6 +514,8 @@ function ChatMessage({
     const el = bubbleRef.current;
     const from = before.current;
     before.current = null;
+    // A designed email sizes itself once its frame has laid out; no glide.
+    if (designed) return;
     if (!el || !from || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const to = el.getBoundingClientRect();
     el.getAnimations().forEach((a) => a.cancel());
@@ -514,7 +533,7 @@ function ChatMessage({
       easing: 'ease-out',
       fill: 'backwards',
     });
-  }, [open]);
+  }, [open, designed]);
   const toggle = () => {
     before.current = bubbleRef.current?.getBoundingClientRect() ?? null;
     onToggle();
@@ -555,50 +574,61 @@ function ChatMessage({
             </button>
           )}
         </div>
-        <div
-          ref={bubbleRef}
-          className={`te-bubble${open ? ' mail-text' : ' shut'}`}
-          role="button"
-          tabIndex={0}
-          aria-expanded={open}
-          onClick={tap}
-          onKeyDown={(e) => {
-            if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
-              e.preventDefault();
-              toggle();
-            }
-          }}
-        >
-          {open ? (
-            <div>
-              {text || m.snippet}
-              {fold &&
-                (showQuoted ? (
-                  <>
-                    <div className="te-quoted">{fold}</div>
-                    <button className="te-qbtn" onClick={() => setShowQuoted(false)}>
-                      Hide {isFwd ? 'forwarded message' : 'quoted text'}
+        {open && designed && m.html ? (
+          <div ref={bubbleRef} className="te-mail">
+            <MailFrame html={m.html} />
+            {m.attachments.length > 0 && (
+              <div className="muted row-flex" style={{ fontSize: 13, padding: '8px 4px 0' }}>
+                <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            ref={bubbleRef}
+            className={`te-bubble${open ? ' mail-text' : ' shut'}`}
+            role="button"
+            tabIndex={0}
+            aria-expanded={open}
+            onClick={tap}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                e.preventDefault();
+                toggle();
+              }
+            }}
+          >
+            {open ? (
+              <div>
+                {text || m.snippet}
+                {fold &&
+                  (showQuoted ? (
+                    <>
+                      <div className="te-quoted">{fold}</div>
+                      <button className="te-qbtn" onClick={() => setShowQuoted(false)}>
+                        Hide {isFwd ? 'forwarded message' : 'quoted text'}
+                      </button>
+                    </>
+                  ) : (
+                    <button className="te-qbtn" onClick={() => setShowQuoted(true)}>
+                      <MoreHorizontal size={14} /> Show {isFwd ? 'forwarded message' : 'quoted text'}
                     </button>
-                  </>
-                ) : (
-                  <button className="te-qbtn" onClick={() => setShowQuoted(true)}>
-                    <MoreHorizontal size={14} /> Show {isFwd ? 'forwarded message' : 'quoted text'}
-                  </button>
-                ))}
-              {m.attachments.length > 0 && (
-                <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
-                  <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
-                </div>
-              )}
-            </div>
-          ) : (
-            <span className="te-pv">
-              <span>{preview(m)}</span>
-              {m.attachments.length > 0 && <Paperclip size={13} />}
-              <ChevronDown size={15} />
-            </span>
-          )}
-        </div>
+                  ))}
+                {m.attachments.length > 0 && (
+                  <div className="muted row-flex" style={{ fontSize: 13, marginTop: 6 }}>
+                    <Paperclip size={13} /> {m.attachments.map((a) => a.filename).join(', ')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="te-pv">
+                <span>{preview(m)}</span>
+                {m.attachments.length > 0 && <Paperclip size={13} />}
+                <ChevronDown size={15} />
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
