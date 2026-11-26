@@ -1,5 +1,18 @@
 import { ParticleOrb } from '../components/ParticleOrb';
-import { Archive, Bell, Check, ChevronLeft, Newspaper, RefreshCw, Sparkles } from 'lucide-react';
+import {
+  Archive,
+  Bell,
+  Check,
+  ChevronLeft,
+  Hourglass,
+  Newspaper,
+  Pin,
+  RefreshCw,
+  Reply,
+  Sparkles,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Address, Category, InviteInfo, MobileAccount, MobileThread } from '../data/types';
 import { InviteRow } from '../components/InviteRow';
@@ -113,6 +126,7 @@ function InboxMain() {
     ) : null;
   const invRef = useRef<HTMLDivElement>(null);
   const waitRef = useRef<HTMLDivElement>(null);
+  const pinRef = useRef<HTMLDivElement>(null);
 
   // Forget accounts that were removed; keep the choice across visits.
   const known = accounts.map((a) => a.id).join(',');
@@ -173,8 +187,13 @@ function InboxMain() {
   };
 
   const shown = unreadOnly ? visible.filter((t) => t.unreadCount > 0) : visible;
-  const personal = shown.filter((t) => t.category === 'personal' || t.category === 'invites');
-  const priority = personal.filter((t) => t.priority && (t.unreadCount > 0 || t.pinned));
+  // Pinned threads, from any sender or group, sit in their own section at the
+  // top until unpinned, and leave every other section.
+  const pinned = shown.filter((t) => t.pinned).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  const personal = shown.filter(
+    (t) => !t.pinned && (t.category === 'personal' || t.category === 'invites'),
+  );
+  const priority = personal.filter((t) => t.priority && t.unreadCount > 0);
   // Only invites still waiting for an answer get the tiles; answered, past or
   // "X accepted" notices read as ordinary mail.
   const inviteCands = personal.filter((t) => t.category === 'invites' && !priority.includes(t));
@@ -194,7 +213,7 @@ function InboxMain() {
   const read = readAll.filter((t) => !t.priority);
   const lists = BUNDLES.map((b) => ({
     ...b,
-    items: visible.filter((t) => t.category === b.key),
+    items: visible.filter((t) => t.category === b.key && !t.pinned),
   })).filter((b) => b.items.length);
   const listCount = lists.reduce((n, b) => n + b.items.length, 0);
   const gists = useGists(api, priority, settings.aiFirstRead);
@@ -292,6 +311,22 @@ function InboxMain() {
 
   const sentence: ReactNode = (
     <p className="ib-sent">
+      {pinned.length > 0 && (
+        <>
+          <button
+            className="ib-w"
+            onClick={() =>
+              pinRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              })
+            }
+          >
+            {pinned.length} pinned
+          </button>
+          ,{' '}
+        </>
+      )}
       <b>
         {people.length === 0
           ? 'Nobody is'
@@ -362,6 +397,17 @@ function InboxMain() {
     </p>
   );
 
+  // Below the faces row (or straight under the sentence when there are no faces).
+  const pinnedBlock = !sel && pinned.length > 0 && (
+    <div ref={pinRef} style={{ scrollMarginTop: 12 }}>
+      <Section label="Pinned" count={pinned.length} icon={Pin} tone="pin" />
+      {cap('pinned', pinned).map((t) => (
+        <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
+      ))}
+      {more('pinned', pinned.length)}
+    </div>
+  );
+
   return (
     <>
       <div className="screen" ref={screenRef}>
@@ -413,6 +459,8 @@ function InboxMain() {
             </>
           )}
         </div>
+
+        {people.length === 0 && pinnedBlock}
 
         {people.length > 0 && (
           <>
@@ -476,6 +524,7 @@ function InboxMain() {
               })}
             </div>
             </div>
+            {pinnedBlock}
             {(sel || priority.length > 0) && (
               <>
                 <Section
@@ -483,6 +532,8 @@ function InboxMain() {
                     sel ? `From ${firstName(people.find((p) => p.key === sel)?.who)}` : 'Needs you'
                   }
                   count={(sel ? fromSel : priority).length}
+                  icon={sel ? undefined : Reply}
+                  tone="needs"
                   action={sel ? { label: 'Show everyone', run: () => setPerson(null) } : undefined}
                 />
                 <div className="ib-gist">
@@ -536,7 +587,7 @@ function InboxMain() {
             )}
             {!unreadOnly && readPriority.length > 0 && (
               <>
-                <Section label="Priority" count={readPriority.length} />
+                <Section label="Priority" count={readPriority.length} icon={Zap} tone="prio" />
                 {cap('priority', readPriority).map((t) => (
                   <ThreadRow key={t.id} thread={t} accountColor={color(t.accountId)} />
                 ))}
@@ -554,7 +605,7 @@ function InboxMain() {
             )}
             {!unreadOnly && lists.length > 0 && (
               <div ref={read.length ? undefined : waitRef} style={{ scrollMarginTop: 12 }}>
-                <Section label="Can wait" count={listCount} />
+                <Section label="Can wait" count={listCount} icon={Hourglass} tone="wait" />
                 <div className="ib-stacks">
                   {lists.map(({ key, label, color: c, Icon, items }) => (
                     <button
@@ -624,15 +675,29 @@ const acctName = (a: MobileAccount) => a.displayName || a.email.split('@')[0];
 function Section({
   label,
   count,
+  icon: Icon,
+  tone,
   action,
 }: {
   label: string;
   count?: number;
+  /** Small icon after the title (Pinned, Needs you, Priority, Can wait). */
+  icon?: LucideIcon;
+  tone?: 'pin' | 'needs' | 'prio' | 'wait';
   action?: { label: string; run: () => void };
 }) {
   return (
     <div className="ib-sect">
       <h2>{label}</h2>
+      {Icon && (
+        <Icon
+          size={16}
+          strokeWidth={2.2}
+          className={`ib-sect-ic ${tone ?? ''}`}
+          fill={tone === 'pin' || tone === 'prio' ? 'currentColor' : 'none'}
+          aria-hidden
+        />
+      )}
       {count ? <span className="ib-sect-n">{count}</span> : null}
       {action && (
         <button className="ib-sect-act" onClick={action.run}>

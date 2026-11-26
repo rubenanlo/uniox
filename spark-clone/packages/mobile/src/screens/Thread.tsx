@@ -112,7 +112,12 @@ export function ThreadScreen({ id }: { id: string }) {
           {
             icon: Pin,
             label: thread.pinned ? 'Unpin' : 'Pin',
-            run: () => void act(thread, { kind: 'pin', pinned: !thread.pinned }),
+            run: () =>
+              void act(
+                thread,
+                { kind: 'pin', pinned: !thread.pinned },
+                thread.pinned ? 'Unpinned' : 'Pinned to the top of Inbox',
+              ),
           },
           { icon: Clock, label: 'Snooze until tomorrow 8:00', run: snooze },
           {
