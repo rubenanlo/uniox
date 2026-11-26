@@ -1091,7 +1091,7 @@ export function MonthDots({
         showDay
       />
 
-      <div className="cal-month" key={ms}>
+      <div className="cal-month" key={`month-${ms}`}>
         <div className="cal-mwd" aria-hidden>
           {weeks[0]!.map((d) => (
             <span key={d}>{new Date(d).toLocaleDateString([], { weekday: 'narrow' })}</span>
@@ -1123,7 +1123,7 @@ export function MonthDots({
         ))}
       </div>
 
-      <div className={`cal-swap${back ? ' back' : ''}`} key={day} aria-live="polite">
+      <div className={`cal-swap${back ? ' back' : ''}`} key={`day-${day}`} aria-live="polite">
         <h2 className="cal-mday">
           <button className={day === today ? 'today' : ''} onClick={() => onOpenDay(day)}>
             {day === today
