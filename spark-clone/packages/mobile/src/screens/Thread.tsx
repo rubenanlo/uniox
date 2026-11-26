@@ -115,6 +115,7 @@ export function ThreadScreen({ id }: { id: string }) {
             run: () => void act(thread, { kind: 'pin', pinned: !thread.pinned }),
           },
           { icon: Clock, label: 'Snooze until tomorrow 8:00', run: snooze },
+          { icon: Archive, label: 'Archive', run: archive },
           {
             icon: Rows3,
             label: layout === 'chat' ? 'Show as cards' : 'Show as conversation',
@@ -187,8 +188,6 @@ export function ThreadScreen({ id }: { id: string }) {
           }
           ai={wantAi ? ai : undefined}
           aiLoading={aiLoading}
-          onArchive={archive}
-          onSnooze={snooze}
           onMore={() => setMore(true)}
           onRefresh={() => api.thread(id).then(setData)}
           onIdea={(idea) =>
@@ -219,12 +218,6 @@ export function ThreadScreen({ id }: { id: string }) {
             <span style={{ fontSize: 17 }}>Inbox</span>
           </button>
           <div className="row-flex" style={{ gap: 2 }}>
-            <button className="navbtn" aria-label="Snooze" onClick={snooze}>
-              <Clock size={20} />
-            </button>
-            <button className="navbtn" aria-label="Archive" onClick={archive}>
-              <Archive size={20} />
-            </button>
             <button className="navbtn" aria-label="More" onClick={() => setMore(true)}>
               <MoreHorizontal size={20} />
             </button>
@@ -821,8 +814,6 @@ function ConversationE({
   accountName,
   ai,
   aiLoading,
-  onArchive,
-  onSnooze,
   onMore,
   onRefresh,
   onIdea,
@@ -835,8 +826,6 @@ function ConversationE({
   accountName: string;
   ai: FirstRead | null | undefined;
   aiLoading: boolean;
-  onArchive: () => void;
-  onSnooze: () => void;
   onMore: () => void;
   onRefresh: () => Promise<unknown>;
   onIdea: (idea: string) => void;
@@ -891,12 +880,6 @@ function ConversationE({
             {accountName ? `${accountName} · ` : ''}
             {messages.length} {messages.length === 1 ? 'message' : 'messages'}
           </span>
-          <button className="te-ic" aria-label="Snooze" onClick={onSnooze}>
-            <Clock size={18} />
-          </button>
-          <button className="te-ic" aria-label="Archive" onClick={onArchive}>
-            <Archive size={18} />
-          </button>
           <button className="te-ic" aria-label="More" onClick={onMore}>
             <MoreHorizontal size={19} />
           </button>
